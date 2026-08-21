@@ -60,12 +60,14 @@ Commencer par :
 Prérequis Linux : Node.js 24+, Rust 1.91+, Docker, GTK 3 et WebKitGTK 4.1.
 
 ```bash
-npm install
-npx supabase start
-cp .env.example .env.local
-npm run dev:server
-npm run dev:web
+./dev
 ```
+
+Cette commande démarre Supabase/PostgreSQL, le serveur Rust, Vite et
+l'application Tauri Linux. Elle est idempotente et utilise le moteur agentique
+déterministe par défaut. L'interface complète (`doctor`, `status`, `logs`,
+`stop`, sortie JSON et mode OpenAI) est décrite dans
+[`docs/development.md`](docs/development.md).
 
 Pour les tests déterministes, définir `AI_CENTER_AGENT_MODE=deterministic`. La
 clé `OPENAI_API_KEY` n’est lue que par le serveur et ne doit jamais être

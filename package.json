@@ -9,6 +9,11 @@
   ],
   "scripts": {
     "tauri": "tauri",
+    "debug": "./dev",
+    "debug:linux": "./dev linux",
+    "dev:doctor": "./dev doctor",
+    "dev:status": "./dev status",
+    "dev:stop": "./dev stop",
     "dev": "npm run dev -w @ai-center/web",
     "dev:web": "npm run dev -w @ai-center/web",
     "dev:server": "cargo run -p ai-center-server",
