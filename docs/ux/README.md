@@ -12,3 +12,6 @@ Ils expriment plusieurs principes :
 
 Les images sont des concepts de direction, pas encore des spécifications pixel-perfect validées.
 
+La référence d’implémentation du MVP se trouve dans
+[ai-center-design-system.md](ai-center-design-system.md). Elle relie les
+concepts actifs aux tokens, composants, comportements et règles responsive.
