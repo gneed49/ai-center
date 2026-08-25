@@ -1,155 +1,299 @@
 # AI Center — Vision produit
 
-> Statut : brouillon de travail — version 0.1  
-> Date : 8 août 2026  
+> Statut : vision consolidée — version 0.2
+>
+> Date : 24 août 2026
+>
 > Nom du produit : `AI Center` est un nom de travail.
 
 ## Résumé
 
-AI Center est un centre de commandement mobile permettant de confier, suivre, interrompre et valider du travail réalisé par des agents IA sur une machine distante sécurisée.
+AI Center est une **couche de pilotage contextuel pour le travail avec l’IA**.
+Il redonne à une personne puis à une organisation la maîtrise du contexte
+partagé entre ses équipes, ses agents et les outils qu’elle utilise déjà.
 
-La première version vise un usage personnel de développement logiciel : depuis une application Android, l'utilisateur pilote un runtime installé sur son Mac, capable d'utiliser des agents de code, le terminal, les fichiers et, à terme, le navigateur. Le produit doit offrir une continuité de travail suffisamment fiable et lisible pour permettre de quitter physiquement son poste sans abandonner son environnement de développement.
+AI Center n’est ni un nouvel IDE agentique, ni un agent de code, ni un
+remplacement de Linear, Notion, Figma, GitHub ou des bases de données. Ces
+systèmes conservent leur rôle et leur profondeur métier. AI Center se place
+au-dessus d’eux pour :
 
-À plus long terme, AI Center a vocation à devenir un système d'exploitation de projet centré sur l'IA : chaque projet rassemble ses sources, décisions, livrables et contextes dans une structure explicite, exploitable par des agents spécialisés et, ultérieurement, par un graphe de connaissances.
+- structurer les décisions, règles, exigences et questions ouvertes ;
+- compiler le bon contexte pour chaque agent ou outil ;
+- formaliser les passages de relais entre disciplines ;
+- relier l’intention aux tâches, livrables, artefacts et preuves externes ;
+- détecter les contradictions, les manques et la dérive ;
+- rendre ce contexte visible, challengeable, versionné et gouvernable.
+
+> **AI Center ne produit pas le travail à la place des outils spécialisés : il
+> leur donne un contexte fiable et réintègre leurs résultats dans une source de
+> vérité commune.**
+
+## Problème
+
+L’IA devient centrale dans les entreprises, mais son usage reste fragmenté :
+
+- chaque collaborateur travaille dans son propre chat ou agent ;
+- les décisions sont dispersées entre conversations, documents et tickets ;
+- Produit, Design, Tech et Opérations transmettent le contexte manuellement ;
+- les outils externes conservent des fragments de vérité sans vue commune ;
+- un agent ignore souvent ce qu’un autre agent, une autre équipe ou un autre
+  projet a déjà décidé ;
+- les contradictions apparaissent tard, lorsque le code, le design, le ticket
+  ou le comportement observé ne correspondent plus à l’intention.
+
+Ajouter un meilleur agent de code ne résout pas ce problème. Remplacer tous les
+outils de l’entreprise est irréaliste : les équipes ont déjà leurs pratiques,
+leurs historiques, leurs permissions et leurs systèmes de référence.
 
 ## Vision
 
-Permettre à une personne puis à une organisation de piloter un travail IA réel, contextualisé et vérifiable depuis n'importe quel appareil, sans perdre le contrôle de ses machines, de ses données ni de ses décisions.
+> Permettre à une organisation de travailler avec les meilleurs agents et outils
+> disponibles tout en conservant une maîtrise commune, explicite et vérifiable
+> du contexte qui guide leur travail.
 
-## Promesse initiale
+AI Center devient le plan de contrôle entre :
 
-> Je peux quitter mon bureau et continuer depuis mon téléphone à confier, superviser et valider des tâches de développement exécutées sur mon Mac.
+- les personnes qui prennent et valident les décisions ;
+- les agents spécialisés qui analysent, challengent ou proposent ;
+- les outils de production qui exécutent réellement le travail ;
+- les systèmes de référence qui conservent tickets, documents, code, designs et
+  données.
 
-Cette promesse implique davantage qu'une interface de chat. L'utilisateur doit pouvoir comprendre ce qui se passe, intervenir au bon moment et retrouver une session dans un état cohérent après une interruption ou un changement d'appareil.
+## Promesse
 
-## Conviction fondatrice
+> Je peux changer d’agent, d’outil, de discipline ou de projet sans reconstruire
+> le contexte, sans perdre les décisions prises et sans abandonner le contrôle
+> de ce qui devient la vérité partagée.
 
-Le chat est une porte d'entrée, pas le produit.
+Pour une équipe :
 
-La valeur d'AI Center vient de la boucle complète :
+> Nous pouvons utiliser l’IA dans nos outils actuels sans que chacun crée son
+> propre contexte isolé. AI Center nous montre ce qui est décidé, ce qui manque,
+> ce qui se contredit et ce que chaque agent doit réellement savoir.
 
-1. exprimer une intention ;
-2. la rattacher au bon projet et au bon contexte ;
-3. déléguer le travail à un agent ou un outil adapté ;
-4. observer l'exécution en temps réel ;
-5. approuver les actions qui nécessitent une décision humaine ;
-6. inspecter les changements et le résultat ;
-7. reprendre ou poursuivre le travail sans rupture de contexte.
+## La boucle de contrôle
 
-## Les trois horizons du produit
+AI Center porte une boucle continue :
 
-### Horizon 1 — Remote Agent Cockpit
+1. **Relier** les sources existantes : documents, tickets, dépôts, designs,
+   données et conversations.
+2. **Structurer** les éléments contextuels importants en connaissances typées,
+   sourcées et versionnées.
+3. **Challenger** les décisions, exigences et hypothèses avec les agents
+   spécialisés adaptés.
+4. **Confirmer** humainement ce qui peut devenir une vérité du projet.
+5. **Compiler** un `ContextPack` minimal pour une tâche, un agent et un contrat
+   de résultat précis.
+6. **Transmettre** ce contexte à l’outil externe qui sait produire le travail.
+7. **Réintégrer** les résultats, liens et preuves sans dupliquer inutilement le
+   système de référence.
+8. **Contrôler** couverture, contradictions, obsolescence et dérive.
+9. **Réviser** le graphe puis invalider ou recompiler les projections impactées.
 
-Un utilisateur, une application Android, un Mac et une sélection de projets locaux autorisés.
+## Ce qu’AI Center possède
 
-L'objectif est de rendre le développement assisté par IA réellement mobile : démarrer ou reprendre une session, déléguer une tâche, suivre l'activité de l'agent, répondre à ses demandes, contrôler les actions sensibles et consulter le résultat.
+AI Center est la source de vérité de la **signification contextuelle** :
 
-Cet horizon constitue le terrain de validation du produit. Il doit être utile quotidiennement avant toute extension vers une plateforme d'entreprise.
+- objectifs et intentions ;
+- décisions et règles confirmées ;
+- exigences, contraintes et critères d’acceptation ;
+- questions ouvertes et hypothèses ;
+- relations entre connaissances ;
+- profils, scopes et contrats des agents ;
+- ContextPacks et handoffs ;
+- gates et politiques de validation ;
+- insights de cohérence ;
+- provenance, versions et audit ;
+- liens entre intention et preuves externes.
 
-### Horizon 2 — AI Workspace
+Il peut conserver un snapshot ou un extrait lorsqu’il est nécessaire à la
+traçabilité, mais ne doit pas copier un système entier sans raison.
 
-Le produit structure le travail au-delà d'une succession de conversations : projets, objectifs, tâches, sessions, artefacts, décisions, sources et livrables deviennent des objets de premier rang.
+## Ce que les outils existants continuent de posséder
 
-Plusieurs agents et outils peuvent intervenir sur un même projet. AI Center conserve la continuité, expose l'état du travail et facilite le passage d'une tâche à une autre ou d'un appareil à un autre.
+| Système | Source de vérité conservée | Rôle d’AI Center |
+| --- | --- | --- |
+| GitHub, GitLab | Dépôts, commits, branches, pull requests | Fournir le contexte, relier exigences et preuves de code |
+| Codex, Claude Code, Cursor, OpenCode | Production et modification du code | Préparer le contrat, transmettre le ContextPack, réintégrer le résultat |
+| Linear, Jira | Cycle de vie opérationnel des tickets | Relier le ticket aux décisions, dépendances et impacts |
+| Notion, Confluence, Google Drive | Documents et contenus collaboratifs | Extraire ou référencer les connaissances utiles avec provenance |
+| Figma | Designs, composants et prototypes | Relier intention, contraintes, décisions et preuves de design |
+| Supabase et autres bases | Schémas, données et opérations | Exposer les contraintes et changements pertinents au contexte |
+| Outils métier | Exécution spécialisée et données opérationnelles | Donner aux agents le contexte commun et suivre les preuves |
 
-### Horizon 3 — AI Project Operating System
+## Doctrine d’intégration
 
-Chaque projet dispose d'une architecture contextuelle adaptable, par exemple des espaces Produit, Technique, Utilisateurs ou Opérations. Ces espaces peuvent être issus de modèles, constituer des nœuds d'un graphe de connaissances et être administrés par des agents spécialisés.
+### Se greffer avant de remplacer
 
-Le système relie les sources, décisions, conversations, actions et livrables. Il devient une couche de coordination entre les personnes, les agents, les machines et les outils de l'entreprise, avec des politiques d'accès, un historique vérifiable et une gouvernance explicite.
+L’adoption ne doit pas exiger une migration préalable. Une équipe peut connecter
+un seul projet, une seule source ou un seul workflow et obtenir de la valeur
+avant d’élargir le périmètre.
 
-Les horizons décrivent une trajectoire, pas trois produits à développer simultanément.
+### Référencer avant de dupliquer
+
+AI Center conserve les identifiants, versions, extraits et hashes nécessaires à
+la provenance. Le contenu détaillé reste dans son système de référence lorsque
+ce dernier est accessible et fiable.
+
+### Contrats plutôt qu’intégrations rigides
+
+Un agent ou un outil externe reçoit :
+
+- un ContextPack ;
+- un objectif ;
+- des permissions ;
+- un contrat de livrable ;
+- les preuves attendues.
+
+Il retourne :
+
+- un statut ;
+- des artefacts ou leurs références ;
+- des preuves ;
+- des limites ;
+- des propositions de mise à jour contextuelle.
+
+Le cœur reste portable entre fournisseurs.
+
+### Fonctions internes optionnelles
+
+AI Center pourra proposer plus tard des tâches, documents ou automatisations
+internes aux nouveaux utilisateurs. Ces fonctions devront rester optionnelles et
+ne jamais devenir une condition pour connecter une organisation existante.
+
+## Agents spécialisés
+
+Un agent Produit, Tech, Design ou Opérations n’est pas défini par une nouvelle
+interface de chat. Il est défini par :
+
+- son périmètre contextuel ;
+- les connaissances qu’il peut lire ou proposer ;
+- le contrat de résultat qu’il doit respecter ;
+- les outils externes auxquels il peut accéder ;
+- les actions nécessitant une validation humaine ;
+- la manière dont ses résultats reviennent dans le graphe.
+
+AI Center orchestre ces agents sans chercher à reproduire toutes leurs capacités
+spécialisées.
 
 ## Utilisateur initial
 
-Le premier utilisateur est un développeur expérimenté qui utilise déjà des agents de code et possède une machine de travail capable d'exécuter les outils localement. Il veut avancer loin de son bureau sans transférer tout son environnement de développement sur son téléphone ou dans une infrastructure cloud supplémentaire.
+Le premier utilisateur reste un solo builder, fondateur technique ou lead
+Produit–Tech déjà équipé d’agents et d’outils professionnels. Il constitue un
+terrain d’apprentissage rapide parce qu’il concentre plusieurs rôles et ressent
+directement la perte de contexte.
 
-Les personas détaillés et leur ordre de priorité seront définis dans `02-personas-and-use-cases.md`.
+La cible de valeur longue est l’équipe ou l’entreprise qui :
+
+- utilise plusieurs agents et modèles ;
+- possède déjà des outils de tickets, documentation, design, code et données ;
+- veut partager un contexte cohérent entre disciplines ;
+- refuse le verrouillage dans un seul fournisseur ;
+- a besoin de comprendre et gouverner l’usage de l’IA.
+
+## Horizons du produit
+
+### Horizon 1 — Context Control Plane
+
+Prouver la boucle Produit → Tech :
+
+- connaissances structurées et confirmées ;
+- ContextPack sélectif et sourcé ;
+- handoff sans reformulation ;
+- livrables contractuels ;
+- contradictions et trous de preuve ;
+- liens manuels ou via un premier adapter vers les systèmes externes.
+
+### Horizon 2 — Connected AI Workspace
+
+Connecter les outils les plus structurants :
+
+- GitHub ou GitLab ;
+- Linear ou Jira ;
+- Notion ou Confluence ;
+- Figma ;
+- agents et CLI de production.
+
+AI Center synchronise les changements pertinents, enrichit le graphe et détecte
+la dérive sans devenir le système de production de ces outils.
+
+### Horizon 3 — Enterprise Context Operating System
+
+Étendre le plan de contrôle à plusieurs équipes et projets :
+
+- gouvernance et permissions ;
+- contexte inter-projets ;
+- politiques de partage ;
+- audit d’entreprise ;
+- operating models personnalisables ;
+- choix et routage des agents ;
+- observabilité de la qualité et de l’impact de l’IA.
+
+Des fonctions natives optionnelles peuvent réduire le nombre d’outils pour les
+équipes qui le souhaitent, sans remettre en cause la doctrine d’intégration.
 
 ## Principes produit
 
-### 1. Mobile-first, sans appauvrissement critique
+1. **Le contexte est le produit.** Une génération de texte ou de code ne vaut que
+   par le contexte, le contrat et les preuves qui l’entourent.
+2. **L’intégration précède la réinvention.** AI Center complète les outils
+   existants avant d’envisager une capacité native.
+3. **L’humain confirme la vérité.** Un agent propose, challenge et explique ; il
+   ne transforme pas silencieusement une inférence en décision.
+4. **Le contexte doit être challengeable.** Toute connaissance structurante doit
+   exposer sa source, sa version, son statut et ses relations.
+5. **La sélection vaut mieux que l’accumulation.** Un ContextPack contient le
+   minimum pertinent, pas le dump complet du projet.
+6. **Les exécutants sont interchangeables.** Le graphe et les contrats ne
+   dépendent pas d’un modèle, d’une CLI ou d’un outil unique.
+7. **Les preuves reviennent au contexte.** Un ticket fermé, une PR, un design ou
+   un test doit pouvoir confirmer ou invalider ce qui était attendu.
+8. **L’adoption est progressive.** Connecter une première source doit déjà créer
+   de la valeur.
+9. **La gouvernance n’est pas une surveillance opaque.** Le système rend le
+   contexte et les décisions visibles aux personnes autorisées.
 
-L'interface mobile ne cherche pas à reproduire un IDE sur un petit écran. Elle optimise les décisions qui ont de la valeur en mobilité : donner une intention, répondre, suivre, approuver, interrompre et vérifier.
+## Frontières du MVP consolidé
 
-### 2. Local-first pour l'exécution
+Ne font pas partie du cœur à prouver :
 
-Le runtime s'exécute sur une machine contrôlée par l'utilisateur. Il exploite l'environnement, les dépôts et les outils déjà présents, dans des périmètres explicitement autorisés.
+- un IDE ou agent de code propriétaire ;
+- un terminal généraliste ou un runner de code interne ;
+- un remplacement complet de Linear, Notion, Figma ou GitHub ;
+- un gestionnaire de tâches généraliste ;
+- un éditeur documentaire complet ;
+- une application Android ou un workflow mobile ;
+- l’autonomie sans validation ;
+- une marketplace de connecteurs ;
+- le multi-tenant d’entreprise complet.
 
-`Local-first` ne signifie pas nécessairement `local-only` : une couche de relais ou de synchronisation pourra être introduite si elle améliore la disponibilité sans affaiblir le modèle de confiance.
-
-### 3. L'humain conserve l'autorité
-
-L'agent peut proposer et exécuter dans les limites définies. Les actions sensibles ou irréversibles doivent être visibles, explicables et soumises à une politique d'autorisation adaptée.
-
-### 4. L'exécution est observable
-
-L'utilisateur doit distinguer l'intention, le plan, l'action en cours, les commandes exécutées, les fichiers modifiés, les blocages et le résultat. Une animation « l'IA réfléchit » ne constitue pas une supervision.
-
-### 5. La continuité prime sur la conversation
-
-Une session doit survivre à la fermeture de l'application, aux pertes temporaires de réseau et aux changements d'appareil. Le système possède un état durable ; le flux temps réel n'en est qu'une projection.
-
-### 6. Le projet devient l'unité de contexte
-
-Les conversations et exécutions appartiennent à un projet. Progressivement, ce projet devient une structure vivante de sources, décisions, actions, connaissances et livrables, et non un simple dossier ou une longue fenêtre de chat.
-
-### 7. L'intégration avant la réinvention
-
-AI Center doit pouvoir orchestrer des agents de code et des outils existants. Sa valeur initiale réside dans le contrôle, la continuité et l'expérience mobile, pas dans la création prématurée d'un nouveau modèle ou d'un nouvel IDE.
-
-## Expérience cible initiale
-
-Depuis son téléphone, l'utilisateur :
-
-- se connecte de manière sécurisée à son Mac ;
-- choisit un projet local autorisé ;
-- crée une session ou reprend une session existante ;
-- décrit une tâche par texte ou par voix ;
-- voit l'agent analyser, planifier et exécuter ;
-- reçoit une demande claire lorsqu'une décision ou une autorisation est nécessaire ;
-- peut interrompre l'exécution ;
-- consulte les fichiers modifiés, le diff, les tests et une synthèse ;
-- poursuit la conversation ou lance la prochaine action.
-
-## Frontières actuelles
-
-Ne font pas partie de la première preuve produit :
-
-- la gestion d'une organisation multi-équipe ;
-- un graphe de connaissances complet ;
-- une marketplace d'agents ;
-- un remplacement généraliste de ChatGPT, Claude ou d'un IDE ;
-- l'autonomie sans limite ni validation ;
-- l'exécution arbitraire sur l'ensemble du système ;
-- la couverture simultanée d'Android, iOS, web et desktop ;
-- la conception d'un moteur d'agent propriétaire si un agent existant permet de tester la promesse.
-
-Ces exclusions protègent le premier apprentissage ; elles ne renient pas la vision longue.
+Une intégration externe étroite peut être ajoutée pour démontrer la boucle
+intention → contexte → outil → preuve. Elle reste un adapter, pas une nouvelle
+identité produit.
 
 ## Résultat attendu
 
-AI Center réussit sa première étape lorsqu'il devient naturel et fiable de lancer ou de poursuivre depuis un téléphone une vraie tâche de développement sur le Mac, sans devoir ouvrir une session de bureau à distance et sans perdre la compréhension ni le contrôle du travail effectué.
+AI Center réussit son MVP lorsque, sur plusieurs projets réels :
 
-À terme, le produit réussit lorsqu'une équipe peut retrouver dans un même système le contexte de ses projets, les décisions prises, les actions proposées, les travaux exécutés et les livrables produits — avec une collaboration fluide entre humains et agents.
+- un utilisateur n’a pas besoin de reformuler le contexte lors d’un handoff ;
+- un agent ou outil externe reçoit uniquement les connaissances pertinentes ;
+- les sorties reviennent avec leur provenance et leurs preuves ;
+- une contradiction réelle ou un manque important est détecté et actionnable ;
+- une révision invalide puis recompile correctement le contexte dépendant ;
+- l’équipe comprend mieux ce que ses agents savent, pourquoi ils agissent et si
+  leur travail respecte toujours l’intention.
 
 ## Hypothèses structurantes à valider
 
-- Le besoin de mobilité concerne assez de tâches de supervision et de décision pour justifier une application dédiée.
-- Un cockpit mobile est plus efficace qu'un bureau distant ou qu'un simple accès terminal pour ces tâches.
-- Les utilisateurs acceptent qu'une machine personnelle ou d'entreprise joue le rôle de runtime disponible à distance.
-- L'accès via un réseau privé tel que Tailscale est une base acceptable pour la première version.
-- Les agents de code existants peuvent être intégrés derrière une abstraction suffisamment stable.
-- La voix améliore réellement l'expression des tâches en mobilité, mais n'a pas nécessairement besoin d'être complète dans la première tranche du MVP.
-- Le travail effectué dans le cockpit produit naturellement les événements et artefacts qui alimenteront plus tard le système contextuel.
-
-## Questions encore ouvertes
-
-- Quel scénario d'usage doit constituer le « moment magique » de la première démonstration ?
-- Quelle profondeur d'interaction mobile est nécessaire avant que le produit soit préférable à une solution existante ?
-- Quel agent de code doit être intégré en premier ?
-- Quelle partie du contrôle doit être assurée directement par le runtime et quelle partie nécessite un service intermédiaire ?
-- Quel modèle d'autorisation offre un bon équilibre entre fluidité et sécurité ?
-- La voix appartient-elle au premier MVP utilisable ou à l'itération suivante ?
-- La cible initiale doit-elle rester strictement personnelle ou anticiper dès l'architecture un petit nombre de collaborateurs ?
-
+- La perte de contexte entre personnes, agents et outils est une douleur assez
+  importante pour justifier une couche dédiée.
+- Un graphe opérationnel apporte plus de valeur qu’une recherche documentaire
+  ou un prompt partagé.
+- Les équipes acceptent de confirmer les connaissances structurantes si la
+  friction reste faible.
+- Un ContextPack sélectif améliore la qualité, la continuité ou le coût par
+  rapport à un dump du projet.
+- Les insights de cohérence sont suffisamment précis pour créer de la confiance.
+- La valeur apparaît avant que tous les outils d’une organisation soient
+  connectés.
+- Les contrats et preuves rendent les exécutants réellement interchangeables.

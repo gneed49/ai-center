@@ -1,7 +1,12 @@
 # 0004 — Android comme client du serveur AI Center
 
-> Statut : accepted  
+> Statut : acceptée, différée hors consolidation MVP
+>
 > Date : 2026-08-18
+
+Cette décision décrit l’architecture à conserver si le client Android est
+repris. Conformément à l’ADR 0005, aucun développement, test ni critère de sortie
+Android ne fait partie de la consolidation actuelle.
 
 ## Décision
 

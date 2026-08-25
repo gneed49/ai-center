@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-center.local/schemas/alpha-context-proof/live-plan.schema.json",
+  "title": "Private randomized Alpha Context Proof execution plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "runner_version",
+    "prompt_version",
+    "output_schema_version",
+    "campaign_id",
+    "stage",
+    "created_at",
+    "randomization_seed",
+    "randomization_commitment",
+    "campaign_hash",
+    "config_hash",
+    "private_cases_hash",
+    "jobs"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "runner_version": { "const": "1.0.0" },
+    "prompt_version": { "const": "alpha-context-proof-live-v1" },
+    "output_schema_version": { "const": "alpha-context-proof-live-v1" },
+    "campaign_id": { "type": "string" },
+    "stage": { "enum": ["calibration", "main", "reserve"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "randomization_seed": { "type": "string", "pattern": "^[a-fA-F0-9]+$" },
+    "randomization_commitment": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "campaign_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "config_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "private_cases_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "jobs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "job_id",
+          "run_id",
+          "stage",
+          "case_kind",
+          "case_id",
+          "condition",
+          "repetition",
+          "model",
+          "model_ref",
+          "blind_label",
+          "comparison_id",
+          "sequence"
+        ],
+        "properties": {
+          "job_id": { "type": "string" },
+          "run_id": { "type": "string" },
+          "stage": { "enum": ["calibration", "main", "reserve"] },
+          "case_kind": { "enum": ["handoff", "contradiction"] },
+          "case_id": { "type": "string" },
+          "condition": { "enum": ["context_pack", "full_dump"] },
+          "repetition": { "type": "integer", "minimum": 1, "maximum": 5 },
+          "model": { "type": "string" },
+          "model_ref": { "type": "string" },
+          "blind_label": { "enum": ["A", "B", "single"] },
+          "comparison_id": { "type": ["string", "null"] },
+          "sequence": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}
