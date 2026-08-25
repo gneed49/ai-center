@@ -21,6 +21,12 @@
 
 **Gate G1** : clone neuf, base neuve, tests et builds desktop verts.
 
+**État au 25 août 2026 : `Vérifié`.** Desktop CI
+[#20](https://github.com/gneed49/ai-center/actions/runs/32876961859) termine
+5/5 jobs et OCI [#19](https://github.com/gneed49/ai-center/actions/runs/32876961945)
+termine 3/3 jobs au commit `2162d60`. La certification pré-alpha manuelle reste
+distincte.
+
 ## Phase 2 — Identité et isolation
 
 - Introduire magic link, JWT vérifié côté Axum et `RequestContext`.
@@ -84,6 +90,10 @@
 
 **Gate G8** : aucune fuite, duplication, erreur console ou violation axe
 critical/serious.
+
+**État au 25 août 2026 :** la CI de PR est `Vérifiée`; le workflow manuel
+compact/Firefox/Tauri est `Présent mais non reproduit`. G8 reste ouvert jusqu’à
+ce run pré-alpha et au smoke métier Tauri interactif.
 
 ## Phase 9 — Campagne réelle comparative
 

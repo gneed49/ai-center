@@ -4,8 +4,10 @@
 >
 > Dépôt de référence : [`gneed49/ai-center`](https://github.com/gneed49/ai-center)
 >
-> Snapshot local : `feat/unified-dev-flow`, base `1fbb9a7`, avec changements
-> Alpha Context Proof non enregistrés
+> Snapshot publié : `feat/alpha-context-proof`, PR draft
+> [#1](https://github.com/gneed49/ai-center/pull/1) vers `main`
+>
+> Head de preuve CI : `2162d60`
 >
 > Périmètre client : web desktop et Tauri Linux uniquement
 
@@ -36,8 +38,10 @@ serveurs HTTP ; un appel OpenAI réel a atteint le fournisseur mais a été refu
 par `insufficient_quota` avant toute sortie.
 
 Ces preuves ferment le socle déterministe, pas la preuve de valeur de l’alpha.
-Aucune campagne A/B sur trois projets réels, GitHub App privée, PR réelle, run
-GitHub Actions, dogfood ou surface HTTPS privée n’est encore certifié.
+Aucune campagne A/B sur trois projets réels, GitHub App privée, PR issue d’un
+handoff, dogfood ou surface HTTPS privée n’est encore certifiée. En revanche,
+la CI de PR et les images OCI du commit `2162d60` sont reproduites et vertes
+dans GitHub Actions.
 
 Le verdict précis est donc :
 
@@ -53,12 +57,12 @@ gates réels décrits dans la
 
 Cette reconnaissance sépare strictement quatre niveaux :
 
-| Statut                       | Signification                                                                                              |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `Vérifié`                    | Reproduit localement sur le snapshot courant, avec une commande ou un scénario identifiable.               |
-| `Présent mais non reproduit` | Code, schéma ou artefact identifiable, mais comportement complet non exécuté dans l’environnement courant. |
-| `Déclaré`                    | Résultat rapporté par une documentation ou une validation antérieure, sans preuve courante suffisante.     |
-| `Futur`                      | Attendu par le plan, mais pas encore livré ou exécuté.                                                     |
+| Statut                       | Signification                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `Vérifié`                    | Reproduit dans la validation courante, localement ou en CI, avec une commande, un scénario ou un run identifiable. |
+| `Présent mais non reproduit` | Code, schéma ou artefact identifiable, mais comportement complet non exécuté dans l’environnement courant.         |
+| `Déclaré`                    | Résultat rapporté par une documentation ou une validation antérieure, sans preuve courante suffisante.             |
+| `Futur`                      | Attendu par le plan, mais pas encore livré ou exécuté.                                                             |
 
 Une compilation ne prouve pas un parcours métier. Un scénario Playwright avec
 API interceptée ne prouve pas PostgreSQL. Un faux provider ne prouve pas OpenAI
@@ -114,14 +118,15 @@ Le solo builder reste le premier profil de dogfood, pas la limite stratégique.
 
 ## 4. État du dépôt et gouvernance
 
-| Élément                                | Statut                            | Constat                                                                                                  |
-| -------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Base du snapshot                       | `Vérifié`                         | travail local construit au-dessus de `1fbb9a7` sur `feat/unified-dev-flow`                               |
-| Implémentation Alpha                   | `Vérifié` localement sur le socle | gates déterministes, desktop et PostgreSQL reproduits ; campagne de valeur et intégrations live ouvertes |
-| Branche GitHub par défaut documentaire | `Déclaré`                         | l’audit précédent indiquait `main` au commit `abb779c` ; état distant non revérifié dans ce passage      |
-| Pull request de baseline               | `Futur`                           | aucune PR n’a été créée par ce travail                                                                   |
-| CI GitHub Actions                      | `Présent mais non reproduit`      | workflows versionnés, aucun run distant exécuté                                                          |
-| Release `v0.2.0-alpha.1`               | `Futur`                           | promotion conditionnée à tous les gates réels                                                            |
+| Élément                          | Statut                       | Constat                                                                                                       |
+| -------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Base distante de la PR           | `Vérifié`                    | `main` au commit `abb779c`, base enregistrée de la PR #1                                                      |
+| Branche candidate                | `Vérifié`                    | `feat/alpha-context-proof`, publiée et proposée par la PR draft #1                                            |
+| Socle déterministe Alpha         | `Vérifié`                    | gates déterministes, desktop et PostgreSQL reproduits ; campagne de valeur et intégrations live ouvertes      |
+| CI GitHub Actions de PR          | `Vérifié`                    | Desktop CI [#20](https://github.com/gneed49/ai-center/actions/runs/32876961859), 5/5 jobs au commit `2162d60` |
+| Images OCI                       | `Vérifié`                    | OCI [#19](https://github.com/gneed49/ai-center/actions/runs/32876961945), packaging + API + web verts         |
+| Certification pré-alpha manuelle | `Présent mais non reproduit` | workflow compact/Firefox/Tauri versionné, sans run manuel courant                                             |
+| Release `v0.2.0-alpha.1`         | `Futur`                      | promotion conditionnée à tous les gates réels                                                                 |
 
 Conséquence : le snapshot est une base de consolidation, pas une release
 consommable ni une preuve de déploiement.
@@ -481,8 +486,9 @@ recompilation concurrente.
 | tests offline du runner live                    | 9/9                         | `Vérifié` comme harness uniquement |
 | budget 10/70/20 et arrêt avant dépassement      | testé                       | `Vérifié`                          |
 | faits critiques 100 % + rappel pertinent ≥ 85 % | calculs distincts           | `Vérifié` dans le harness          |
-| workflow PR desktop                             | fichier présent             | `Présent mais non reproduit`       |
-| workflow manuel compact/Firefox/Tauri           | fichier présent             | `Présent mais non reproduit`       |
+| workflow PR desktop                             | 5/5 jobs, run #20           | `Vérifié`                          |
+| workflow OCI                                    | 3/3 jobs, run #19           | `Vérifié`                          |
+| workflow manuel compact/Firefox/Tauri           | fichier présent, aucun run  | `Présent mais non reproduit`       |
 | campagne OpenAI réelle                          | bloquée par quota et corpus | `Futur`                            |
 
 ### 13.4 PostgreSQL, auth et restauration
@@ -522,9 +528,20 @@ Le workflow de PR prévoit :
 Le workflow manuel pré-alpha ajoute Chromium compact et Firefox desktop avant le
 smoke Tauri.
 
-**Statut : `Présent mais non reproduit`.** Aucun run GitHub Actions n’a été
-observé. Une CI bien décrite n’est pas une CI verte tant qu’elle n’a pas tourné
-sur un clone neuf.
+**Statut de la CI de PR : `Vérifié`.** Le
+[run Desktop CI #20](https://github.com/gneed49/ai-center/actions/runs/32876961859)
+termine ses cinq jobs avec succès au commit `2162d60` : qualité web/Rust,
+PostgreSQL, Chromium desktop, Tauri Linux et audit dépendances/secrets. Le job
+PostgreSQL inclut migration, pgtap, 6/6 tests d’intégration, backup/restore,
+magic link et parcours full-stack. L’audit cargo conserve une exception
+documentée pour `RUSTSEC-2023-0071`, inaccessible avec les features SQLx
+PostgreSQL effectivement compilées.
+
+Le [run OCI #19](https://github.com/gneed49/ai-center/actions/runs/32876961945)
+est également `Vérifié` : policy de packaging, image API et image web passent.
+La PR reste draft et le workflow manuel pré-alpha compact/Firefox/Tauri reste
+`Présent mais non reproduit` ; ces runs ne prouvent ni fournisseur live ni
+déploiement alpha.
 
 ## 15. Ce qui n’est pas encore prouvé
 
@@ -597,7 +614,7 @@ L’alpha équipe est interdite si un seul des points suivants subsiste :
 
 ### Ordre de travail restant
 
-1. enregistrer le snapshot et faire passer la CI distante sur un clone neuf ;
+1. déclencher la certification pré-alpha manuelle compact/Firefox/Tauri ;
 2. activer crédit/quota OpenAI, calibrer jusqu’à deux modèles et figer le plus
    économique atteignant les seuils ;
 3. fournir les deux projets réels supplémentaires, consentements et annotations,

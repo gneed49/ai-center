@@ -17,19 +17,20 @@ preuves contrôlables.
 ## État réel au 25 août 2026
 
 Le dépôt contient une consolidation **Alpha Context Proof en cours** sur
-`feat/unified-dev-flow`, construite au-dessus du commit `1fbb9a7`. Ce README
-décrit la branche candidate et son registre de preuves ; il ne la présente ni
-comme une release ni comme `v0.2.0-alpha.1` avant le franchissement des gates
-réels.
+[`feat/alpha-context-proof`](https://github.com/gneed49/ai-center/tree/feat/alpha-context-proof),
+proposée par la [PR draft #1](https://github.com/gneed49/ai-center/pull/1) vers
+`main`. Ce README décrit cette branche candidate et son registre de preuves ;
+il ne la présente ni comme une release ni comme `v0.2.0-alpha.1` avant le
+franchissement des gates réels.
 
 Toute affirmation utilise l’un des quatre statuts suivants :
 
-| Statut                       | Sens                                                                                                           |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `Vérifié`                    | Reproduit localement dans le snapshot courant avec une commande ou un scénario identifiable.                   |
-| `Présent mais non reproduit` | Le code ou l’artefact existe, mais le comportement complet n’a pas été reproduit dans l’environnement courant. |
-| `Déclaré`                    | Rapporté par une source antérieure sans preuve courante suffisante.                                            |
-| `Futur`                      | Attendu par le plan, mais pas encore livré ou exécuté.                                                         |
+| Statut                       | Sens                                                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `Vérifié`                    | Reproduit dans la validation courante, localement ou en CI, avec une commande, un scénario ou un run identifiable. |
+| `Présent mais non reproduit` | Le code ou l’artefact existe, mais le comportement complet n’a pas été reproduit dans l’environnement courant.     |
+| `Déclaré`                    | Rapporté par une source antérieure sans preuve courante suffisante.                                                |
+| `Futur`                      | Attendu par le plan, mais pas encore livré ou exécuté.                                                             |
 
 La [reconnaissance détaillée](docs/current-state-audit.md) conserve le registre
 de preuve et les limites de chaque résultat.
@@ -54,16 +55,33 @@ la boucle heureuse navigateur → Axum → rôle PostgreSQL RLS. Les erreurs et
 reprises durables sont certifiées séparément au niveau PostgreSQL ; GitHub et
 la qualité sémantique OpenAI restent hors de cette preuve.
 
+### Vérifié dans GitHub Actions
+
+Le commit `2162d60` de la PR draft #1 a été reproduit sur des runners GitHub
+Actions neufs le 25 août 2026 :
+
+| Workflow   | Preuve distante                                                          | Résultat exact                                                                                                  |
+| ---------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Desktop CI | [run #20](https://github.com/gneed49/ai-center/actions/runs/32876961859) | `Vérifié` — 5/5 jobs : qualité web/Rust, PostgreSQL, Chromium desktop, Tauri Linux et audit dépendances/secrets |
+| OCI images | [run #19](https://github.com/gneed49/ai-center/actions/runs/32876961945) | `Vérifié` — 3/3 jobs : policy de packaging, image API et image web                                              |
+
+Le job PostgreSQL distant inclut base neuve, migrations, 32 assertions pgtap,
+6 tests d’intégration, backup/restore, magic link et parcours full-stack. Le
+job `cargo audit` est vert avec l’exception documentée
+`RUSTSEC-2023-0071`, limitée à l’arête `sqlx-mysql` inactive ; SQLx est compilé
+avec les seules features PostgreSQL requises. Cette réussite ne vaut ni
+campagne IA réelle ni certification pré-alpha manuelle.
+
 ### Présent mais non reproduit
 
-| Capacité            | Ce qui est présent et vérifié localement                                                                                   | Ce qui manque à la preuve courante                                                           |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Context Compiler    | pipeline hybride, obligations déterministes, budget de 12 000 tokens, raisons, versions et SHA-256                         | qualité de sélection sur trois projets réels et comparaison au dump brut                     |
-| OpenAI réel         | credential dédiée, accès modèle, client Responses `store:false`, sorties structurées et classification durable des erreurs | le projet API répond actuellement `insufficient_quota`; aucune sortie réelle n’a été obtenue |
-| Plan et steward     | opérations distinctes et boucle déterministe complète avec résolution/recompilation                                        | précision, rappel et qualité avec corpus annoté et fournisseur réel                          |
-| Références externes | API, ETag sûr, projection GitHub read-only, observations append-only et validation humaine                                 | GitHub App privée connectée, PR réelle et preuve recalculée                                  |
-| CI desktop          | workflows PR/pré-alpha/OCI, tests et scripts locaux                                                                        | aucun run GitHub Actions du snapshot n’a encore été observé                                  |
-| Déploiement         | images OCI portables et garde-fous secrets/auth                                                                            | environnement HTTPS privé, alertes et restauration planifiée                                 |
+| Capacité                | Ce qui est présent et vérifié localement                                                                                   | Ce qui manque à la preuve courante                                                           |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Context Compiler        | pipeline hybride, obligations déterministes, budget de 12 000 tokens, raisons, versions et SHA-256                         | qualité de sélection sur trois projets réels et comparaison au dump brut                     |
+| OpenAI réel             | credential dédiée, accès modèle, client Responses `store:false`, sorties structurées et classification durable des erreurs | le projet API répond actuellement `insufficient_quota`; aucune sortie réelle n’a été obtenue |
+| Plan et steward         | opérations distinctes et boucle déterministe complète avec résolution/recompilation                                        | précision, rappel et qualité avec corpus annoté et fournisseur réel                          |
+| Références externes     | API, ETag sûr, projection GitHub read-only, observations append-only et validation humaine                                 | GitHub App privée connectée, PR réelle et preuve recalculée                                  |
+| Certification pré-alpha | workflow manuel compact/Firefox/Tauri et preuves locales sur ces surfaces                                                  | aucun run manuel `Pre-alpha desktop certification` n’a encore été observé                    |
+| Déploiement             | images OCI portables et garde-fous secrets/auth                                                                            | environnement HTTPS privé, alertes et restauration planifiée                                 |
 
 ### Déclaré ou futur
 
@@ -260,8 +278,9 @@ npm run test:e2e -w @ai-center/web -- --project=firefox-desktop
 Le script [`scripts/ci-desktop.sh`](scripts/ci-desktop.sh) décrit les gates de
 qualité, d’intégration, de navigateur, de desktop et de secret scan. La CI de PR
 utilise `chromium-desktop`; la certification pré-alpha manuelle ajoute
-`chromium-compact` et `firefox-desktop`. Ces workflows n’ont pas encore été
-reproduits dans GitHub Actions.
+`chromium-compact` et `firefox-desktop`. La CI de PR et les builds OCI sont
+`Vérifiés` par les runs #20 et #19 ci-dessus ; la certification pré-alpha
+manuelle reste `Présent mais non reproduit`.
 
 Les évaluations IA réelles ne sont jamais lancées en CI de PR. Leur harness et
 leurs schémas sont documentés dans
@@ -269,18 +288,17 @@ leurs schémas sont documentés dans
 
 ## Gates encore ouverts
 
-Le socle déterministe et ses principaux P0 techniques sont certifiés
-localement. L’alpha équipe reste néanmoins interdite tant que les points
-suivants ne sont pas reproduits :
+Le socle déterministe et ses principaux P0 techniques sont certifiés localement
+et dans la CI de PR. L’alpha équipe reste néanmoins interdite tant que les
+points suivants ne sont pas reproduits :
 
 1. activer crédit/quota sur le projet OpenAI dédié, calibrer le modèle puis
    réussir la campagne A/B sur les trois projets autorisés ;
 2. installer la GitHub App privée read-only et fermer une boucle réelle PR →
    ExternalReference → preuve → couverture ;
-3. réaliser dix boucles propriétaires réelles et le smoke métier interactif
-   dans Tauri Linux ;
-4. exécuter les workflows GitHub Actions sur un clone neuf et corriger tout
-   écart d’environnement ;
+3. déclencher la certification pré-alpha manuelle et réaliser le smoke métier
+   interactif dans Tauri Linux ;
+4. réaliser dix boucles propriétaires réelles ;
 5. déployer la surface HTTPS privée, vérifier alertes et restauration dans cet
    environnement, puis mener le dogfood et l’alpha équipe.
 
