@@ -178,7 +178,7 @@ select 'relation', relation.relname, relation.relkind::text,
                relation.relacl,
                case
                  when relation.relkind = 'S'
-                   then acldefault('S', relation.relowner)
+                   then acldefault('s', relation.relowner)
                  when relation.relkind in ('r', 'p', 'v', 'm', 'f')
                    then acldefault('r', relation.relowner)
                  else '{}'::aclitem[]
