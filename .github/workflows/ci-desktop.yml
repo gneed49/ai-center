@@ -1,0 +1,159 @@
+name: Desktop CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "feat/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  AI_CENTER_AGENT_MODE: deterministic
+  SUPABASE_TELEMETRY_DISABLED: "1"
+  DO_NOT_TRACK: "1"
+
+jobs:
+  quality:
+    name: Web and Rust quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.91.0
+        with:
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Tauri system dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+          librsvg2-dev patchelf libxdo-dev
+      - run: npm ci
+      - run: >-
+          bash -n scripts/dev.sh scripts/ci-desktop.sh
+          scripts/auth-magic-link-smoke.sh
+          scripts/baseline-alpha-upgrade-smoke.sh
+          scripts/postgres-backup-restore-smoke.sh
+      - run: ./scripts/ci-desktop.sh secret-scan
+      - run: ./scripts/ci-desktop.sh quality
+
+  postgres:
+    name: PostgreSQL integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      AI_CENTER_ADMIN_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      OPENAI_API_KEY: unused-local-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.91.0
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Generate an ephemeral local runtime password
+        shell: bash
+        run: |
+          runtime_password="$(openssl rand -hex 24)"
+          echo "::add-mask::${runtime_password}"
+          {
+            echo "AI_CENTER_RUNTIME_DB_PASSWORD=${runtime_password}"
+            echo "AI_CENTER_RUNTIME_DATABASE_URL=postgresql://ai_center_runtime:${runtime_password}@127.0.0.1:54322/postgres"
+          } >> "${GITHUB_ENV}"
+      - name: Start isolated Supabase stack
+        run: npm run supabase -- start
+      - name: Reset, test grants and run the flow as ai_center_runtime
+        run: ./scripts/ci-desktop.sh integration
+      - name: Prove local application backup and restore
+        run: ./scripts/ci-desktop.sh backup-restore
+      - name: Certify the real Supabase magic-link flow
+        run: ./scripts/ci-desktop.sh auth-smoke
+      - name: Install Chromium for the real API smoke
+        run: npx playwright install --with-deps chromium
+      - name: Traverse React, Axum and PostgreSQL
+        run: ./scripts/ci-desktop.sh real-e2e
+      - name: Stop isolated Supabase stack
+        if: always()
+        run: npm run supabase -- stop --no-backup
+
+  browser:
+    name: Chromium desktop E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      VITE_API_URL: http://127.0.0.1:4317
+      AI_CENTER_PLAYWRIGHT_PROJECT: chromium-desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: ./scripts/ci-desktop.sh e2e
+      - name: Upload Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-desktop-diagnostics
+          path: |
+            /tmp/ai-center-playwright-results
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  desktop:
+    name: Tauri Linux smoke build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.91.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Tauri system dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+          librsvg2-dev patchelf libxdo-dev
+      - run: npm ci
+      - run: ./scripts/ci-desktop.sh desktop
+
+  dependency-audit:
+    name: Dependency and secret audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.91.0
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - run: ./scripts/ci-desktop.sh secret-scan
+      - run: npm audit --omit=dev --audit-level=high
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
