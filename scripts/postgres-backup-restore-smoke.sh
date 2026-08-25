@@ -38,7 +38,7 @@ if [[ "${alpha_admin_url}" == *"@localhost:${AI_CENTER_LOCAL_POSTGRES_PORT}/post
 fi
 
 for alpha_command in \
-  cmp createdb dropdb mktemp pg_dump pg_restore psql sed sha256sum sort; do
+  cmp createdb diff dropdb mktemp pg_dump pg_restore psql sed sha256sum sort; do
   require_command "${alpha_command}"
 done
 
@@ -208,7 +208,14 @@ join pg_namespace namespace on namespace.oid = table_relation.relnamespace
 where namespace.nspname = 'app';
 
 select 'policy', policy.tablename, policy.policyname, policy.permissive,
-       policy.roles::text, policy.cmd, coalesce(policy.qual, ''),
+       coalesce(
+         (
+           select string_agg(role_name::text, ',' order by role_name::text)
+           from unnest(policy.roles) role_name
+         ),
+         ''
+       ),
+       policy.cmd, coalesce(policy.qual, ''),
        coalesce(policy.with_check, '')
 from pg_policies policy
 where policy.schemaname = 'app';
@@ -359,6 +366,13 @@ if ! cmp -s "${alpha_source_counts}" "${alpha_restore_counts}"; then
 fi
 if ! cmp -s "${alpha_source_objects}" "${alpha_restore_objects}"; then
   printf '%s\n' 'Échec: l’inventaire des objets, grants, policies ou drapeaux RLS diffère.' >&2
+  # L’inventaire ne contient ni donnée métier ni secret. Le diff rend le smoke
+  # actionnable sur un runner distant sans conserver le dump ou les fichiers
+  # temporaires en artefacts.
+  diff --unified=0 \
+    --label source-object-inventory \
+    --label restored-object-inventory \
+    "${alpha_source_objects}" "${alpha_restore_objects}" >&2 || true
   exit 1
 fi
 if ! cmp -s "${alpha_source_schema}" "${alpha_restore_schema}"; then
