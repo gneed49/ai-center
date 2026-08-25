@@ -153,13 +153,25 @@ write_object_inventory() {
   psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet --tuples-only --no-align \
     --field-separator=$'\t' --dbname="${alpha_url}" >"${alpha_output}" <<'SQL'
 select 'schema', namespace.nspname, pg_get_userbyid(namespace.nspowner),
-       coalesce(namespace.nspacl::text, '')
+       coalesce(
+         (
+           select string_agg(acl_item::text, ',' order by acl_item::text)
+           from unnest(namespace.nspacl) acl_item
+         ),
+         ''
+       )
 from pg_namespace namespace
 where namespace.nspname = 'app';
 
 select 'relation', relation.relname, relation.relkind::text,
        relation.relrowsecurity::text, relation.relforcerowsecurity::text,
-       coalesce(relation.relacl::text, '')
+       coalesce(
+         (
+           select string_agg(acl_item::text, ',' order by acl_item::text)
+           from unnest(relation.relacl) acl_item
+         ),
+         ''
+       )
 from pg_class relation
 join pg_namespace namespace on namespace.oid = relation.relnamespace
 where namespace.nspname = 'app';
@@ -206,7 +218,14 @@ select 'function', procedure.proname,
        pg_get_function_result(procedure.oid), language.lanname,
        procedure.prokind::text, procedure.provolatile::text,
        procedure.prosecdef::text, procedure.proleakproof::text,
-       procedure.proparallel::text, coalesce(procedure.proacl::text, '')
+       procedure.proparallel::text,
+       coalesce(
+         (
+           select string_agg(acl_item::text, ',' order by acl_item::text)
+           from unnest(procedure.proacl) acl_item
+         ),
+         ''
+       )
 from pg_proc procedure
 join pg_namespace namespace on namespace.oid = procedure.pronamespace
 join pg_language language on language.oid = procedure.prolang
