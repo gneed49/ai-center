@@ -1,0 +1,75 @@
+name: Pre-alpha desktop certification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pre-alpha-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  AI_CENTER_AGENT_MODE: deterministic
+  SUPABASE_TELEMETRY_DISABLED: "1"
+  DO_NOT_TRACK: "1"
+
+jobs:
+  browser-matrix:
+    name: ${{ matrix.project }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: chromium-compact
+            browser: chromium
+          - project: firefox-desktop
+            browser: firefox
+    env:
+      VITE_API_URL: http://127.0.0.1:4317
+      AI_CENTER_PLAYWRIGHT_PROJECT: ${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: ./scripts/ci-desktop.sh e2e
+      - name: Upload Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pre-alpha-${{ matrix.project }}-diagnostics
+          path: |
+            /tmp/ai-center-playwright-results
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  tauri-linux:
+    name: Tauri Linux smoke build
+    needs: browser-matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.91.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Tauri system dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+          librsvg2-dev patchelf libxdo-dev
+      - run: npm ci
+      - run: ./scripts/ci-desktop.sh desktop
