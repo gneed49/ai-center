@@ -156,7 +156,12 @@ select 'schema', namespace.nspname, pg_get_userbyid(namespace.nspowner),
        coalesce(
          (
            select string_agg(acl_item::text, ',' order by acl_item::text)
-           from unnest(namespace.nspacl) acl_item
+           from unnest(
+             coalesce(
+               namespace.nspacl,
+               acldefault('n', namespace.nspowner)
+             )
+           ) acl_item
          ),
          ''
        )
@@ -168,7 +173,18 @@ select 'relation', relation.relname, relation.relkind::text,
        coalesce(
          (
            select string_agg(acl_item::text, ',' order by acl_item::text)
-           from unnest(relation.relacl) acl_item
+           from unnest(
+             coalesce(
+               relation.relacl,
+               case
+                 when relation.relkind = 'S'
+                   then acldefault('S', relation.relowner)
+                 when relation.relkind in ('r', 'p', 'v', 'm', 'f')
+                   then acldefault('r', relation.relowner)
+                 else '{}'::aclitem[]
+               end
+             )
+           ) acl_item
          ),
          ''
        )
@@ -229,7 +245,12 @@ select 'function', procedure.proname,
        coalesce(
          (
            select string_agg(acl_item::text, ',' order by acl_item::text)
-           from unnest(procedure.proacl) acl_item
+           from unnest(
+             coalesce(
+               procedure.proacl,
+               acldefault('f', procedure.proowner)
+             )
+           ) acl_item
          ),
          ''
        )
