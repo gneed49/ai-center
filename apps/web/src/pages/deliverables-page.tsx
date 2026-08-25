@@ -10,7 +10,7 @@ import {
 import { Link, useParams } from "react-router";
 import { toast } from "sonner";
 
-import { api } from "@/api/client";
+import { api, createIdempotencyKey } from "@/api/client";
 import {
   EmptyState,
   ErrorState,
@@ -20,6 +20,7 @@ import {
 import { StatusPill } from "@/components/app/status-pill";
 import { Button } from "@/components/ui/button";
 import { formatDate, humanize } from "@/lib/format";
+import { isContextPackCurrent } from "@/lib/context-pack";
 
 export function DeliverablesPage() {
   const { projectId = "" } = useParams();
@@ -32,12 +33,18 @@ export function DeliverablesPage() {
     queryKey: ["coverage", projectId],
     queryFn: () => api.coverage(projectId),
   });
+  const latestHandoff = useQuery({
+    queryKey: ["handoff", projectId, "latest"],
+    queryFn: () => api.latestHandoff(projectId),
+    enabled: Boolean(projectId),
+  });
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
     queryClient.invalidateQueries({ queryKey: ["coverage", projectId] });
   };
   const brief = useMutation({
-    mutationFn: () => api.featureBrief(projectId),
+    mutationFn: (idempotencyKey: string) =>
+      api.featureBrief(projectId, idempotencyKey),
     onSuccess: () => {
       refresh();
       toast.success("Feature Brief généré");
@@ -45,13 +52,19 @@ export function DeliverablesPage() {
     onError: (error) => toast.error(error.message),
   });
   const plan = useMutation({
-    mutationFn: async () => {
-      const techSession = snapshot.data?.sessions.find(
-        (item) => item.node_key === "tech",
+    mutationFn: async (idempotencyKey: string) => {
+      const currentGraphVersion = snapshot.data?.project.graph_version ?? 0;
+      const currentHandoff = latestHandoff.data;
+      if (
+        !currentHandoff ||
+        !isContextPackCurrent(currentHandoff.context_pack, currentGraphVersion)
+      )
+        throw new Error("Recompilez d’abord un ContextPack courant.");
+      return api.technicalPlan(
+        projectId,
+        currentHandoff.target_session_public_id,
+        idempotencyKey,
       );
-      if (!techSession)
-        throw new Error("Effectuez d’abord le handoff Produit → Tech.");
-      return api.technicalPlan(projectId, techSession.public_id);
     },
     onSuccess: () => {
       refresh();
@@ -59,6 +72,16 @@ export function DeliverablesPage() {
     },
     onError: (error) => toast.error(error.message),
   });
+  const generateBrief = () =>
+    brief.mutate(
+      brief.isError && brief.variables
+        ? brief.variables
+        : createIdempotencyKey(),
+    );
+  const generatePlan = () =>
+    plan.mutate(
+      plan.isError && plan.variables ? plan.variables : createIdempotencyKey(),
+    );
   if (snapshot.isLoading) return <LoadingState />;
   if (snapshot.error)
     return (
@@ -66,6 +89,14 @@ export function DeliverablesPage() {
     );
   if (!snapshot.data) return null;
   const data = snapshot.data;
+  const currentHandoff = latestHandoff.data;
+  const canGeneratePlan = Boolean(
+    currentHandoff &&
+    isContextPackCurrent(
+      currentHandoff.context_pack,
+      data.project.graph_version,
+    ),
+  );
   return (
     <div className="space-y-8">
       <PageHeader
@@ -81,17 +112,33 @@ export function DeliverablesPage() {
           </Button>
         }
       />
+      {coverage.error ? (
+        <ErrorState
+          error={coverage.error}
+          title="La couverture n’a pas pu être calculée"
+          retry={() => coverage.refetch()}
+        />
+      ) : null}
+      {latestHandoff.error ? (
+        <ErrorState
+          error={latestHandoff.error}
+          title="Le ContextPack courant n’a pas pu être vérifié"
+          retry={() => latestHandoff.refetch()}
+        />
+      ) : null}
       <section className="grid gap-px border border-slate-200 bg-slate-200 sm:grid-cols-4">
         <Metric label="Livrables" value={data.deliverables.length} />
-        <Metric label="Exigences" value={coverage.data?.total ?? 0} />
+        <Metric label="Exigences" value={coverage.data?.total ?? "—"} />
         <Metric
           label="Couvertes"
-          value={coverage.data?.covered ?? 0}
+          value={coverage.data?.covered ?? "—"}
           tone="emerald"
         />
         <Metric
           label="Partielles"
-          value={(coverage.data?.partial ?? 0) + (coverage.data?.missing ?? 0)}
+          value={
+            coverage.data ? coverage.data.partial + coverage.data.missing : "—"
+          }
           tone="amber"
         />
       </section>
@@ -123,7 +170,7 @@ export function DeliverablesPage() {
                     <p className="mt-2 text-sm text-slate-600">
                       {item.summary}
                     </p>
-                    <p className="mt-2 font-mono text-[10px] text-slate-400">
+                    <p className="mt-2 font-mono text-[10px] text-slate-500">
                       {humanize(item.deliverable_type)} · v{item.version} ·{" "}
                       {formatDate(item.updated_at, true)}
                     </p>
@@ -146,16 +193,51 @@ export function DeliverablesPage() {
             description="Compile le cadrage Produit selon son contrat obligatoire."
             action="Générer"
             pending={brief.isPending}
-            onClick={() => brief.mutate()}
+            onClick={generateBrief}
           />
+          {brief.error ? (
+            <ErrorState
+              error={brief.error}
+              title="Le Feature Brief n’a pas été généré"
+              retry={() => {
+                if (brief.variables) brief.mutate(brief.variables);
+              }}
+            />
+          ) : null}
           <ActionCard
             icon={ShieldCheck}
             title="Plan de livraison Tech"
             description="Relie architecture, étapes, risques et preuves aux exigences."
             action="Générer"
             pending={plan.isPending}
-            onClick={() => plan.mutate()}
+            disabled={!canGeneratePlan}
+            onClick={generatePlan}
           />
+          {plan.error ? (
+            <ErrorState
+              error={plan.error}
+              title="Le plan Tech n’a pas été généré"
+              retry={() => {
+                if (plan.variables) plan.mutate(plan.variables);
+              }}
+            />
+          ) : null}
+          {!canGeneratePlan ? (
+            <div className="border border-amber-200 bg-amber-50 p-5">
+              <p className="text-sm font-semibold text-amber-950">
+                ContextPack courant requis
+              </p>
+              <p className="mt-1 text-xs leading-5 text-amber-800">
+                Un plan Tech ne peut pas être régénéré depuis un contexte
+                obsolète ou absent.
+              </p>
+              <Button asChild variant="outline" className="mt-4 bg-white">
+                <Link to={`/projects/${projectId}/handoff`}>
+                  Ouvrir le handoff
+                </Link>
+              </Button>
+            </div>
+          ) : null}
           <div className="border border-slate-200 bg-[#11182b] p-5 text-white">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-300">
               Règle de fraîcheur
@@ -177,7 +259,7 @@ function Metric({
   tone,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   tone?: "emerald" | "amber";
 }) {
   return (
@@ -203,6 +285,7 @@ function ActionCard({
   description,
   action,
   pending,
+  disabled = false,
   onClick,
 }: {
   icon: typeof Plus;
@@ -210,6 +293,7 @@ function ActionCard({
   description: string;
   action: string;
   pending: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -222,7 +306,7 @@ function ActionCard({
       <Button
         className="mt-4 w-full"
         variant="outline"
-        disabled={pending}
+        disabled={pending || disabled}
         onClick={onClick}
       >
         <Plus />

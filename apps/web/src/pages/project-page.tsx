@@ -12,10 +12,11 @@ import {
   Radio,
   Send,
 } from "lucide-react";
+import { useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 
-import { api } from "@/api/client";
+import { api, createIdempotencyKey } from "@/api/client";
 import type {
   ContextNode,
   KnowledgeSummary,
@@ -29,12 +30,14 @@ import {
 } from "@/components/app/page";
 import { StatusPill } from "@/components/app/status-pill";
 import { Button } from "@/components/ui/button";
+import { isContextPackCurrent } from "@/lib/context-pack";
 import { formatDate, humanize, shortId } from "@/lib/format";
 
 export function ProjectPage() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const gateIdempotencyKey = useRef<string | null>(null);
   const snapshot = useQuery({
     queryKey: ["snapshot", projectId],
     queryFn: () => api.snapshot(projectId),
@@ -43,7 +46,13 @@ export function ProjectPage() {
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
   const createSession = useMutation({
-    mutationFn: (nodeKey: string) => api.createSession(projectId, nodeKey),
+    mutationFn: (command: { nodeKey: string; idempotencyKey: string }) =>
+      api.createSession(
+        projectId,
+        command.nodeKey,
+        undefined,
+        command.idempotencyKey,
+      ),
     onSuccess: (session) => {
       refresh();
       navigate(`/projects/${projectId}/sessions/${session.session.public_id}`);
@@ -51,8 +60,12 @@ export function ProjectPage() {
     onError: (error) => toast.error(error.message),
   });
   const gate = useMutation({
-    mutationFn: () => api.evaluateGate(projectId),
+    mutationFn: () => {
+      gateIdempotencyKey.current ??= createIdempotencyKey();
+      return api.evaluateGate(projectId, gateIdempotencyKey.current);
+    },
     onSuccess: (result) => {
+      gateIdempotencyKey.current = null;
       refresh();
       toast[result.status === "blocked" ? "warning" : "success"](
         result.status === "blocked"
@@ -62,6 +75,14 @@ export function ProjectPage() {
     },
     onError: (error) => toast.error(error.message),
   });
+  const startSession = (nodeKey: string) => {
+    const previous = createSession.variables;
+    createSession.mutate(
+      createSession.isError && previous?.nodeKey === nodeKey
+        ? previous
+        : { nodeKey, idempotencyKey: createIdempotencyKey() },
+    );
+  };
   if (snapshot.isLoading) return <LoadingState />;
   if (snapshot.error)
     return (
@@ -72,6 +93,7 @@ export function ProjectPage() {
   const openInsights = data.insights.filter((item) =>
     ["open", "candidate", "accepted"].includes(item.status),
   );
+  const gateCurrent = data.gate?.graph_version === data.project.graph_version;
 
   return (
     <div className="space-y-8">
@@ -145,7 +167,8 @@ export function ProjectPage() {
                 node={data.nodes.find((node) => node.node_key === "product")}
                 sessions={data.sessions}
                 knowledge={data.knowledge}
-                onStart={() => createSession.mutate("product")}
+                projectId={projectId}
+                onStart={() => startSession("product")}
                 pending={createSession.isPending}
               />
               <div className="flex items-center justify-center">
@@ -160,10 +183,23 @@ export function ProjectPage() {
                 node={data.nodes.find((node) => node.node_key === "tech")}
                 sessions={data.sessions}
                 knowledge={data.knowledge}
-                onStart={() => createSession.mutate("tech")}
+                projectId={projectId}
+                onStart={() => startSession("tech")}
                 pending={createSession.isPending}
               />
             </div>
+            {createSession.error ? (
+              <div className="mt-5">
+                <ErrorState
+                  error={createSession.error}
+                  title="La session n’a pas été créée"
+                  retry={() => {
+                    if (createSession.variables)
+                      createSession.mutate(createSession.variables);
+                  }}
+                />
+              </div>
+            ) : null}
           </section>
           <section className="border border-slate-200 bg-white">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
@@ -175,7 +211,7 @@ export function ProjectPage() {
                   Connaissances courantes
                 </h2>
               </div>
-              <span className="font-mono text-xs text-slate-400">
+              <span className="font-mono text-xs text-slate-500">
                 {data.knowledge.length} entrées
               </span>
             </div>
@@ -205,8 +241,10 @@ export function ProjectPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                 ProductReadyGate
               </p>
-              {data.gate ? (
+              {data.gate && gateCurrent ? (
                 <StatusPill status={data.gate.status} />
+              ) : data.gate ? (
+                <StatusPill status="stale" label="À réévaluer" />
               ) : (
                 <StatusPill status="pending" />
               )}
@@ -226,7 +264,15 @@ export function ProjectPage() {
                 </div>
               ))}
             </div>
-            {data.gate?.missing.length ? (
+            {data.gate && !gateCurrent ? (
+              <p
+                className="mt-4 text-sm leading-6 text-amber-700"
+                role="status"
+              >
+                Le gate a été évalué sur le graphe v{data.gate.graph_version}.
+                Le projet est maintenant en v{data.project.graph_version}.
+              </p>
+            ) : data.gate?.missing.length ? (
               <ul className="mt-4 space-y-2 text-xs leading-5 text-red-700">
                 {data.gate.missing.map((item) => (
                   <li key={item}>— {item}</li>
@@ -242,9 +288,19 @@ export function ProjectPage() {
               variant={data.gate?.status === "passed" ? "outline" : "default"}
               onClick={() => gate.mutate()}
               disabled={gate.isPending}
+              aria-busy={gate.isPending}
             >
               {gate.isPending ? "Évaluation…" : "Évaluer maintenant"}
             </Button>
+            {gate.error ? (
+              <div className="mt-4">
+                <ErrorState
+                  error={gate.error}
+                  title="Le gate n’a pas pu être évalué"
+                  retry={() => gate.mutate()}
+                />
+              </div>
+            ) : null}
           </section>
           <section className="border border-slate-200 bg-[#11182b] p-5 text-white sm:p-6">
             <div className="flex items-center gap-3">
@@ -261,11 +317,19 @@ export function ProjectPage() {
                 value={`v${data.project.graph_version}`}
               />
               <FlowLine
-                label="ContextPacks"
-                value={String(
-                  data.sessions.filter((item) => item.node_key === "tech")
-                    .length,
-                )}
+                label="Dernier ContextPack"
+                value={
+                  data.latest_handoff
+                    ? `v${data.latest_handoff.context_pack.version} · ${
+                        isContextPackCurrent(
+                          data.latest_handoff.context_pack,
+                          data.project.graph_version,
+                        )
+                          ? "courant"
+                          : "obsolète"
+                      }`
+                    : "Aucun"
+                }
               />
               <FlowLine
                 label="Projections"
@@ -301,7 +365,9 @@ export function ProjectPage() {
                 asChild
                 className="mt-4 border-red-300 bg-white"
               >
-                <Link to={`/insights/${openInsights[0].public_id}`}>
+                <Link
+                  to={`/projects/${projectId}/insights/${openInsights[0].public_id}`}
+                >
                   Examiner
                   <ArrowRight />
                 </Link>
@@ -337,7 +403,7 @@ function ProjectMetric({
       </div>
       <div className="mt-3 flex items-baseline gap-2">
         <strong className="text-2xl font-semibold">{value}</strong>
-        <span className="text-xs text-slate-400">{detail}</span>
+        <span className="text-xs text-slate-500">{detail}</span>
       </div>
     </div>
   );
@@ -347,12 +413,14 @@ function NodeCard({
   node,
   sessions,
   knowledge,
+  projectId,
   onStart,
   pending,
 }: {
   node?: ContextNode;
   sessions: SessionSummary[];
   knowledge: KnowledgeSummary[];
+  projectId: string;
   onStart: () => void;
   pending: boolean;
 }) {
@@ -389,20 +457,22 @@ function NodeCard({
         <span>{count} connaissances</span>
         {latest ? <span>maj {formatDate(latest.updated_at)}</span> : null}
       </div>
-      <Button
-        className="mt-4 w-full"
-        variant={node.node_key === "tech" ? "outline" : "default"}
-        onClick={onStart}
-        disabled={pending}
-      >
-        <Play />
-        Nouvelle session
-      </Button>
+      {node.node_key === "tech" ? (
+        <Button asChild className="mt-4 w-full" variant="outline">
+          <Link to={`/projects/${projectId}/handoff`}>
+            <Send />
+            Préparer via handoff
+          </Link>
+        </Button>
+      ) : (
+        <Button className="mt-4 w-full" onClick={onStart} disabled={pending}>
+          <Play />
+          Nouvelle session
+        </Button>
+      )}
       {latest ? (
         <Button asChild variant="ghost" className="mt-1 w-full">
-          <Link
-            to={`/projects/${latest.public_id === "" ? "" : locationProjectId()}/sessions/${latest.public_id}`}
-          >
+          <Link to={`/projects/${projectId}/sessions/${latest.public_id}`}>
             Reprendre la dernière
             <ArrowRight />
           </Link>
@@ -412,10 +482,6 @@ function NodeCard({
   );
 }
 
-function locationProjectId() {
-  return window.location.pathname.match(/\/projects\/([^/]+)/)?.[1] ?? "";
-}
-
 function KnowledgeRow({ item }: { item: KnowledgeSummary }) {
   return (
     <div className="grid gap-3 px-5 py-4 sm:grid-cols-[130px_1fr_auto] sm:items-start sm:px-6">
@@ -423,7 +489,7 @@ function KnowledgeRow({ item }: { item: KnowledgeSummary }) {
         <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-indigo-600">
           {humanize(item.entry_type)}
         </span>
-        <p className="mt-1 font-mono text-[10px] text-slate-400">
+        <p className="mt-1 font-mono text-[10px] text-slate-500">
           {shortId(item.version_public_id)} · v{item.version_number}
         </p>
       </div>
@@ -433,7 +499,7 @@ function KnowledgeRow({ item }: { item: KnowledgeSummary }) {
           {item.statement}
         </p>
       </div>
-      <span className="text-xs text-slate-400">{item.node_key}</span>
+      <span className="text-xs text-slate-500">{item.node_key}</span>
     </div>
   );
 }

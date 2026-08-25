@@ -3,8 +3,14 @@ import { ArrowLeft, CheckCircle2, FileText, Link2 } from "lucide-react";
 import { Link, useParams } from "react-router";
 
 import { api } from "@/api/client";
-import { ErrorState, LoadingState, PageHeader } from "@/components/app/page";
+import {
+  ErrorState,
+  LoadingState,
+  NotFoundState,
+  PageHeader,
+} from "@/components/app/page";
 import { StatusPill } from "@/components/app/status-pill";
+import { ExternalProofPanel } from "@/components/app/external-proof-panel";
 import { Button } from "@/components/ui/button";
 import { humanize, shortId } from "@/lib/format";
 
@@ -26,7 +32,13 @@ export function DeliverableDetailPage() {
   const item = snapshot.data?.deliverables.find(
     (deliverable) => deliverable.public_id === deliverableId,
   );
-  if (!item) return <ErrorState error={new Error("Livrable introuvable")} />;
+  if (!item)
+    return (
+      <NotFoundState
+        title="Livrable introuvable dans ce projet"
+        description="L’identifiant ne correspond à aucun livrable du projet ouvert."
+      />
+    );
   const coverageItems =
     coverage.data?.items.filter(
       (entry) => entry.deliverable_public_id === item.public_id,
@@ -46,6 +58,13 @@ export function DeliverableDetailPage() {
           </Button>
         }
       />
+      {coverage.error ? (
+        <ErrorState
+          error={coverage.error}
+          title="La couverture de ce livrable est indisponible"
+          retry={() => coverage.refetch()}
+        />
+      ) : null}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <article className="border border-slate-200 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 sm:px-7">
@@ -53,7 +72,7 @@ export function DeliverableDetailPage() {
               <StatusPill status={item.status} />
               <StatusPill status={item.coverage_status} />
             </div>
-            <span className="font-mono text-xs text-slate-400">
+            <span className="font-mono text-xs text-slate-500">
               {shortId(item.public_id)}
             </span>
           </div>
@@ -125,6 +144,11 @@ export function DeliverableDetailPage() {
           </div>
         </aside>
       </div>
+      <ExternalProofPanel
+        projectId={projectId}
+        deliverableId={item.public_id}
+        coverageItems={coverageItems}
+      />
     </div>
   );
 }
@@ -163,5 +187,5 @@ function Content({ value }: { value: unknown }) {
         ))}
       </dl>
     );
-  return <p className="mt-2 text-sm text-slate-400">—</p>;
+  return <p className="mt-2 text-sm text-slate-500">—</p>;
 }

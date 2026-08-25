@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
-import { AlertCircle, LoaderCircle } from "lucide-react";
+import { AlertCircle, LoaderCircle, WifiOff } from "lucide-react";
+import { Link } from "react-router";
+
+import { ApiError } from "@/api/client";
 
 import { Button } from "@/components/ui/button";
 
@@ -44,8 +47,15 @@ export function LoadingState({
   label?: string;
 }) {
   return (
-    <div className="grid min-h-64 place-items-center border border-dashed border-slate-300 bg-slate-50/60">
-      <div className="flex items-center gap-3 text-sm text-slate-600">
+    <div
+      className="grid min-h-64 place-items-center border border-dashed border-slate-300 bg-slate-50/60"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <div
+        className="flex items-center gap-3 text-sm text-slate-600"
+        role="status"
+      >
         <LoaderCircle className="size-4 animate-spin text-indigo-600" />
         {label}
       </div>
@@ -56,21 +66,38 @@ export function LoadingState({
 export function ErrorState({
   error,
   retry,
+  title,
 }: {
   error: Error;
   retry?: () => void;
+  title?: string;
 }) {
+  const offline =
+    (error instanceof ApiError && error.code === "network_error") ||
+    (typeof navigator !== "undefined" && !navigator.onLine);
   return (
-    <div className="border border-red-200 bg-red-50 p-6 text-red-900">
+    <div
+      className="border border-red-200 bg-red-50 p-6 text-red-900"
+      role="alert"
+      aria-live="assertive"
+    >
       <div className="flex items-start gap-3">
-        <AlertCircle className="mt-0.5 size-5 shrink-0" />
+        {offline ? (
+          <WifiOff className="mt-0.5 size-5 shrink-0" />
+        ) : (
+          <AlertCircle className="mt-0.5 size-5 shrink-0" />
+        )}
         <div>
           <p className="font-semibold">
-            Le serveur n’a pas pu terminer cette action.
+            {title ??
+              (offline
+                ? "Connexion interrompue"
+                : "Le serveur n’a pas pu terminer cette action.")}
           </p>
           <p className="mt-1 text-sm text-red-700">{error.message}</p>
           {retry ? (
             <Button
+              type="button"
               variant="outline"
               size="sm"
               className="mt-4 border-red-300 bg-white"
@@ -80,6 +107,31 @@ export function ErrorState({
             </Button>
           ) : null}
         </div>
+      </div>
+    </div>
+  );
+}
+
+export function NotFoundState({
+  title = "Cette page n’existe pas",
+  description = "La ressource demandée est introuvable ou n’appartient pas au projet ouvert.",
+}: {
+  title?: string;
+  description?: string;
+}) {
+  return (
+    <div className="grid min-h-[60dvh] place-items-center">
+      <div className="max-w-lg border border-slate-200 bg-white p-8 text-center">
+        <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">
+          404 · Hors contexte
+        </p>
+        <h1 className="mt-3 text-2xl font-semibold tracking-[-0.03em]">
+          {title}
+        </h1>
+        <p className="mt-3 text-sm leading-6 text-slate-600">{description}</p>
+        <Button asChild className="mt-6">
+          <Link to="/">Revenir au Center</Link>
+        </Button>
       </div>
     </div>
   );

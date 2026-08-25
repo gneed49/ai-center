@@ -8,6 +8,26 @@ insert into app.workspaces (
   'Mon workspace'
 );
 
+insert into app.workspace_members (
+  public_id,
+  workspace_id,
+  actor_id,
+  role,
+  invitation_status,
+  invited_by_actor_id,
+  accepted_at
+)
+select
+  '11000000-0000-0000-0000-000000000001',
+  workspace.id,
+  workspace.owner_actor_id,
+  'owner',
+  'accepted',
+  workspace.owner_actor_id,
+  now()
+from app.workspaces workspace
+where workspace.public_id = '10000000-0000-0000-0000-000000000001';
+
 insert into app.project_templates (
   public_id,
   template_key,

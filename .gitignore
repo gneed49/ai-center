@@ -13,6 +13,10 @@ target/
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
 
 # Editors and operating systems
 .DS_Store
@@ -25,4 +29,10 @@ target/
 *.log
 tmp/
 .cache/
+playwright-report/
+test-results/
 .run/
+# Private Alpha Context Proof corpus, plans, raw outputs, blind artifacts and ledgers
+.run/alpha-context-proof/
+__pycache__/
+*.py[cod]

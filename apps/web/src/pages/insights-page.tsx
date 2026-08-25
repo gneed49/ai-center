@@ -54,8 +54,9 @@ export function InsightsPage() {
       </section>
       {items.length ? (
         <section className="border border-slate-200 bg-white">
-          <div className="grid grid-cols-[1fr_auto] border-b border-slate-200 px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 sm:grid-cols-[140px_1fr_150px_120px] sm:px-6">
+          <div className="grid grid-cols-[1fr_auto] border-b border-slate-200 px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 sm:grid-cols-[140px_150px_1fr_110px_120px] sm:px-6">
             <span>Signal</span>
+            <span className="hidden sm:block">Projet</span>
             <span className="hidden sm:block">Explication</span>
             <span className="hidden sm:block">Confiance</span>
             <span>État</span>
@@ -64,8 +65,12 @@ export function InsightsPage() {
             {items.map((item) => (
               <Link
                 key={item.public_id}
-                to={`/insights/${item.public_id}`}
-                className="group grid grid-cols-[1fr_auto] gap-4 px-5 py-5 hover:bg-slate-50 sm:grid-cols-[140px_1fr_150px_120px] sm:items-center sm:px-6"
+                to={
+                  item.project_public_id
+                    ? `/projects/${item.project_public_id}/insights/${item.public_id}`
+                    : `/insights/${item.public_id}`
+                }
+                className="group grid grid-cols-[1fr_auto] gap-4 px-5 py-5 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-600 sm:grid-cols-[140px_150px_1fr_110px_120px] sm:items-center sm:px-6"
               >
                 <div>
                   <span className="flex items-center gap-2 text-xs font-semibold text-slate-700">
@@ -80,9 +85,17 @@ export function InsightsPage() {
                       ? "Contradiction"
                       : "Trou de preuve"}
                   </span>
-                  <span className="mt-1 block text-[10px] text-slate-400">
+                  <span className="mt-1 block text-[10px] text-slate-500">
                     {formatDate(item.detected_at, true)}
                   </span>
+                </div>
+                <div className="hidden min-w-0 sm:block">
+                  <p className="truncate text-xs font-semibold text-slate-700">
+                    {item.project_name || "Projet non attribué"}
+                  </p>
+                  <p className="mt-1 truncate font-mono text-[10px] text-slate-500">
+                    {item.project_public_id}
+                  </p>
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <p className="text-sm font-semibold">{item.title}</p>
@@ -94,7 +107,7 @@ export function InsightsPage() {
                   <strong className="text-lg">
                     {Math.round(item.confidence * 100)}%
                   </strong>
-                  <span className="block text-[10px] text-slate-400">
+                  <span className="block text-[10px] text-slate-500">
                     confiance
                   </span>
                 </div>

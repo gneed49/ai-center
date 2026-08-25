@@ -2,60 +2,190 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Check,
+  FilePenLine,
   GitCompareArrows,
   Link2,
   ShieldAlert,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { toast } from "sonner";
 
-import { api } from "@/api/client";
-import { ErrorState, LoadingState, PageHeader } from "@/components/app/page";
+import { ApiError, api, createIdempotencyKey } from "@/api/client";
+import {
+  ErrorState,
+  LoadingState,
+  NotFoundState,
+  PageHeader,
+} from "@/components/app/page";
 import { StatusPill } from "@/components/app/status-pill";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDate, humanize, shortId } from "@/lib/format";
 
 export function InsightDetailPage() {
-  const { insightId = "" } = useParams();
+  const { projectId = "", insightId = "" } = useParams();
   const queryClient = useQueryClient();
   const [justification, setJustification] = useState("");
+  const [resolutionOpen, setResolutionOpen] = useState(false);
+  const [selectedSourceId, setSelectedSourceId] = useState("");
+  const [revisedStatement, setRevisedStatement] = useState("");
+  const [rationale, setRationale] = useState("");
+  const resolutionIdempotencyKey = useRef<string | null>(null);
   const insight = useQuery({
-    queryKey: ["insight", insightId],
-    queryFn: () => api.insight(insightId),
+    queryKey: ["insight", projectId, insightId],
+    queryFn: () => api.insight(projectId, insightId),
   });
   const action = useMutation({
-    mutationFn: (decision: "accept" | "dismiss" | "resolve") =>
-      api.actOnInsight(insightId, decision, justification),
+    mutationFn: (command: {
+      decision: "accept" | "dismiss";
+      justification: string;
+      idempotencyKey: string;
+    }) => {
+      const ownerProjectId =
+        projectId || insight.data?.insight.project_public_id;
+      if (!ownerProjectId) throw new Error("Projet du signal introuvable.");
+      return api.actOnInsight(
+        ownerProjectId,
+        insightId,
+        command.decision,
+        command.justification,
+        command.idempotencyKey,
+      );
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["insight", insightId] });
+      queryClient.invalidateQueries({
+        queryKey: ["insight", projectId, insightId],
+      });
       queryClient.invalidateQueries({ queryKey: ["insights"] });
       setJustification("");
       toast.success("Décision auditée");
     },
     onError: (error) => toast.error(error.message),
   });
+  const act = (decision: "accept" | "dismiss") => {
+    const previous = action.variables;
+    const sameCommand =
+      action.isError &&
+      previous?.decision === decision &&
+      previous.justification === justification;
+    action.mutate(
+      sameCommand && previous
+        ? previous
+        : {
+            decision,
+            justification,
+            idempotencyKey: createIdempotencyKey(),
+          },
+    );
+  };
+  const resolve = useMutation({
+    mutationFn: () => {
+      const detail = insight.data;
+      const ownerProjectId = projectId || detail?.insight.project_public_id;
+      const source = detail?.sources.find(
+        (item) => item.knowledge_public_id === selectedSourceId,
+      );
+      if (
+        !detail ||
+        !ownerProjectId ||
+        !source?.knowledge_public_id ||
+        !source.version_public_id
+      )
+        throw new Error("Sélectionnez une connaissance versionnée à réviser.");
+      resolutionIdempotencyKey.current ??= createIdempotencyKey();
+      return api.resolveInsight(
+        ownerProjectId,
+        insightId,
+        {
+          expected_graph_version: detail.insight.project_graph_version,
+          justification,
+          mutations: [
+            {
+              kind: "revise_knowledge",
+              knowledge_public_id: source.knowledge_public_id,
+              expected_version_public_id: source.version_public_id,
+              statement: revisedStatement,
+              rationale: rationale || undefined,
+            },
+          ],
+        },
+        resolutionIdempotencyKey.current,
+      );
+    },
+    onSuccess: () => {
+      const ownerProjectId =
+        projectId || insight.data?.insight.project_public_id;
+      queryClient.invalidateQueries({
+        queryKey: ["insight", projectId, insightId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["insights"] });
+      if (ownerProjectId) {
+        queryClient.invalidateQueries({
+          queryKey: ["snapshot", ownerProjectId],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["handoff", ownerProjectId],
+        });
+      }
+      setResolutionOpen(false);
+      resolutionIdempotencyKey.current = null;
+      setJustification("");
+      setRevisedStatement("");
+      setRationale("");
+      toast.success("Contexte révisé et signal réévalué");
+    },
+    onError: (error) => toast.error(error.message),
+  });
   if (insight.isLoading) return <LoadingState />;
+  if (insight.error instanceof ApiError && insight.error.status === 404)
+    return <NotFoundState title="Signal introuvable dans ce projet" />;
   if (insight.error)
     return <ErrorState error={insight.error} retry={() => insight.refetch()} />;
   if (!insight.data) return null;
   const data = insight.data;
+  const ownerProjectId = projectId || data.insight.project_public_id;
   const open = ["candidate", "open", "accepted"].includes(data.insight.status);
+  const resolvableSources = data.sources.filter(
+    (source) => source.knowledge_public_id && source.version_public_id,
+  );
+  function openResolution() {
+    const source = resolvableSources[0];
+    if (!source?.knowledge_public_id) return;
+    setSelectedSourceId(source.knowledge_public_id);
+    setRevisedStatement(source.version_statement ?? "");
+    setResolutionOpen(true);
+  }
+  function changeResolutionSource(knowledgeId: string) {
+    const source = resolvableSources.find(
+      (item) => item.knowledge_public_id === knowledgeId,
+    );
+    setSelectedSourceId(knowledgeId);
+    setRevisedStatement(source?.version_statement ?? "");
+    if (resolve.isError) {
+      resolve.reset();
+      resolutionIdempotencyKey.current = null;
+    }
+  }
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow="Signal steward"
+        eyebrow={`Signal steward · ${data.insight.project_name}`}
         title={data.insight.title}
         description={data.insight.explanation}
         actions={
-          <Button variant="outline" asChild>
-            <Link to="/insights">
-              <ArrowLeft />
-              Decision Inbox
-            </Link>
-          </Button>
+          <>
+            <Button variant="outline" asChild>
+              <Link to="/insights">
+                <ArrowLeft />
+                Decision Inbox
+              </Link>
+            </Button>
+            <Button variant="ghost" asChild>
+              <Link to={`/projects/${ownerProjectId}`}>Projet</Link>
+            </Button>
+          </>
         }
       />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
@@ -118,7 +248,7 @@ export function InsightDetailPage() {
                   <p className="mt-2 text-sm leading-6 text-slate-600">
                     {source.version_statement}
                   </p>
-                  <p className="mt-5 flex items-center gap-2 font-mono text-[10px] text-slate-400">
+                  <p className="mt-5 flex items-center gap-2 font-mono text-[10px] text-slate-500">
                     <Link2 className="size-3" />
                     {shortId(source.object_public_id)}
                   </p>
@@ -133,41 +263,171 @@ export function InsightDetailPage() {
             <h2 className="font-semibold">Décision humaine</h2>
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Accepter le signal, l’écarter ou le déclarer résolu. La
-            justification est inscrite dans l’audit.
+            Acceptez le risque, écartez un faux positif, ou révisez une source
+            pour résoudre réellement le signal. Chaque décision est auditée.
           </p>
           {open ? (
             <>
               <Textarea
+                id="insight-justification"
                 value={justification}
-                onChange={(event) => setJustification(event.target.value)}
+                onChange={(event) => {
+                  if (action.isError) action.reset();
+                  if (resolve.isError) {
+                    resolve.reset();
+                    resolutionIdempotencyKey.current = null;
+                  }
+                  setJustification(event.target.value);
+                }}
                 placeholder="Expliquez la décision…"
                 className="mt-5 min-h-28"
+                aria-label="Justification de la décision"
               />
               <div className="mt-4 grid gap-2">
                 <Button
                   disabled={!justification.trim() || action.isPending}
-                  onClick={() => action.mutate("accept")}
+                  onClick={() => act("accept")}
                 >
                   <Check />
                   Accepter le signal
                 </Button>
                 <Button
                   variant="outline"
-                  disabled={!justification.trim() || action.isPending}
-                  onClick={() => action.mutate("resolve")}
+                  disabled={
+                    !justification.trim() ||
+                    action.isPending ||
+                    !resolvableSources.length
+                  }
+                  onClick={openResolution}
+                  aria-expanded={resolutionOpen}
                 >
-                  Marquer résolu
+                  <FilePenLine />
+                  Réviser pour résoudre
                 </Button>
                 <Button
                   variant="ghost"
                   disabled={!justification.trim() || action.isPending}
-                  onClick={() => action.mutate("dismiss")}
+                  onClick={() => act("dismiss")}
                 >
                   <X />
                   Rejeter le signal
                 </Button>
               </div>
+              {action.error ? (
+                <div className="mt-4">
+                  <ErrorState
+                    error={action.error}
+                    title="La décision n’a pas été enregistrée"
+                    retry={() => {
+                      if (action.variables) action.mutate(action.variables);
+                    }}
+                  />
+                </div>
+              ) : null}
+              {resolutionOpen ? (
+                <form
+                  className="mt-5 space-y-4 border-t border-slate-200 pt-5"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    resolve.mutate();
+                  }}
+                >
+                  <div>
+                    <label
+                      htmlFor="resolution-source"
+                      className="text-xs font-semibold text-slate-700"
+                    >
+                      Connaissance à réviser
+                    </label>
+                    <select
+                      id="resolution-source"
+                      className="mt-2 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                      value={selectedSourceId}
+                      onChange={(event) =>
+                        changeResolutionSource(event.target.value)
+                      }
+                    >
+                      {resolvableSources.map((source) => (
+                        <option
+                          key={source.version_public_id}
+                          value={source.knowledge_public_id ?? ""}
+                        >
+                          {source.version_title ?? "Source versionnée"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="revised-statement"
+                      className="text-xs font-semibold text-slate-700"
+                    >
+                      Nouvelle vérité du projet
+                    </label>
+                    <Textarea
+                      id="revised-statement"
+                      className="mt-2 min-h-32"
+                      value={revisedStatement}
+                      onChange={(event) => {
+                        if (resolve.isError) {
+                          resolve.reset();
+                          resolutionIdempotencyKey.current = null;
+                        }
+                        setRevisedStatement(event.target.value);
+                      }}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="resolution-rationale"
+                      className="text-xs font-semibold text-slate-700"
+                    >
+                      Rationale de la révision (optionnel)
+                    </label>
+                    <Textarea
+                      id="resolution-rationale"
+                      className="mt-2 min-h-20"
+                      value={rationale}
+                      onChange={(event) => {
+                        if (resolve.isError) {
+                          resolve.reset();
+                          resolutionIdempotencyKey.current = null;
+                        }
+                        setRationale(event.target.value);
+                      }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setResolutionOpen(false)}
+                    >
+                      Annuler
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={
+                        resolve.isPending ||
+                        !justification.trim() ||
+                        !revisedStatement.trim()
+                      }
+                    >
+                      {resolve.isPending
+                        ? "Résolution…"
+                        : "Réviser et résoudre"}
+                    </Button>
+                  </div>
+                  {resolve.error ? (
+                    <ErrorState
+                      error={resolve.error}
+                      title="La résolution atomique a échoué"
+                      retry={() => resolve.mutate()}
+                    />
+                  ) : null}
+                </form>
+              ) : null}
             </>
           ) : (
             <div className="mt-5 border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">

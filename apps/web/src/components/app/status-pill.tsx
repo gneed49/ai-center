@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 
 const toneByStatus: Record<string, string> = {
   active: "border-indigo-200 bg-indigo-50 text-indigo-700",
+  current: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  valid: "border-emerald-200 bg-emerald-50 text-emerald-700",
   passed: "border-emerald-200 bg-emerald-50 text-emerald-700",
   completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
   committed: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -24,6 +26,7 @@ const toneByStatus: Record<string, string> = {
   missing: "border-red-200 bg-red-50 text-red-700",
   open: "border-red-200 bg-red-50 text-red-700",
   proposed: "border-violet-200 bg-violet-50 text-violet-700",
+  candidate: "border-violet-200 bg-violet-50 text-violet-700",
   accepted: "border-violet-200 bg-violet-50 text-violet-700",
   rejected: "border-slate-200 bg-slate-50 text-slate-600",
   dismissed: "border-slate-200 bg-slate-50 text-slate-600",
@@ -32,7 +35,15 @@ const toneByStatus: Record<string, string> = {
 
 function Icon({ status }: { status: string }) {
   if (
-    ["passed", "completed", "committed", "covered", "resolved"].includes(status)
+    [
+      "current",
+      "passed",
+      "completed",
+      "committed",
+      "covered",
+      "resolved",
+      "valid",
+    ].includes(status)
   )
     return <Check />;
   if (["blocking", "blocked", "missing", "open"].includes(status))

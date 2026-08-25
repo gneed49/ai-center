@@ -5,12 +5,20 @@ import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 
-import { api } from "@/api/client";
-import { PageHeader } from "@/components/app/page";
+import { api, createIdempotencyKey } from "@/api/client";
+import { ErrorState, PageHeader } from "@/components/app/page";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+
+type CreateProjectCommand = Readonly<{
+  input: Readonly<{
+    name: string;
+    objective: string;
+  }>;
+  idempotencyKey: string;
+}>;
 
 export function NewProjectPage() {
   const navigate = useNavigate();
@@ -18,7 +26,8 @@ export function NewProjectPage() {
   const [name, setName] = useState("");
   const [objective, setObjective] = useState("");
   const create = useMutation({
-    mutationFn: () => api.createProject({ name, objective }),
+    mutationFn: (command: CreateProjectCommand) =>
+      api.createProject(command.input, command.idempotencyKey),
     onSuccess: (project) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       toast.success("Projet et scopes créés");
@@ -29,7 +38,11 @@ export function NewProjectPage() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (name.trim()) create.mutate();
+    if (!name.trim() || create.isPending) return;
+    create.mutate({
+      input: { name, objective },
+      idempotencyKey: createIdempotencyKey(),
+    });
   }
 
   return (
@@ -51,6 +64,7 @@ export function NewProjectPage() {
         <form
           onSubmit={submit}
           className="border border-slate-200 bg-white p-6 sm:p-8"
+          aria-busy={create.isPending}
         >
           <div className="max-w-2xl space-y-7">
             <Field>
@@ -58,10 +72,14 @@ export function NewProjectPage() {
               <Input
                 id="project-name"
                 value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Credits v2"
+                onChange={(event) => {
+                  if (create.isError) create.reset();
+                  setName(event.target.value);
+                }}
+                placeholder="Portail partenaires"
                 autoFocus
                 required
+                disabled={create.isPending}
               />
               <FieldDescription>
                 Un nom court, stable et visible dans le Center.
@@ -74,15 +92,28 @@ export function NewProjectPage() {
               <Textarea
                 id="project-objective"
                 value={objective}
-                onChange={(event) => setObjective(event.target.value)}
-                placeholder="Permettre l’achat de crédits durables, traçables et sans expiration."
+                onChange={(event) => {
+                  if (create.isError) create.reset();
+                  setObjective(event.target.value);
+                }}
+                placeholder="Réduire le temps de traitement d’une demande partenaire tout en conservant une décision traçable."
                 rows={6}
+                disabled={create.isPending}
               />
               <FieldDescription>
                 L’agent Produit le challengera avant toute confirmation dans le
                 graphe.
               </FieldDescription>
             </Field>
+            {create.error ? (
+              <ErrorState
+                error={create.error}
+                title="Le projet n’a pas été créé"
+                retry={() => {
+                  if (create.variables) create.mutate(create.variables);
+                }}
+              />
+            ) : null}
             <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-6">
               <Button variant="ghost" asChild>
                 <Link to="/">Annuler</Link>

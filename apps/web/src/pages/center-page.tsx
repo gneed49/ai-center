@@ -93,7 +93,7 @@ export function CenterPage() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <StatusPill status={project.status} label="Actif" />
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-slate-500">
                     mis à jour {formatDate(project.updated_at)}
                   </span>
                 </div>
@@ -144,7 +144,7 @@ function Metric({
           {value}
         </strong>
         {detail ? (
-          <span className="pb-1 text-xs text-slate-400">{detail}</span>
+          <span className="pb-1 text-xs text-slate-500">{detail}</span>
         ) : null}
       </div>
     </div>

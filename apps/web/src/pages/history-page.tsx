@@ -77,7 +77,7 @@ export function HistoryPage() {
                     </details>
                   ) : null}
                 </div>
-                <span className="font-mono text-[10px] text-slate-400">
+                <span className="font-mono text-[10px] text-slate-500">
                   {shortId(event.public_id)}
                 </span>
               </div>

@@ -9,12 +9,16 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "ai_center_server=info,tower_http=info".into()),
         )
         .init();
-    let (bind, app) = build(Config::from_env()?).await?;
+    let (bind, app, steward_supervisor) = build(Config::from_env()?).await?;
     let listener = tokio::net::TcpListener::bind(bind).await?;
     tracing::info!(%bind, "AI Center server listening");
-    axum::serve(listener, app)
+    let server_result = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
-        .await?;
+        .await;
+    if let Some(supervisor) = steward_supervisor {
+        supervisor.shutdown().await;
+    }
+    server_result?;
     Ok(())
 }
 

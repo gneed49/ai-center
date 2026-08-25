@@ -8,12 +8,17 @@ import {
   Send,
   ShieldCheck,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef } from "react";
 import { Link, useParams } from "react-router";
 import { toast } from "sonner";
 
-import { api } from "@/api/client";
-import type { HandoffView } from "@/api/types";
+import {
+  api,
+  createIdempotencyKey,
+  createHandoffIdempotencyKeys,
+  type HandoffIdempotencyKeys,
+} from "@/api/client";
+import { ContextPackSummaryCard } from "@/components/app/context-pack-summary";
 import {
   EmptyState,
   ErrorState,
@@ -22,20 +27,32 @@ import {
 } from "@/components/app/page";
 import { StatusPill } from "@/components/app/status-pill";
 import { Button } from "@/components/ui/button";
+import { isContextPackCurrent } from "@/lib/context-pack";
 import { shortId } from "@/lib/format";
 
 export function HandoffPage() {
   const { projectId = "" } = useParams();
   const queryClient = useQueryClient();
-  const [result, setResult] = useState<HandoffView | null>(null);
+  const handoffIdempotencyKeys = useRef<HandoffIdempotencyKeys | null>(null);
+  const gateIdempotencyKey = useRef<string | null>(null);
   const snapshot = useQuery({
     queryKey: ["snapshot", projectId],
     queryFn: () => api.snapshot(projectId),
   });
+  const latestHandoff = useQuery({
+    queryKey: ["handoff", projectId, "latest"],
+    queryFn: () => api.latestHandoff(projectId),
+    enabled: Boolean(projectId),
+  });
   const gate = useMutation({
-    mutationFn: () => api.evaluateGate(projectId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] }),
+    mutationFn: () => {
+      gateIdempotencyKey.current ??= createIdempotencyKey();
+      return api.evaluateGate(projectId, gateIdempotencyKey.current);
+    },
+    onSuccess: () => {
+      gateIdempotencyKey.current = null;
+      queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
+    },
     onError: (error) => toast.error(error.message),
   });
   const handoff = useMutation({
@@ -44,26 +61,50 @@ export function HandoffPage() {
         (item) => item.node_key === "product",
       );
       if (!source) throw new Error("Ouvrez d’abord une session Produit.");
-      return api.handoff(projectId, source.public_id);
+      handoffIdempotencyKeys.current ??= createHandoffIdempotencyKeys();
+      return api.prepareHandoff(
+        projectId,
+        source.public_id,
+        handoffIdempotencyKeys.current,
+      );
     },
     onSuccess: (data) => {
-      setResult(data);
+      handoffIdempotencyKeys.current = null;
+      queryClient.setQueryData(["handoff", projectId, "latest"], data);
       queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
       toast.success("ContextPack transmis à l’agent Tech");
     },
     onError: (error) => toast.error(error.message),
   });
-  if (snapshot.isLoading) return <LoadingState />;
+  if (snapshot.isLoading || latestHandoff.isLoading) return <LoadingState />;
   if (snapshot.error)
     return (
       <ErrorState error={snapshot.error} retry={() => snapshot.refetch()} />
     );
+  if (latestHandoff.error)
+    return (
+      <ErrorState
+        error={latestHandoff.error}
+        title="Le dernier handoff n’a pas pu être restauré"
+        retry={() => latestHandoff.refetch()}
+      />
+    );
   if (!snapshot.data) return null;
   const data = snapshot.data;
+  const result = latestHandoff.data ?? null;
   const productSession = data.sessions.find(
     (item) => item.node_key === "product",
   );
-  const ready = data.gate && data.gate.status !== "blocked";
+  const gateCurrent = data.gate?.graph_version === data.project.graph_version;
+  const ready = Boolean(
+    gateCurrent &&
+    data.gate &&
+    ["passed", "passed_with_warning"].includes(data.gate.status),
+  );
+  const resultCurrent = isContextPackCurrent(
+    result?.context_pack,
+    data.project.graph_version,
+  );
   const productKnowledge = data.knowledge.filter(
     (item) => item.node_key === "product",
   );
@@ -119,8 +160,10 @@ export function HandoffPage() {
                   Ce qui sera transmis
                 </h2>
               </div>
-              {data.gate ? (
+              {data.gate && gateCurrent ? (
                 <StatusPill status={data.gate.status} />
+              ) : data.gate ? (
+                <StatusPill status="stale" label="À réévaluer" />
               ) : (
                 <StatusPill status="pending" />
               )}
@@ -154,7 +197,27 @@ export function HandoffPage() {
               />
               <PackItem icon={Check} label="Contrat de sortie" value={1} />
             </div>
-            {!productSession ? (
+            {result && resultCurrent && ready ? (
+              <div className="mt-6 border border-emerald-200 bg-emerald-50 p-5">
+                <div className="flex items-center gap-2 font-semibold text-emerald-900">
+                  <Check className="size-4" />
+                  Handoff terminé et courant
+                </div>
+                <p className="mt-2 text-sm text-emerald-800">
+                  ContextPack {shortId(result.context_pack_public_id)} compilé
+                  et session Tech ouverte. Cet état a été restauré depuis le
+                  serveur.
+                </p>
+                <Button asChild className="mt-4">
+                  <Link
+                    to={`/projects/${projectId}/sessions/${result.target_session_public_id}`}
+                  >
+                    Ouvrir la session Tech
+                    <ArrowRight />
+                  </Link>
+                </Button>
+              </div>
+            ) : !productSession ? (
               <div className="mt-6">
                 <EmptyState
                   title="Session Produit requise"
@@ -185,37 +248,31 @@ export function HandoffPage() {
                   {gate.isPending ? "Évaluation…" : "Évaluer le gate"}
                 </Button>
               </div>
-            ) : result ? (
-              <div className="mt-6 border border-emerald-200 bg-emerald-50 p-5">
-                <div className="flex items-center gap-2 font-semibold text-emerald-900">
-                  <Check className="size-4" />
-                  Handoff terminé
-                </div>
-                <p className="mt-2 text-sm text-emerald-800">
-                  ContextPack {shortId(result.context_pack_public_id)} compilé
-                  et session Tech ouverte.
-                </p>
-                <Button asChild className="mt-4">
-                  <Link
-                    to={`/projects/${projectId}/sessions/${result.target_session_public_id}`}
-                  >
-                    Ouvrir la session Tech
-                    <ArrowRight />
-                  </Link>
-                </Button>
-              </div>
             ) : (
-              <Button
-                className="mt-6 w-full"
-                size="lg"
-                onClick={() => handoff.mutate()}
-                disabled={handoff.isPending}
-              >
-                <Send />
-                {handoff.isPending
-                  ? "Compilation du ContextPack…"
-                  : "Compiler et ouvrir la session Tech"}
-              </Button>
+              <>
+                <Button
+                  className="mt-6 w-full"
+                  size="lg"
+                  onClick={() => handoff.mutate()}
+                  disabled={handoff.isPending}
+                >
+                  <Send />
+                  {handoff.isPending
+                    ? "Compilation du ContextPack…"
+                    : result
+                      ? "Recompiler et ouvrir une session Tech"
+                      : "Compiler et ouvrir la session Tech"}
+                </Button>
+                {handoff.error ? (
+                  <div className="mt-4">
+                    <ErrorState
+                      error={handoff.error}
+                      title="Le handoff n’a pas abouti"
+                      retry={() => handoff.mutate()}
+                    />
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
         </section>
@@ -248,6 +305,12 @@ export function HandoffPage() {
           </p>
         </aside>
       </div>
+      {result ? (
+        <ContextPackSummaryCard
+          pack={result.context_pack}
+          graphVersion={data.project.graph_version}
+        />
+      ) : null}
     </div>
   );
 }

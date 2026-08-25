@@ -12,7 +12,7 @@ pub struct Health {
     pub agent_mode: &'static str,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CreateProject {
     pub name: String,
     #[serde(default)]
@@ -31,6 +31,13 @@ pub struct ProjectSummary {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct WorkspaceSummary {
+    pub public_id: Uuid,
+    pub name: String,
+    pub role: String,
+}
+
 #[derive(Debug, Serialize, FromRow)]
 pub struct ContextNode {
     pub public_id: Uuid,
@@ -46,6 +53,7 @@ pub struct ContextNode {
 #[derive(Debug, Serialize, FromRow)]
 pub struct SessionSummary {
     pub public_id: Uuid,
+    pub project_public_id: Uuid,
     pub title: String,
     pub status: String,
     pub node_key: String,
@@ -83,6 +91,9 @@ pub struct DeliverableSummary {
 #[derive(Debug, Serialize, FromRow)]
 pub struct InsightSummary {
     pub public_id: Uuid,
+    pub project_public_id: Uuid,
+    pub project_name: String,
+    pub project_graph_version: i64,
     pub insight_type: String,
     pub status: String,
     pub severity: String,
@@ -103,17 +114,19 @@ pub struct ProjectSnapshot {
     pub deliverables: Vec<DeliverableSummary>,
     pub insights: Vec<InsightSummary>,
     pub gate: Option<GateResult>,
+    pub latest_handoff: Option<HandoffView>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CreateSession {
     pub node_key: String,
     pub title: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SendMessage {
     pub content: String,
+    pub client_message_id: Uuid,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -160,16 +173,16 @@ pub struct SessionView {
     pub session: SessionSummary,
     pub messages: Vec<MessageView>,
     pub proposals: Vec<ProposalView>,
-    pub context_pack: Option<Value>,
+    pub context_pack: Option<ContextPackSummary>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct DecideProposals {
     pub proposal_ids: Vec<Uuid>,
     pub decision: ProposalDecision,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProposalDecision {
     Confirm,
@@ -202,13 +215,13 @@ pub struct GateCounts {
     pub open_questions: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct InsightAction {
     pub action: InsightDecision,
     pub justification: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InsightDecision {
     Accept,
@@ -227,21 +240,59 @@ pub struct HistoryEvent {
     pub occurred_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateHandoff {
     pub source_session_id: Uuid,
+    pub context_pack_id: Uuid,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct HandoffView {
     pub public_id: Uuid,
     pub context_pack_public_id: Uuid,
     pub target_session_public_id: Uuid,
     pub status: String,
-    pub context_pack: Value,
+    pub context_pack: ContextPackSummary,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CompileContextPack {
+    pub source_session_id: Uuid,
+    pub task_kind: String,
+    #[serde(default)]
+    pub token_budget: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct ContextPackSelectionItemView {
+    pub candidate_public_id: Uuid,
+    pub decision: String,
+    pub reason_code: String,
+    pub explanation: String,
+    pub rank: Option<i32>,
+    pub estimated_tokens: i32,
+    pub is_mandatory: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ContextPackSummary {
+    pub public_id: Uuid,
+    pub version: i32,
+    pub status: String,
+    pub source_graph_version: i64,
+    pub compiler_version: String,
+    pub selection_mode: String,
+    pub content_hash: String,
+    pub token_budget: i32,
+    pub token_count: i32,
+    pub compiled_at: DateTime<Utc>,
+    pub invalidated_at: Option<DateTime<Utc>>,
+    pub stale_reason: Option<String>,
+    pub content: Value,
+    pub selection_items: Vec<ContextPackSelectionItemView>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GenerateTechnicalPlan {
     pub session_id: Uuid,
 }
@@ -273,6 +324,8 @@ pub struct InsightSourceView {
     pub source_role: String,
     pub object_kind: String,
     pub object_public_id: Uuid,
+    pub knowledge_public_id: Option<Uuid>,
+    pub version_public_id: Option<Uuid>,
     pub version_title: Option<String>,
     pub version_statement: Option<String>,
 }
@@ -283,7 +336,7 @@ pub struct InsightDetail {
     pub sources: Vec<InsightSourceView>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ReviseKnowledge {
     pub statement: String,
     pub title: Option<String>,
@@ -297,4 +350,23 @@ pub struct RevisionResult {
     pub version_number: i32,
     pub graph_version: i64,
     pub insight_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ResolveInsight {
+    pub expected_graph_version: i64,
+    pub justification: String,
+    pub mutations: Vec<InsightResolutionMutation>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum InsightResolutionMutation {
+    ReviseKnowledge {
+        knowledge_public_id: Uuid,
+        expected_version_public_id: Uuid,
+        statement: String,
+        title: Option<String>,
+        rationale: Option<String>,
+    },
 }
