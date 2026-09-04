@@ -2,8 +2,9 @@ use std::{sync::Arc, time::Duration};
 
 use ai_center_server::{
     agent::{
-        AgentEngine, AgentInput, ContextSelectionDraft, ContextSelectionInput, DeterministicEngine,
-        EngineOutput, StewardInput, StewardOutput, TechnicalPlanDraft, TechnicalPlanInput,
+        AgentEngine, AgentInput, ContextSelectionDraft, ContextSelectionInput,
+        CoverageEvaluationDraft, CoverageEvaluationInput, DeterministicEngine, EngineOutput,
+        StewardInput, StewardOutput, TechnicalPlanDraft, TechnicalPlanInput,
     },
     error::{AppError, AppResult},
     models::{
@@ -52,6 +53,13 @@ impl AgentEngine for BlockingRespondEngine {
         input: TechnicalPlanInput,
     ) -> AppResult<EngineOutput<TechnicalPlanDraft>> {
         DeterministicEngine.generate_technical_plan(input).await
+    }
+
+    async fn evaluate_coverage(
+        &self,
+        input: CoverageEvaluationInput,
+    ) -> AppResult<EngineOutput<CoverageEvaluationDraft>> {
+        DeterministicEngine.evaluate_coverage(input).await
     }
 
     async fn analyze_contradictions(

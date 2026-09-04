@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 use crate::{
     agent::{
-        AgentEngine, AgentInput, AgentRunMetadata, ContextSelectionInput, TechnicalPlanDraft,
-        TechnicalPlanInput,
+        AgentEngine, AgentInput, AgentRunMetadata, ContextSelectionInput, CoverageEvaluationDraft,
+        CoverageEvaluationInput, TechnicalPlanDraft, TechnicalPlanInput,
     },
     context::{
         ContextCandidate, DEFAULT_CONTEXT_BUDGET_TOKENS,
@@ -37,6 +37,8 @@ const CONTEXT_SELECTION_PROMPT_VERSION: &str = "alpha-context-selection-v1";
 const CONTEXT_SELECTION_SCHEMA_VERSION: &str = "alpha-context-selection-v1";
 const TECHNICAL_PLAN_PROMPT_VERSION: &str = "alpha-technical-plan-v1";
 const TECHNICAL_PLAN_SCHEMA_VERSION: &str = "alpha-technical-plan-v1";
+const COVERAGE_PROMPT_VERSION: &str = "alpha-coverage-v1";
+const COVERAGE_SCHEMA_VERSION: &str = "alpha-coverage-v1";
 
 #[derive(Clone, Copy, Debug, sqlx::FromRow)]
 struct ModelRunHandle {
@@ -2159,29 +2161,101 @@ async fn generate_technical_plan_command(
         .await?;
         return Err(error);
     }
-    let content = generated_output;
-    let content_hash = sha256_json(&content)?;
-    let mut tx = state.begin_request().await?;
-    let (current_graph_version, current_pack_status): (i64, String) = sqlx::query_as(
-        "select project.graph_version, pack.status
-         from app.projects project
-         join app.context_packs pack on pack.project_id = project.id
-         where project.id = $1 and pack.id = $2
-         for update of project, pack",
-    )
-    .bind(project.id)
-    .bind(pack_id)
-    .fetch_one(&mut *tx)
-    .await?;
-    if current_graph_version != project.graph_version || current_pack_status != "current" {
+    let coverage_input = CoverageEvaluationInput {
+        context_pack: context_pack.content.clone(),
+        technical_plan: generated.output.clone(),
+    };
+    let coverage_input_hash = sha256_json(&coverage_input)?;
+    let mut coverage_tx = state.begin_request().await?;
+    if !pack_is_current(&mut coverage_tx, project.id, pack_id, project.graph_version).await? {
         let error = AppError::Conflict(
             "the ContextPack became stale while generating the technical plan".into(),
         );
         fail_model_run_in_transaction(
-            &mut tx,
+            &mut coverage_tx,
             model_run.id,
             Some(&generated.metadata),
-            Some(&content),
+            Some(&generated_output),
+            &error,
+        )
+        .await?;
+        coverage_tx.commit().await?;
+        return Err(error);
+    }
+    // A completed plan run is durable before the independent coverage call.
+    // No deliverable is committed until both outputs and the graph are valid.
+    complete_model_run(
+        &mut coverage_tx,
+        model_run.id,
+        Some(pack_id),
+        &generated.metadata,
+        &generated_output,
+    )
+    .await?;
+    let coverage_run = start_model_run(
+        &mut coverage_tx,
+        state.engine.provider_name(),
+        state.engine.requested_model(),
+        ModelRunStart {
+            workspace_id: project.workspace_id,
+            project_id: project.id,
+            session_id: Some(session.id),
+            context_pack_id: Some(pack_id),
+            operation: "assess_coverage",
+            prompt_version: COVERAGE_PROMPT_VERSION,
+            schema_version: COVERAGE_SCHEMA_VERSION,
+            source_graph_version: project.graph_version,
+            input_hash: &coverage_input_hash,
+            source_public_ids: &pack_source_public_ids,
+        },
+    )
+    .await?;
+    coverage_tx.commit().await?;
+    let assessed = match state.engine.evaluate_coverage(coverage_input).await {
+        Ok(result) => result,
+        Err(error) => {
+            record_failed_model_run(state, coverage_run.id, &error).await?;
+            return Err(error);
+        }
+    };
+    let assessment_output = serde_json::to_value(&assessed.output)
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    if let Err(error) = validate_coverage_output(
+        &assessed.output,
+        &generated.output,
+        &pack_source_ids,
+        &requirement_ids,
+    ) {
+        record_failed_model_run_with_output(
+            state,
+            coverage_run.id,
+            &assessed.metadata,
+            Some(&assessment_output),
+            &error,
+        )
+        .await?;
+        return Err(error);
+    }
+    let mut content = generated_output;
+    content["coverage_assessment"] = assessment_output.clone();
+    // Preserve the public plan shape, while preventing model opinions from
+    // being rendered as valid proof. Effective coverage is still human-led.
+    content["coverage"] = json!(assessed.output.requirements.iter().map(|item| json!({
+        "requirement_version_public_id": item.requirement_version_public_id,
+        "status": "missing",
+        "explanation": "Aucune preuve externe validée n’est encore attachée à cette exigence.",
+    })).collect::<Vec<_>>());
+    let content_hash = sha256_json(&content)?;
+    let mut tx = state.begin_request().await?;
+    if !pack_is_current(&mut tx, project.id, pack_id, project.graph_version).await? {
+        let error = AppError::Conflict(
+            "the ContextPack became stale while evaluating plan coverage".into(),
+        );
+        fail_model_run_in_transaction(
+            &mut tx,
+            coverage_run.id,
+            Some(&assessed.metadata),
+            Some(&assessment_output),
             &error,
         )
         .await?;
@@ -2275,7 +2349,7 @@ async fn generate_technical_plan_command(
     sections.push((
         "coverage".to_owned(),
         "Couverture".to_owned(),
-        "Aucune exigence n'est couverte tant qu'une preuve externe n'a pas été validée.".to_owned(),
+        render_coverage_assessment(&assessed.output, &context_pack.content),
         requirements
             .iter()
             .map(|item| item.version_public_id)
@@ -2324,10 +2398,10 @@ async fn generate_technical_plan_command(
     }
     complete_model_run(
         &mut tx,
-        model_run.id,
+        coverage_run.id,
         Some(pack_id),
-        &generated.metadata,
-        &content,
+        &assessed.metadata,
+        &assessment_output,
     )
     .await?;
     let model_run_id = model_run.id;
@@ -2363,6 +2437,20 @@ async fn generate_technical_plan_command(
     sqlx::query(
         "insert into app.deliverable_sources (
            workspace_id, project_id, deliverable_id, source_kind, source_public_id,
+           model_run_id, source_role, included_reason
+         ) values ($1,$2,$3,'model_run',$4,$5,'coverage_assessment_run',
+                   'Independent structured review of the plan against its ContextPack')",
+    )
+    .bind(project.workspace_id)
+    .bind(project.id)
+    .bind(deliverable_id)
+    .bind(coverage_run.public_id)
+    .bind(coverage_run.id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "insert into app.deliverable_sources (
+           workspace_id, project_id, deliverable_id, source_kind, source_public_id,
            knowledge_entry_version_id, source_role, included_reason
          )
          select $1,$2,$3,'knowledge_entry_version',v.public_id,v.id,
@@ -2390,7 +2478,7 @@ async fn generate_technical_plan_command(
                workspace_id, project_id, insight_type, status, severity, confidence, title, explanation
              ) values ($1,$2,'coverage_gap','open','warning',0.950,
                'Preuve exécutable manquante',
-               'Le plan couvre les exigences par analyse documentaire, mais aucun test exécutable n’est encore attaché.')
+               'Le mapping du plan et ses lacunes sont documentés. Aucune preuve externe validée n’est encore attachée aux exigences.')
              returning id, public_id",
         )
         .bind(project.workspace_id)
@@ -3542,11 +3630,135 @@ fn provider_attempt_count(error: &AppError) -> i32 {
         .map_or(1, |attempts| i32::try_from(attempts).unwrap_or(i32::MAX))
 }
 
+async fn pack_is_current(
+    tx: &mut Transaction<'_, Postgres>,
+    project_id: i64,
+    pack_id: i64,
+    graph_version: i64,
+) -> AppResult<bool> {
+    let (current_graph_version, status): (i64, String) = sqlx::query_as(
+        "select project.graph_version, pack.status
+         from app.projects project join app.context_packs pack on pack.project_id = project.id
+         where project.id = $1 and pack.id = $2 for update of project, pack",
+    )
+    .bind(project_id)
+    .bind(pack_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(current_graph_version == graph_version && status == "current")
+}
+
+fn render_coverage_assessment(assessment: &CoverageEvaluationDraft, pack: &Value) -> String {
+    let mut lines = vec![
+        "Aucune exigence n'est couverte tant qu'une preuve externe n'a pas été validée.".to_owned(),
+    ];
+    for item in &assessment.requirements {
+        let version_id = item.requirement_version_public_id.to_string();
+        let title = pack
+            .get("knowledge")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .find(|source| {
+                source.get("version_public_id").and_then(Value::as_str) == Some(version_id.as_str())
+            })
+            .and_then(|source| source.get("title"))
+            .and_then(Value::as_str)
+            .unwrap_or("Exigence");
+        let status = match item.assessment.as_str() {
+            "planned" => "Prévue dans le plan",
+            "partial" => "Plan à compléter",
+            _ => "Absente du plan",
+        };
+        lines.push(format!("- {title} — {status} : {}", item.explanation));
+    }
+    lines.join("\n\n")
+}
+
+fn validate_coverage_output(
+    output: &CoverageEvaluationDraft,
+    plan: &TechnicalPlanDraft,
+    pack_source_ids: &HashSet<Uuid>,
+    requirement_ids: &HashSet<Uuid>,
+) -> AppResult<()> {
+    let section_keys = plan
+        .delivery_slices
+        .iter()
+        .map(|section| section.section_key.as_str())
+        .collect::<HashSet<_>>();
+    let mut assessed_requirements = HashSet::new();
+    for item in &output.requirements {
+        if !requirement_ids.contains(&item.requirement_version_public_id)
+            || !assessed_requirements.insert(item.requirement_version_public_id)
+        {
+            return Err(AppError::Invalid(
+                "coverage assessment returned an unknown or duplicate requirement".into(),
+            ));
+        }
+        let sources = item
+            .source_version_ids
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
+        let mapped_sections = item
+            .section_keys
+            .iter()
+            .map(String::as_str)
+            .collect::<HashSet<_>>();
+        if sources.len() != item.source_version_ids.len()
+            || !sources.contains(&item.requirement_version_public_id)
+            || !sources.is_subset(pack_source_ids)
+            || mapped_sections.len() != item.section_keys.len()
+            || !mapped_sections.is_subset(&section_keys)
+        {
+            return Err(AppError::Invalid(
+                "coverage assessment returned unknown, duplicate, or missing source references"
+                    .into(),
+            ));
+        }
+        if !matches!(
+            item.assessment.as_str(),
+            "planned" | "partial" | "unaddressed"
+        ) || (item.assessment == "unaddressed") != item.section_keys.is_empty()
+            || item.explanation.trim().is_empty()
+        {
+            return Err(AppError::Invalid(
+                "coverage assessment has an invalid mapping or explanation".into(),
+            ));
+        }
+    }
+    if &assessed_requirements != requirement_ids {
+        return Err(AppError::Invalid(
+            "coverage assessment omitted a required version".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_technical_plan_output(
     output: &TechnicalPlanDraft,
     pack_source_ids: &std::collections::HashSet<Uuid>,
     requirement_ids: &std::collections::HashSet<Uuid>,
 ) -> AppResult<()> {
+    let mut section_keys = HashSet::new();
+    for section in &output.delivery_slices {
+        if section.section_key.trim().is_empty() || !section_keys.insert(&section.section_key) {
+            return Err(AppError::Invalid(
+                "technical plan section keys must be nonempty and unique".into(),
+            ));
+        }
+        if section
+            .source_version_ids
+            .iter()
+            .collect::<HashSet<_>>()
+            .len()
+            != section.source_version_ids.len()
+        {
+            return Err(AppError::Invalid(
+                "technical plan repeated a source version".into(),
+            ));
+        }
+    }
     for source_id in output
         .delivery_slices
         .iter()
@@ -3850,6 +4062,87 @@ mod tests {
         ] {
             assert!(super::validate_revision_changes(original, changed).is_ok());
         }
+    }
+
+    #[test]
+    fn coverage_assessments_require_an_exact_scoped_mapping() {
+        use crate::agent::{
+            CoverageEvaluationDraft, RequirementCoverageAssessment, TechnicalPlanDraft,
+            TechnicalPlanSectionDraft,
+        };
+        use std::collections::HashSet;
+        let requirement = uuid::Uuid::new_v4();
+        let unrelated = uuid::Uuid::new_v4();
+        let requirements = HashSet::from([requirement]);
+        let plan = TechnicalPlanDraft {
+            title: "Plan".into(),
+            summary: String::new(),
+            architecture: String::new(),
+            delivery_slices: vec![TechnicalPlanSectionDraft {
+                section_key: "step".into(),
+                title: "Step".into(),
+                body: "Plan detail".into(),
+                source_version_ids: vec![requirement],
+            }],
+            risks: vec![],
+            validation: vec![],
+            coverage: vec![],
+        };
+        let valid = CoverageEvaluationDraft {
+            requirements: vec![RequirementCoverageAssessment {
+                requirement_version_public_id: requirement,
+                source_version_ids: vec![requirement],
+                section_keys: vec!["step".into()],
+                assessment: "planned".into(),
+                explanation: "A plan still needs validated evidence".into(),
+            }],
+        };
+        assert!(
+            super::validate_coverage_output(&valid, &plan, &requirements, &requirements).is_ok()
+        );
+        let mut cases = Vec::new();
+        let mut forged_requirement = valid.clone();
+        forged_requirement.requirements[0].requirement_version_public_id = unrelated;
+        cases.push(forged_requirement);
+        let mut duplicate_requirement = valid.clone();
+        duplicate_requirement
+            .requirements
+            .push(valid.requirements[0].clone());
+        cases.push(duplicate_requirement);
+        cases.push(CoverageEvaluationDraft {
+            requirements: vec![],
+        });
+        for sources in [vec![unrelated], vec![requirement, requirement], vec![]] {
+            let mut output = valid.clone();
+            output.requirements[0].source_version_ids = sources;
+            cases.push(output);
+        }
+        for keys in [
+            vec!["invented".into()],
+            vec!["step".into(), "step".into()],
+            vec![],
+        ] {
+            let mut output = valid.clone();
+            output.requirements[0].section_keys = keys;
+            cases.push(output);
+        }
+        let mut claims_proof = valid.clone();
+        claims_proof.requirements[0].assessment = "covered".into();
+        cases.push(claims_proof);
+        let mut blank = valid.clone();
+        blank.requirements[0].explanation = " ".into();
+        cases.push(blank);
+        for output in cases {
+            assert!(
+                super::validate_coverage_output(&output, &plan, &requirements, &requirements)
+                    .is_err(),
+                "invalid assessment accepted: {output:?}"
+            );
+        }
+        let mut gap = valid;
+        gap.requirements[0].assessment = "unaddressed".into();
+        gap.requirements[0].section_keys.clear();
+        assert!(super::validate_coverage_output(&gap, &plan, &requirements, &requirements).is_ok());
     }
 
     fn unscoped_state() -> AppState {
