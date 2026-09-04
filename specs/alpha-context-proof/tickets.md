@@ -102,3 +102,42 @@ d'implémentation après fusion. La release reste conditionnée aux gates du pla
 
 **Acceptation :** écarts techniques corrigés, résultats localisables, statut
 exact des gates restant ouverts, branche unique et PR relisible.
+
+## Écarts additionnels confirmés pendant la lecture du code
+
+Ces tickets complètent le graphe initial. T04 et T06 attendent également leur
+intégration. T07 attend T02 ; T08 attend T03 et T07 afin de limiter les conflits
+sur les contrats et l'orchestration métier.
+
+### ACP-T07 — Évaluation structurée de couverture
+
+**Exigences :** phase 4, ACP-015, ACP-018, ACP-035 à ACP-039, ACP-056.
+
+Introduire une opération de modèle distincte de la génération du plan pour
+évaluer le mapping des exigences et les lacunes, exclusivement depuis le pack
+et le plan produits. Valider les UUID, l'appartenance au pack, l'exhaustivité et
+l'unicité des exigences. Persister un model run propre avec versions du contrat,
+usage et statut. Garder les appels réseau hors transaction, le contrôle optimiste
+et la commande idempotente. Une appréciation du modèle ne valide jamais une
+preuve : la couverture effective dépend des preuves humaines courantes.
+
+**Acceptation :** faux provider validant les cinq opérations structurées,
+rejet des sources inventées/dupliquées/omises, échec explicite sans livrable
+partiel, traçabilité distincte du run de plan et du run de couverture ; aucun
+contenu spécifique à Credits v2 dans le moteur réel.
+
+### ACP-T08 — Traçabilité du travail externe
+
+**Exigences :** phase 7, ACP-020, ACP-021, ACP-050, ACP-054 à ACP-056.
+
+Relier explicitement les références et preuves au ContextPack transmis en
+réutilisant les enveloppes existantes `tasks`, `executions`, `execution_events`
+et `artifacts`, ainsi que les arêtes `tracked_by`. Les états décrivent le travail
+observé dans l'outil externe ; aucun runner ni action GitHub en écriture.
+Conserver les imports historiques en lecture et fournir le lien explicite dans
+le parcours de preuve. Vérifier toutes les relations au workspace et au projet.
+
+**Acceptation :** export/handoff → référence externe → enveloppe et artefact →
+preuve candidate → validation humaine ; reload et retry conservent la même
+chaîne sans duplication. Les refreshes ajoutent des événements d'observation
+et préservent l'historique en cas de changement de SHA ou de perte d'accès.
