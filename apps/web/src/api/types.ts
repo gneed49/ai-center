@@ -236,11 +236,7 @@ export interface CoverageView {
 }
 
 export type ExternalReferenceSyncStatus =
-  | "pending"
-  | "current"
-  | "stale"
-  | "unavailable"
-  | "error";
+  "pending" | "current" | "stale" | "unavailable" | "error";
 
 export interface ExternalReferenceObservation {
   public_id: UUID;
@@ -252,6 +248,7 @@ export interface ExternalReferenceObservation {
     base_sha?: string;
     state?: string;
     checks?: Array<{
+      kind?: "check_run" | "commit_status";
       name: string;
       status: string;
       conclusion?: string | null;
@@ -281,7 +278,7 @@ export interface ExternalReferenceSummary {
   project_public_id: UUID;
   tool_connection_public_id: UUID;
   provider: "github";
-  object_kind: "pull_request";
+  object_kind: "repository" | "pull_request" | "commit";
   external_id: string;
   canonical_url: string;
   repository_full_name: string;

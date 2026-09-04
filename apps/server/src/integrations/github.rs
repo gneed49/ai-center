@@ -85,21 +85,29 @@ impl GitHubApiEndpoint {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GitHubPullRequestIdentity {
-    pub owner: String,
-    pub repository: String,
-    pub number: u64,
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum GitHubObject {
+    Repository,
+    PullRequest { number: u64 },
+    Commit { sha: String },
 }
 
-impl GitHubPullRequestIdentity {
-    /// Parses a canonical GitHub pull-request URL without following redirects.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitHubReferenceIdentity {
+    pub owner: String,
+    pub repository: String,
+    pub object: GitHubObject,
+}
+
+impl GitHubReferenceIdentity {
+    /// Parses only canonical repository, pull-request, or full commit-SHA URLs.
     ///
     /// # Errors
-    /// Returns an error for another host, credentials, query parameters, or a
-    /// path that is not exactly an owner/repository pull request.
+    /// Rejects credentials, redirects, queries, encoded/normalized paths, and
+    /// mutable or abbreviated commit references before any network request.
     pub fn parse(value: &str) -> AppResult<Self> {
         let url = Url::parse(value)
-            .map_err(|_| AppError::Invalid("invalid GitHub pull request URL".into()))?;
+            .map_err(|_| AppError::Invalid("invalid GitHub reference URL".into()))?;
         if !value.starts_with("https://github.com/")
             || url.scheme() != "https"
             || url.host_str() != Some("github.com")
@@ -110,43 +118,79 @@ impl GitHubPullRequestIdentity {
             || url.fragment().is_some()
         {
             return Err(AppError::Invalid(
-                "only canonical https://github.com pull request URLs are accepted".into(),
+                "only canonical https://github.com reference URLs are accepted".into(),
             ));
         }
         let segments = url
             .path_segments()
             .map(Iterator::collect::<Vec<_>>)
             .unwrap_or_default();
-        if segments.len() != 4 || segments[2] != "pull" {
+        if !matches!(segments.len(), 2 | 4) {
             return Err(AppError::Invalid(
-                "GitHub URL must identify a pull request".into(),
+                "GitHub URL must identify a repository, pull request, or full commit SHA".into(),
             ));
         }
-        let owner = validate_slug(segments[0], "owner")?;
-        let repository = validate_slug(segments[1], "repository")?;
-        let number = segments[3]
-            .parse::<u64>()
-            .ok()
-            .filter(|number| *number > 0)
-            .ok_or_else(|| AppError::Invalid("invalid GitHub pull request number".into()))?;
-        Ok(Self {
-            owner,
-            repository,
-            number,
-        })
+        let object = match segments.as_slice() {
+            [_, _] => GitHubObject::Repository,
+            [_, _, "pull", number] => GitHubObject::PullRequest {
+                number: number
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|number| *number > 0)
+                    .ok_or_else(|| {
+                        AppError::Invalid("invalid GitHub pull request number".into())
+                    })?,
+            },
+            [_, _, "commit", sha] if valid_git_oid(sha) => GitHubObject::Commit {
+                sha: (*sha).to_owned(),
+            },
+            _ => {
+                return Err(AppError::Invalid(
+                    "GitHub URL must identify a repository, pull request, or full commit SHA"
+                        .into(),
+                ));
+            }
+        };
+        let identity = Self {
+            owner: validate_slug(segments[0], "owner")?,
+            repository: validate_slug(segments[1], "repository")?,
+            object,
+        };
+        if value != identity.canonical_url() {
+            return Err(AppError::Invalid(
+                "GitHub reference URL is not canonical".into(),
+            ));
+        }
+        Ok(identity)
     }
 
     #[must_use]
     pub fn canonical_url(&self) -> String {
-        format!(
-            "https://github.com/{}/{}/pull/{}",
-            self.owner, self.repository, self.number
-        )
+        let repository = format!("https://github.com/{}/{}", self.owner, self.repository);
+        match &self.object {
+            GitHubObject::Repository => repository,
+            GitHubObject::PullRequest { number } => format!("{repository}/pull/{number}"),
+            GitHubObject::Commit { sha } => format!("{repository}/commit/{sha}"),
+        }
     }
 
     #[must_use]
     pub fn external_id(&self) -> String {
-        format!("{}/{}#{}", self.owner, self.repository, self.number)
+        let repository = format!("{}/{}", self.owner, self.repository);
+        match &self.object {
+            GitHubObject::Repository => repository,
+            GitHubObject::PullRequest { number } => format!("{repository}#{number}"),
+            GitHubObject::Commit { sha } => format!("{repository}@{sha}"),
+        }
+    }
+
+    #[must_use]
+    pub const fn object_kind(&self) -> &'static str {
+        match self.object {
+            GitHubObject::Repository => "repository",
+            GitHubObject::PullRequest { .. } => "pull_request",
+            GitHubObject::Commit { .. } => "commit",
+        }
     }
 }
 
@@ -163,8 +207,8 @@ fn validate_slug(value: &str, kind: &str) -> AppResult<String> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GitHubPullRequestObservation {
-    pub identity: GitHubPullRequestIdentity,
+pub struct GitHubReferenceObservation {
+    pub identity: GitHubReferenceIdentity,
     pub canonical_url: String,
     pub title: String,
     pub state: String,
@@ -180,7 +224,77 @@ pub struct GitHubPullRequestObservation {
     pub observed_at: DateTime<Utc>,
 }
 
-impl GitHubPullRequestObservation {
+impl GitHubReferenceObservation {
+    fn from_repository_or_commit(
+        identity: &GitHubReferenceIdentity,
+        value: &Value,
+    ) -> AppResult<Self> {
+        let (title, state, sha, paths, created_at, updated_at) = match &identity.object {
+            GitHubObject::Repository => {
+                let full_name = required_string(value, "/full_name", "repository name")?;
+                if full_name != format!("{}/{}", identity.owner, identity.repository) {
+                    return Err(AppError::Connector(
+                        "GitHub repository identity does not match the requested reference".into(),
+                    ));
+                }
+                (
+                    full_name,
+                    if value
+                        .get("archived")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+                    {
+                        "archived"
+                    } else {
+                        "active"
+                    },
+                    String::new(),
+                    vec![],
+                    optional_datetime(value, "/created_at"),
+                    optional_datetime(value, "/updated_at"),
+                )
+            }
+            GitHubObject::Commit { sha } => {
+                let observed_sha = required_git_oid(value, "/sha", "commit SHA")?;
+                if &observed_sha != sha {
+                    return Err(AppError::Connector(
+                        "GitHub returned a different commit SHA".into(),
+                    ));
+                }
+                (
+                    format!("Commit {sha}"),
+                    "committed",
+                    observed_sha,
+                    changed_paths(value.get("files").unwrap_or(&Value::Null)),
+                    optional_datetime(value, "/commit/author/date"),
+                    optional_datetime(value, "/commit/committer/date"),
+                )
+            }
+            GitHubObject::PullRequest { .. } => unreachable!(),
+        };
+        let commits = if sha.is_empty() {
+            vec![]
+        } else {
+            vec![sha.clone()]
+        };
+        Ok(Self {
+            canonical_url: identity.canonical_url(),
+            identity: identity.clone(),
+            title,
+            state: state.into(),
+            draft: false,
+            merged: false,
+            base_sha: String::new(),
+            head_sha: sha,
+            commits,
+            changed_paths: paths,
+            checks: vec![],
+            created_at,
+            updated_at,
+            observed_at: Utc::now(),
+        })
+    }
+
     fn has_same_provider_state(&self, previous: &Self) -> bool {
         let mut current = self.clone();
         let mut previous = previous.clone();
@@ -191,17 +305,19 @@ impl GitHubPullRequestObservation {
     }
 }
 
-fn normalize_projection_collections(observation: &mut GitHubPullRequestObservation) {
+fn normalize_projection_collections(observation: &mut GitHubReferenceObservation) {
     observation.changed_paths.sort();
     observation.changed_paths.dedup();
     observation.checks.sort_by(|left, right| {
         (
+            left.kind,
             left.name.as_str(),
             left.status.as_str(),
             left.conclusion.as_deref(),
             left.details_url.as_deref(),
         )
             .cmp(&(
+                right.kind,
                 right.name.as_str(),
                 right.status.as_str(),
                 right.conclusion.as_deref(),
@@ -210,8 +326,18 @@ fn normalize_projection_collections(observation: &mut GitHubPullRequestObservati
     });
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GitHubCheckKind {
+    #[default]
+    CheckRun,
+    CommitStatus,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GitHubCheckObservation {
+    #[serde(default)]
+    pub kind: GitHubCheckKind,
     pub name: String,
     pub status: String,
     pub conclusion: Option<String>,
@@ -221,20 +347,19 @@ pub struct GitHubCheckObservation {
 pub enum GitHubObserveResult {
     NotModified,
     Observed {
-        observation: Box<GitHubPullRequestObservation>,
+        observation: Box<GitHubReferenceObservation>,
         etag: Option<String>,
     },
 }
 
-/// Conditional cursor for a pull-request refresh.
+/// Conditional cursor for a repository, pull-request, or commit refresh.
 ///
-/// The provider validator is inseparable from the last complete projection so
-/// a PR-level `304` can be reconstructed while commits, files, and checks are
-/// still fetched and compared.
+/// The provider validator is inseparable from the last complete projection.
+/// PR/commit `304` responses still require fresh CI observations on their SHA.
 #[derive(Debug, Clone, Copy)]
-pub struct GitHubPullRequestCursor<'a> {
+pub struct GitHubReferenceCursor<'a> {
     pub etag: &'a str,
-    pub observation: &'a GitHubPullRequestObservation,
+    pub observation: &'a GitHubReferenceObservation,
 }
 
 #[derive(Clone)]
@@ -327,6 +452,13 @@ impl GitHubAppTokenProvider {
             .send()
             .await
             .map_err(|_| AppError::Connector("GitHub App token request failed".into()))?;
+        if let Some(retry_after_seconds) =
+            rate_limit_delay(response.status(), response.headers(), Utc::now())
+        {
+            return Err(AppError::ConnectorRateLimited {
+                retry_after_seconds,
+            });
+        }
         if !response.status().is_success() {
             return Err(AppError::Connector(format!(
                 "GitHub App token request returned status {}",
@@ -350,6 +482,7 @@ pub struct GitHubClient {
     client: Client,
     api_endpoint: GitHubApiEndpoint,
     token_source: GitHubTokenSource,
+    retry_not_before: Mutex<Option<tokio::time::Instant>>,
 }
 
 enum GitHubTokenSource {
@@ -380,35 +513,44 @@ impl GitHubClient {
             client: github_http_client(GITHUB_CONNECT_TIMEOUT, GITHUB_REQUEST_TIMEOUT)?,
             api_endpoint: GitHubApiEndpoint::production()?,
             token_source: GitHubTokenSource::App(token_provider),
+            retry_not_before: Mutex::new(None),
         })
     }
 
     #[cfg(test)]
-    fn for_contract_test(endpoint: &str, request_timeout: Duration) -> AppResult<Self> {
+    pub(crate) fn for_contract_test(endpoint: &str, request_timeout: Duration) -> AppResult<Self> {
         Ok(Self {
             client: github_http_client(request_timeout, request_timeout)?,
             api_endpoint: GitHubApiEndpoint::loopback_for_test(endpoint)?,
+            retry_not_before: Mutex::new(None),
             token_source: GitHubTokenSource::ContractTest(SecretString::from(
                 "github-contract-test-token",
             )),
         })
     }
 
-    /// Reads an allowlisted pull-request projection from the GitHub API.
+    /// Reads an allowlisted repository, PR, or commit projection from GitHub.
     ///
     /// # Errors
     ///
     /// Returns a sanitized connector error for authentication, transport,
     /// rate-limit exhaustion, invalid JSON, or missing mandatory fields.
-    pub async fn observe_pull_request(
+    pub async fn observe_reference(
         &self,
-        identity: GitHubPullRequestIdentity,
-        cursor: Option<GitHubPullRequestCursor<'_>>,
+        identity: GitHubReferenceIdentity,
+        cursor: Option<GitHubReferenceCursor<'_>>,
     ) -> AppResult<GitHubObserveResult> {
-        let token = self.token_source.token().await?;
+        // Revalidate even programmatically constructed identities before composing paths.
+        GitHubReferenceIdentity::parse(&identity.canonical_url())?;
+        self.check_cooldown().await?;
+        let number = match &identity.object {
+            GitHubObject::PullRequest { number } => *number,
+            _ => return self.observe_repository_or_commit(identity, cursor).await,
+        };
+        let token = self.observation_token().await?;
         let pull_path = format!(
             "/repos/{}/{}/pulls/{}",
-            identity.owner, identity.repository, identity.number
+            identity.owner, identity.repository, number
         );
         let pull_result = self
             .get_value(&pull_path, &token, cursor.map(|cursor| cursor.etag))
@@ -437,16 +579,22 @@ impl GitHubClient {
             "/repos/{}/{}/commits/{head_sha}/check-runs?per_page=100",
             identity.owner, identity.repository
         );
-        let (commits, files, checks) = tokio::try_join!(
+        let statuses_path = format!(
+            "/repos/{}/{}/commits/{head_sha}/status?per_page=100",
+            identity.owner, identity.repository
+        );
+        let (commits, files, checks, statuses) = tokio::try_join!(
             self.get_value(&commits_path, &token, None),
             self.get_value(&files_path, &token, None),
             self.get_value(&checks_path, &token, None),
+            self.get_value(&statuses_path, &token, None),
         )?;
 
         let commits = value_only(commits)?;
         let files = value_only(files)?;
-        let checks = value_only(checks)?;
-        let observation = GitHubPullRequestObservation {
+        let checks =
+            combined_check_observations(&value_only(checks)?, &value_only(statuses)?, &head_sha)?;
+        let observation = GitHubReferenceObservation {
             identity: identity.clone(),
             canonical_url: identity.canonical_url(),
             title: pull_fields.title,
@@ -457,7 +605,7 @@ impl GitHubClient {
             head_sha,
             commits: commit_shas(&commits),
             changed_paths: changed_paths(&files),
-            checks: check_observations(&checks),
+            checks,
             created_at: pull_fields.created_at,
             updated_at: pull_fields.updated_at,
             observed_at: Utc::now(),
@@ -471,6 +619,98 @@ impl GitHubClient {
         })
     }
 
+    async fn observe_repository_or_commit(
+        &self,
+        identity: GitHubReferenceIdentity,
+        cursor: Option<GitHubReferenceCursor<'_>>,
+    ) -> AppResult<GitHubObserveResult> {
+        let token = self.observation_token().await?;
+        let repository_path = format!("/repos/{}/{}", identity.owner, identity.repository);
+        let path = match &identity.object {
+            GitHubObject::Repository => repository_path.clone(),
+            GitHubObject::Commit { sha } => format!("{repository_path}/commits/{sha}"),
+            GitHubObject::PullRequest { .. } => unreachable!(),
+        };
+        let result = self
+            .get_value(&path, &token, cursor.map(|cursor| cursor.etag))
+            .await?;
+        let (mut observation, etag, previous) = match result {
+            GitHubValue::NotModified => {
+                let cursor = cursor.ok_or_else(|| {
+                    AppError::Connector(
+                        "GitHub returned not-modified without a prior projection".into(),
+                    )
+                })?;
+                if cursor.observation.identity != identity
+                    || cursor.observation.canonical_url != identity.canonical_url()
+                {
+                    return Err(AppError::Connector(
+                        "stored GitHub projection does not match its reference".into(),
+                    ));
+                }
+                (
+                    cursor.observation.clone(),
+                    Some(cursor.etag.to_owned()),
+                    Some(cursor.observation),
+                )
+            }
+            GitHubValue::Value { value, etag } => (
+                GitHubReferenceObservation::from_repository_or_commit(&identity, &value)?,
+                etag,
+                None,
+            ),
+        };
+        if let GitHubObject::Commit { sha } = &identity.object {
+            // Immutable commit metadata can be 304 while mutable CI state changes.
+            let checks_path = format!("{repository_path}/commits/{sha}/check-runs?per_page=100");
+            let statuses_path = format!("{repository_path}/commits/{sha}/status?per_page=100");
+            let (checks, statuses) = tokio::try_join!(
+                self.get_value(&checks_path, &token, None),
+                self.get_value(&statuses_path, &token, None)
+            )?;
+            observation.checks =
+                combined_check_observations(&value_only(checks)?, &value_only(statuses)?, sha)?;
+        }
+        observation.observed_at = Utc::now();
+        if previous.is_some_and(|previous| observation.has_same_provider_state(previous)) {
+            return Ok(GitHubObserveResult::NotModified);
+        }
+        Ok(GitHubObserveResult::Observed {
+            observation: Box::new(observation),
+            etag,
+        })
+    }
+
+    async fn observation_token(&self) -> AppResult<SecretString> {
+        match self.token_source.token().await {
+            Err(
+                error @ AppError::ConnectorRateLimited {
+                    retry_after_seconds,
+                },
+            ) => {
+                *self.retry_not_before.lock().await = tokio::time::Instant::now()
+                    .checked_add(Duration::from_secs(retry_after_seconds));
+                Err(error)
+            }
+            result => result,
+        }
+    }
+
+    async fn check_cooldown(&self) -> AppResult<()> {
+        let retry_not_before = self.retry_not_before.lock().await;
+        if let Some(deadline) = *retry_not_before {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if !remaining.is_zero() {
+                return Err(AppError::ConnectorRateLimited {
+                    retry_after_seconds: remaining
+                        .as_secs()
+                        .saturating_add(u64::from(remaining.subsec_nanos() > 0)),
+                });
+            }
+        }
+        Ok(())
+    }
+
     async fn get_value(
         &self,
         path: &str,
@@ -478,6 +718,7 @@ impl GitHubClient {
         etag: Option<&str>,
     ) -> AppResult<GitHubValue> {
         for attempt in 1..=2 {
+            self.check_cooldown().await?;
             let mut request = self
                 .client
                 .get(self.api_endpoint.request_url(path)?)
@@ -492,19 +733,37 @@ impl GitHubClient {
             if response.status() == StatusCode::NOT_MODIFIED {
                 return Ok(GitHubValue::NotModified);
             }
-            if attempt < 2
-                && (response.status() == StatusCode::TOO_MANY_REQUESTS
-                    || response.status().is_server_error())
+            if let Some(seconds) =
+                rate_limit_delay(response.status(), response.headers(), Utc::now())
             {
-                let seconds = response
-                    .headers()
-                    .get(header::RETRY_AFTER)
-                    .and_then(|value| value.to_str().ok())
-                    .and_then(|value| value.parse::<u64>().ok())
-                    .unwrap_or(1)
-                    .min(5);
-                sleep(Duration::from_secs(seconds)).await;
-                continue;
+                let deadline = tokio::time::Instant::now()
+                    .checked_add(Duration::from_secs(seconds))
+                    .ok_or_else(|| AppError::Connector("GitHub retry delay is invalid".into()))?;
+                let mut cooldown = self.retry_not_before.lock().await;
+                *cooldown = Some(cooldown.map_or(deadline, |existing| existing.max(deadline)));
+                drop(cooldown);
+                // Longer provider delays are surfaced immediately; subsequent commands
+                // share this deadline and cannot retry early with another key or path.
+                if attempt < 2 && seconds <= 5 {
+                    sleep(Duration::from_secs(seconds)).await;
+                    continue;
+                }
+                return Err(AppError::ConnectorRateLimited {
+                    retry_after_seconds: seconds,
+                });
+            }
+            if attempt < 2 && response.status().is_server_error() {
+                let seconds = header_seconds(response.headers(), "retry-after").unwrap_or(1);
+                if seconds <= 5 {
+                    sleep(Duration::from_secs(seconds)).await;
+                    continue;
+                }
+                // Never shorten Retry-After, even on a server failure.
+                *self.retry_not_before.lock().await =
+                    tokio::time::Instant::now().checked_add(Duration::from_secs(seconds));
+                return Err(AppError::ConnectorRateLimited {
+                    retry_after_seconds: seconds,
+                });
             }
             if !response.status().is_success() {
                 return Err(AppError::Connector(format!(
@@ -567,6 +826,7 @@ fn check_observations(checks: &Value) -> Vec<GitHubCheckObservation> {
         .flatten()
         .filter_map(|item| {
             Some(GitHubCheckObservation {
+                kind: GitHubCheckKind::CheckRun,
                 name: item.get("name")?.as_str()?.to_owned(),
                 status: item.get("status")?.as_str()?.to_owned(),
                 conclusion: item
@@ -581,6 +841,88 @@ fn check_observations(checks: &Value) -> Vec<GitHubCheckObservation> {
             })
         })
         .collect()
+}
+
+fn header_seconds(headers: &header::HeaderMap, name: &str) -> Option<u64> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse().ok())
+}
+
+fn rate_limit_delay(
+    status: StatusCode,
+    headers: &header::HeaderMap,
+    now: DateTime<Utc>,
+) -> Option<u64> {
+    let exhausted = header_seconds(headers, "x-ratelimit-remaining") == Some(0);
+    let retry_after = header_seconds(headers, "retry-after");
+    if status != StatusCode::TOO_MANY_REQUESTS
+        && !(status == StatusCode::FORBIDDEN && (exhausted || retry_after.is_some()))
+    {
+        return None;
+    }
+    let reset_delay = if exhausted {
+        header_seconds(headers, "x-ratelimit-reset").map(|reset| {
+            reset
+                .saturating_sub(u64::try_from(now.timestamp()).unwrap_or(0))
+                .saturating_add(1)
+        })
+    } else {
+        None
+    };
+    Some(match (retry_after, reset_delay) {
+        (Some(retry), Some(reset)) => retry.max(reset),
+        (Some(retry), None) => retry,
+        (None, Some(reset)) => reset,
+        (None, None) => 60,
+    })
+}
+
+fn combined_check_observations(
+    checks: &Value,
+    statuses: &Value,
+    expected_sha: &str,
+) -> AppResult<Vec<GitHubCheckObservation>> {
+    if required_git_oid(statuses, "/sha", "status SHA")? != expected_sha {
+        return Err(AppError::Connector(
+            "GitHub statuses refer to a different SHA".into(),
+        ));
+    }
+    let mut result = check_observations(checks);
+    let statuses = statuses
+        .get("statuses")
+        .and_then(Value::as_array)
+        .ok_or_else(|| AppError::Connector("GitHub response is missing commit statuses".into()))?;
+    for status in statuses {
+        let state = required_string(status, "/state", "commit status state")?;
+        if !matches!(state.as_str(), "error" | "failure" | "pending" | "success") {
+            return Err(AppError::Connector(
+                "GitHub returned an invalid commit status state".into(),
+            ));
+        }
+        result.push(GitHubCheckObservation {
+            kind: GitHubCheckKind::CommitStatus,
+            name: required_string(status, "/context", "commit status context")?,
+            status: if state == "pending" {
+                "in_progress"
+            } else {
+                "completed"
+            }
+            .into(),
+            conclusion: if state == "pending" {
+                None
+            } else {
+                Some(state)
+            },
+            details_url: status
+                .get("target_url")
+                .and_then(Value::as_str)
+                .filter(|url| url.starts_with("https://github.com/"))
+                .map(str::to_owned),
+        });
+    }
+    Ok(result)
 }
 
 struct GitHubPullFields {
@@ -609,8 +951,8 @@ impl GitHubPullFields {
     }
 
     fn from_previous(
-        previous: &GitHubPullRequestObservation,
-        identity: &GitHubPullRequestIdentity,
+        previous: &GitHubReferenceObservation,
+        identity: &GitHubReferenceIdentity,
     ) -> AppResult<Self> {
         if &previous.identity != identity
             || previous.canonical_url != identity.canonical_url()

@@ -139,6 +139,8 @@ pub enum AppError {
     Provider(#[from] ProviderError),
     #[error("external connector unavailable: {0}")]
     Connector(String),
+    #[error("GitHub rate limit; retry after {retry_after_seconds} seconds")]
+    ConnectorRateLimited { retry_after_seconds: u64 },
     #[error("database error")]
     Database(#[from] sqlx::Error),
     #[error("internal error: {0}")]
@@ -153,6 +155,12 @@ struct ErrorBody {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
+        let retry_after = match &self {
+            Self::ConnectorRateLimited {
+                retry_after_seconds,
+            } => Some(*retry_after_seconds),
+            _ => None,
+        };
         let (status, code, message) = match self {
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", self.to_string()),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),
@@ -177,6 +185,11 @@ impl IntoResponse for AppError {
                 "agent_unavailable",
                 error.to_string(),
             ),
+            Self::ConnectorRateLimited { .. } => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "connector_rate_limited",
+                self.to_string(),
+            ),
             Self::Connector(_) => (
                 StatusCode::BAD_GATEWAY,
                 "connector_unavailable",
@@ -199,7 +212,15 @@ impl IntoResponse for AppError {
                 )
             }
         };
-        (status, Json(ErrorBody { code, message })).into_response()
+        let mut response = (status, Json(ErrorBody { code, message })).into_response();
+        if let Some(seconds) = retry_after
+            && let Ok(value) = seconds.to_string().parse()
+        {
+            response
+                .headers_mut()
+                .insert(axum::http::header::RETRY_AFTER, value);
+        }
+        response
     }
 }
 
@@ -212,6 +233,7 @@ impl AppError {
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Invalid(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::ConnectorRateLimited { .. } => StatusCode::SERVICE_UNAVAILABLE,
             Self::Provider(error) if error.is_retryable() => StatusCode::SERVICE_UNAVAILABLE,
             Self::Agent(_) | Self::Provider(_) | Self::Connector(_) => StatusCode::BAD_GATEWAY,
             Self::Database(_) | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -228,6 +250,7 @@ impl AppError {
             Self::Invalid(_) => "invalid_request",
             Self::Agent(_) | Self::Provider(_) => "agent_unavailable",
             Self::Connector(_) => "connector_unavailable",
+            Self::ConnectorRateLimited { .. } => "connector_rate_limited",
             Self::Database(_) => "database_error",
             Self::Internal(_) => "internal_error",
         }

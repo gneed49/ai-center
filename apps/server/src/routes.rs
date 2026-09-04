@@ -329,7 +329,9 @@ fn failure_disposition(error: &AppError) -> FailureDisposition {
             FailureDisposition::Retryable
         }
         // Connector classification remains connector-owned.
-        AppError::Connector(_) => FailureDisposition::Retryable,
+        AppError::Connector(_) | AppError::ConnectorRateLimited { .. } => {
+            FailureDisposition::Retryable
+        }
         AppError::Unauthorized
         | AppError::Forbidden
         | AppError::NotFound

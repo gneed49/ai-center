@@ -13,13 +13,17 @@ test("observe une PR, valide la preuve puis la rend stale après changement de S
     page.getByRole("heading", { name: "Preuves GitHub observées" }),
   ).toBeVisible();
   await expect(
-    page.getByText("Aucune PR n’est encore rattachée à ce projet."),
+    page.getByText(
+      "Aucune référence GitHub n’est encore rattachée à ce projet.",
+    ),
   ).toBeVisible();
 
   await page
-    .getByLabel("URL canonique de la pull request GitHub")
+    .getByLabel(
+      "URL canonique du dépôt, de la pull request ou du commit GitHub",
+    )
     .fill("https://github.com/gneed49/ai-center/pull/42");
-  await page.getByRole("button", { name: "Observer la PR" }).click();
+  await page.getByRole("button", { name: "Observer la référence" }).click();
   await expect(page.getByText("PR #42 — preuve ContextPack")).toBeVisible();
   await expect(page.getByText(/head b{12}/)).toBeVisible();
 
@@ -51,9 +55,11 @@ test("persiste une preuve rejetée et retourne son état", async ({ page }) => {
 
   await page.goto(`/projects/${ids.project}/deliverables/${ids.deliverable}`);
   await page
-    .getByLabel("URL canonique de la pull request GitHub")
+    .getByLabel(
+      "URL canonique du dépôt, de la pull request ou du commit GitHub",
+    )
     .fill("https://github.com/gneed49/ai-center/pull/42");
-  await page.getByRole("button", { name: "Observer la PR" }).click();
+  await page.getByRole("button", { name: "Observer la référence" }).click();
   await page.getByRole("button", { name: "Créer la preuve candidate" }).click();
   await page.getByRole("button", { name: "Rejeter" }).click();
 
@@ -61,3 +67,54 @@ test("persiste une preuve rejetée et retourne son état", async ({ page }) => {
   expect(state.evidenceStatus).toBe("rejected");
   expect(errors).toEqual([]);
 });
+
+for (const kind of ["repository", "commit"] as const) {
+  test(`importe une référence ${kind} et expose les actions adaptées`, async ({
+    page,
+  }, testInfo) => {
+    const errors = captureConsoleErrors(page);
+    const state = await installMockApi(page, { externalProof: true });
+    const url =
+      kind === "repository"
+        ? "https://github.com/gneed49/ai-center"
+        : `https://github.com/gneed49/ai-center/commit/${"b".repeat(40)}`;
+    await page.goto(`/projects/${ids.project}/deliverables/${ids.deliverable}`);
+    await page
+      .getByLabel(
+        "URL canonique du dépôt, de la pull request ou du commit GitHub",
+      )
+      .fill(url);
+    await page.getByRole("button", { name: "Observer la référence" }).click();
+    await expect(
+      page.getByRole("link", {
+        name:
+          kind === "repository"
+            ? "gneed49/ai-center"
+            : `Commit ${"b".repeat(40)}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(state.externalReferenceUrl).toBe(url);
+    if (kind === "repository") {
+      await expect(
+        page.getByText("Un dépôt décrit une source mutable.", { exact: false }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Créer la preuve candidate" }),
+      ).toHaveCount(0);
+    } else {
+      await expect(page.getByText(/head b{12}/)).toBeVisible();
+      await page
+        .getByRole("button", { name: "Créer la preuve candidate" })
+        .click();
+      await expect(page.getByText("candidate", { exact: true })).toBeVisible();
+    }
+    await page
+      .getByRole("heading", { name: "Preuves GitHub observées" })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: `/tmp/acp-github-${kind}-${testInfo.project.name}.png`,
+    });
+    expect(errors).toEqual([]);
+  });
+}

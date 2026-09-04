@@ -20,9 +20,9 @@ sequenceDiagram
     U->>A: Attacher l'URL github.com
     A->>A: Valider host, owner, repo et type d'objet
     A->>G: GET métadonnées allowlistées + ETag
-    G-->>A: PR/commit/checks + head SHA
+    G-->>A: Dépôt ou PR/commit avec checks et SHA
     A->>A: Ajouter ExternalReference et observation
-    A-->>U: Proposer une preuve candidate
+    A-->>U: Proposer une preuve candidate pour une PR/commit
     U->>A: Valider la preuve
     A->>S: Recalculer couverture et cohérence
     S-->>A: Couverture + insights + projections stale
@@ -30,14 +30,22 @@ sequenceDiagram
 
     opt Refresh ultérieur
         A->>G: GET conditionnel If-None-Match
-        alt inchangé
+        alt métadonnées inchangées
             G-->>A: 304 Not Modified
-            A->>A: Conserver la preuve courante
-        else SHA, état ou accès modifié
+            A->>G: Relire check-runs et commit statuses sur le SHA
+            A->>A: Ajouter une observation si la CI a changé
+        else limite de débit 403/429
+            G-->>A: Retry-After ou quota épuisé et reset
+            A->>A: Respecter le délai, garder preuve et couverture
+            A-->>U: Erreur transitoire et délai de reprise
+        else SHA ou accès modifié
             G-->>A: Nouvel état / 404 / 403
             A->>A: Ajouter une observation
             A->>A: Marquer preuve stale/unavailable
             A->>S: Recalculer les dépendances
+        else autres métadonnées modifiées
+            G-->>A: Nouvel état observé
+            A->>A: Ajouter une observation et conserver la révision de la preuve
         end
     end
 ```

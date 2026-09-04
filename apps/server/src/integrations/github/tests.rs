@@ -29,6 +29,10 @@ const FILES_PATH: &str = "/repos/acme/context/pulls/7/files?per_page=100";
 const COMMIT_PATH: &str = "/repos/acme/context/commits/2222222222222222222222222222222222222222";
 const CHECKS_PATH: &str =
     "/repos/acme/context/commits/2222222222222222222222222222222222222222/check-runs?per_page=100";
+const STATUSES_PATH: &str =
+    "/repos/acme/context/commits/2222222222222222222222222222222222222222/status?per_page=100";
+const NEW_STATUSES_PATH: &str =
+    "/repos/acme/context/commits/4444444444444444444444444444444444444444/status?per_page=100";
 const NEW_CHECKS_PATH: &str =
     "/repos/acme/context/commits/4444444444444444444444444444444444444444/check-runs?per_page=100";
 
@@ -83,7 +87,18 @@ struct FakeGitHubServer {
 }
 
 impl FakeGitHubServer {
-    async fn start(routes: Vec<(&str, Vec<MockResponse>)>) -> Self {
+    async fn start(mut routes: Vec<(&str, Vec<MockResponse>)>) -> Self {
+        for (path, sha) in [(STATUSES_PATH, HEAD_SHA), (NEW_STATUSES_PATH, NEW_HEAD_SHA)] {
+            if !routes.iter().any(|(route, _)| *route == path) {
+                routes.push((
+                    path,
+                    vec![MockResponse::json(
+                        StatusCode::OK,
+                        &json!({"sha": sha, "statuses": []}),
+                    )],
+                ));
+            }
+        }
         let state = MockState {
             responses: Arc::new(Mutex::new(
                 routes
@@ -222,12 +237,11 @@ fn assert_no_forbidden_projection_keys(value: &Value) {
 
 #[test]
 fn parses_only_canonical_github_pull_request_urls() {
-    let identity =
-        GitHubPullRequestIdentity::parse("https://github.com/openai/openai-rust/pull/42")
-            .expect("canonical URL should parse");
+    let identity = GitHubReferenceIdentity::parse("https://github.com/openai/openai-rust/pull/42")
+        .expect("canonical URL should parse");
     assert_eq!(identity.owner, "openai");
     assert_eq!(identity.repository, "openai-rust");
-    assert_eq!(identity.number, 42);
+    assert_eq!(identity.object, GitHubObject::PullRequest { number: 42 });
     assert_eq!(
         identity.canonical_url(),
         "https://github.com/openai/openai-rust/pull/42"
@@ -248,7 +262,7 @@ fn rejects_non_canonical_urls_and_ssrf_shapes() {
         "https://github.com/acme/../pull/1",
         "https://github.com/acme/repo/pull/%2fetc",
     ] {
-        assert!(GitHubPullRequestIdentity::parse(value).is_err(), "{value}");
+        assert!(GitHubReferenceIdentity::parse(value).is_err(), "{value}");
     }
 }
 
@@ -378,16 +392,16 @@ fn happy_projection_routes() -> Vec<(&'static str, Vec<MockResponse>)> {
     ]
 }
 
-fn pull_request_identity() -> GitHubPullRequestIdentity {
-    GitHubPullRequestIdentity {
+fn pull_request_identity() -> GitHubReferenceIdentity {
+    GitHubReferenceIdentity {
         owner: "acme".into(),
         repository: "context".into(),
-        number: 7,
+        object: GitHubObject::PullRequest { number: 7 },
     }
 }
 
-fn previous_observation() -> GitHubPullRequestObservation {
-    GitHubPullRequestObservation {
+fn previous_observation() -> GitHubReferenceObservation {
+    GitHubReferenceObservation {
         identity: pull_request_identity(),
         canonical_url: "https://github.com/acme/context/pull/7".into(),
         title: "Compile bounded context".into(),
@@ -400,12 +414,14 @@ fn previous_observation() -> GitHubPullRequestObservation {
         changed_paths: vec!["apps/server/src/integrations/github.rs".into()],
         checks: vec![
             GitHubCheckObservation {
+                kind: GitHubCheckKind::CheckRun,
                 name: "contract".into(),
                 status: "completed".into(),
                 conclusion: Some("success".into()),
                 details_url: Some("https://github.com/acme/context/actions/runs/9".into()),
             },
             GitHubCheckObservation {
+                kind: GitHubCheckKind::CheckRun,
                 name: "external".into(),
                 status: "completed".into(),
                 conclusion: None,
@@ -476,8 +492,14 @@ fn conditional_projection_routes(
 }
 
 fn assert_conditional_projection_requests(requests: &[RecordedRequest]) {
-    assert_eq!(requests.len(), 4);
-    for path in [PULL_PATH, COMMITS_PATH, FILES_PATH, CHECKS_PATH] {
+    assert_eq!(requests.len(), 5);
+    for path in [
+        PULL_PATH,
+        COMMITS_PATH,
+        FILES_PATH,
+        CHECKS_PATH,
+        STATUSES_PATH,
+    ] {
         assert_eq!(request_count(requests, path), 1, "{path}");
     }
     let pull = requests
@@ -519,11 +541,11 @@ async fn observes_allowlisted_repository_pr_commit_files_and_checks_projection()
     assert_eq!(commit.get("sha").and_then(Value::as_str), Some(HEAD_SHA));
 
     let result = client
-        .observe_pull_request(
-            GitHubPullRequestIdentity {
+        .observe_reference(
+            GitHubReferenceIdentity {
                 owner: "acme".into(),
                 repository: "context".into(),
-                number: 7,
+                object: GitHubObject::PullRequest { number: 7 },
             },
             None,
         )
@@ -560,7 +582,7 @@ async fn observes_allowlisted_repository_pr_commit_files_and_checks_projection()
     }
 
     let requests = server.requests().await;
-    assert_eq!(requests.len(), 6);
+    assert_eq!(requests.len(), 7);
     for request in &requests {
         assert_eq!(request.method, "GET");
         assert!(request.authorized);
@@ -588,9 +610,9 @@ async fn conditional_refresh_reports_not_modified_only_after_observing_all_subre
     let previous = previous_observation();
     let result = server
         .client()
-        .observe_pull_request(
+        .observe_reference(
             pull_request_identity(),
-            Some(GitHubPullRequestCursor {
+            Some(GitHubReferenceCursor {
                 etag: "\"pr-v1\"",
                 observation: &previous,
             }),
@@ -608,9 +630,9 @@ async fn conditional_refresh_observes_a_check_only_transition_after_pr_304() {
     let previous = previous_observation();
     let result = server
         .client()
-        .observe_pull_request(
+        .observe_reference(
             pull_request_identity(),
-            Some(GitHubPullRequestCursor {
+            Some(GitHubReferenceCursor {
                 etag: "\"pr-v1\"",
                 observation: &previous,
             }),
@@ -683,9 +705,9 @@ async fn conditional_refresh_uses_a_changed_pr_head_for_the_bounded_projection()
     let previous = previous_observation();
     let result = server
         .client()
-        .observe_pull_request(
+        .observe_reference(
             pull_request_identity(),
-            Some(GitHubPullRequestCursor {
+            Some(GitHubReferenceCursor {
                 etag: "\"pr-v1\"",
                 observation: &previous,
             }),
@@ -704,7 +726,7 @@ async fn conditional_refresh_uses_a_changed_pr_head_for_the_bounded_projection()
     );
 
     let requests = server.requests().await;
-    assert_eq!(requests.len(), 4);
+    assert_eq!(requests.len(), 5);
     assert_eq!(request_count(&requests, PULL_PATH), 1);
     assert_eq!(request_count(&requests, COMMITS_PATH), 1);
     assert_eq!(request_count(&requests, FILES_PATH), 1);
@@ -894,4 +916,328 @@ fn refuses_silently_truncated_provider_pages() {
     assert!(has_next_page(Some(&next)));
     assert!(!has_next_page(Some(&last)));
     assert!(!has_next_page(None));
+}
+
+#[test]
+fn accepts_repository_and_full_commit_urls_without_normalized_path_bypasses() {
+    let repository = GitHubReferenceIdentity::parse("https://github.com/acme/context").unwrap();
+    assert_eq!(repository.object_kind(), "repository");
+    assert_eq!(repository.external_id(), "acme/context");
+    let commit_url = format!("https://github.com/acme/context/commit/{HEAD_SHA}");
+    let commit = GitHubReferenceIdentity::parse(&commit_url).unwrap();
+    assert_eq!(commit.object_kind(), "commit");
+    assert_eq!(commit.external_id(), format!("acme/context@{HEAD_SHA}"));
+    for url in [
+        "https://github.com/acme/context/",
+        "https://github.com/acme/context/commit/main",
+        "https://github.com/acme/context/commit/2222222",
+        "https://github.com/acme/ignored/../context",
+        "https://github.com/acme/context/pull/0007",
+        "https://github.com/acme/context/pull/+7",
+        "https://github.com/acme/context?query=1",
+        "https://github.com/acme/%63ontext",
+        "https://github.com/acme\\context",
+        "https://github.com:443/acme/context",
+        "https://127.0.0.1/acme/context",
+        "https://github.com/acme/context/tree/main",
+    ] {
+        assert!(GitHubReferenceIdentity::parse(url).is_err(), "{url}");
+    }
+}
+
+#[tokio::test]
+async fn observes_repository_metadata_and_etag_without_assigning_an_immutable_revision() {
+    let server = FakeGitHubServer::start(vec![(
+        REPOSITORY_PATH,
+        vec![
+            MockResponse::json(
+                StatusCode::OK,
+                &json!({
+                    "full_name": "acme/context", "archived": true,
+                    "created_at": "2026-08-24T10:00:00Z", "updated_at": "2026-08-25T10:00:00Z",
+                    "description": "untrusted repository description must not be imported",
+                    "clone_url": "https://evil.example/repo", "default_branch": "main"
+                }),
+            )
+            .with_header("etag", "\"repo-v1\""),
+            MockResponse::json(StatusCode::NOT_MODIFIED, &Value::Null),
+        ],
+    )])
+    .await;
+    let client = server.client();
+    let identity = GitHubReferenceIdentity::parse("https://github.com/acme/context").unwrap();
+    let GitHubObserveResult::Observed { observation, etag } = client
+        .observe_reference(identity.clone(), None)
+        .await
+        .unwrap()
+    else {
+        panic!("expected observation")
+    };
+    assert_eq!(observation.state, "archived");
+    assert_eq!(observation.title, "acme/context");
+    assert!(observation.head_sha.is_empty());
+    assert!(observation.commits.is_empty() && observation.checks.is_empty());
+    assert!(
+        !serde_json::to_string(&observation)
+            .unwrap()
+            .contains("untrusted repository")
+    );
+    assert!(matches!(
+        client
+            .observe_reference(
+                identity,
+                Some(GitHubReferenceCursor {
+                    etag: etag.as_deref().unwrap(),
+                    observation: &observation
+                })
+            )
+            .await
+            .unwrap(),
+        GitHubObserveResult::NotModified
+    ));
+    let requests = server.requests().await;
+    assert_eq!(requests.len(), 2);
+    assert!(
+        requests
+            .iter()
+            .all(|request| request.method == "GET" && request.path_and_query == REPOSITORY_PATH)
+    );
+    assert_eq!(requests[1].if_none_match.as_deref(), Some("\"repo-v1\""));
+}
+
+#[tokio::test]
+async fn observes_commit_and_updates_statuses_even_when_metadata_is_not_modified() {
+    let mut routes = happy_projection_routes();
+    routes.retain(|(path, _)| *path != COMMIT_PATH && *path != CHECKS_PATH);
+    routes.push((COMMIT_PATH, vec![
+        MockResponse::json(StatusCode::OK, &json!({"sha": HEAD_SHA,
+            "commit": {"message": "secret commit message", "author": {"date": "2026-08-25T10:00:00Z"}},
+            "files": [{"filename": "src/main.rs", "patch": "private source patch"}]
+        })).with_header("etag", "\"commit-v1\""),
+        MockResponse::json(StatusCode::NOT_MODIFIED, &Value::Null),
+    ]));
+    routes.push((
+        CHECKS_PATH,
+        vec![
+            MockResponse::json(
+                StatusCode::OK,
+                &json!({"check_runs": [{"name":"ci","status":"completed","conclusion":"success"}]}),
+            ),
+            MockResponse::json(
+                StatusCode::OK,
+                &json!({"check_runs": [{"name":"ci","status":"completed","conclusion":"success"}]}),
+            ),
+        ],
+    ));
+    routes.push((STATUSES_PATH, vec![
+        MockResponse::json(StatusCode::OK, &json!({"sha": HEAD_SHA, "statuses": [{"context":"ci","state":"pending","description":"private status description"}]})),
+        MockResponse::json(StatusCode::OK, &json!({"sha": HEAD_SHA, "statuses": [{"context":"ci","state":"failure","target_url":"https://evil.example/job"}]})),
+    ]));
+    let server = FakeGitHubServer::start(routes).await;
+    let client = server.client();
+    let identity = GitHubReferenceIdentity::parse(&format!(
+        "https://github.com/acme/context/commit/{HEAD_SHA}"
+    ))
+    .unwrap();
+    let GitHubObserveResult::Observed { observation, etag } = client
+        .observe_reference(identity.clone(), None)
+        .await
+        .unwrap()
+    else {
+        panic!("expected observation")
+    };
+    assert_eq!(observation.head_sha, HEAD_SHA);
+    assert_eq!(observation.commits, [HEAD_SHA]);
+    assert_eq!(observation.changed_paths, ["src/main.rs"]);
+    assert_eq!(observation.checks.len(), 2);
+    assert_eq!(observation.checks[0].kind, GitHubCheckKind::CheckRun);
+    assert_eq!(observation.checks[1].kind, GitHubCheckKind::CommitStatus);
+    let serialized = serde_json::to_string(&observation).unwrap();
+    for forbidden in [
+        "secret commit message",
+        "private source patch",
+        "private status description",
+    ] {
+        assert!(!serialized.contains(forbidden));
+    }
+    let GitHubObserveResult::Observed {
+        observation: updated,
+        ..
+    } = client
+        .observe_reference(
+            identity,
+            Some(GitHubReferenceCursor {
+                etag: etag.as_deref().unwrap(),
+                observation: &observation,
+            }),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("changed status must append an observation")
+    };
+    assert_eq!(updated.head_sha, HEAD_SHA);
+    assert_eq!(updated.checks[1].conclusion.as_deref(), Some("failure"));
+    assert!(updated.checks[1].details_url.is_none());
+    let requests = server.requests().await;
+    assert_eq!(requests.len(), 6);
+    assert!(requests.iter().all(|request| request.method == "GET"));
+    assert_eq!(request_count(&requests, STATUSES_PATH), 2);
+}
+
+#[tokio::test]
+async fn pr_304_does_not_hide_a_commit_status_change() {
+    let previous = previous_observation();
+    let mut routes = conditional_projection_routes("success");
+    routes.push((
+        STATUSES_PATH,
+        vec![MockResponse::json(
+            StatusCode::OK,
+            &json!({"sha":HEAD_SHA,"statuses":[{"context":"legacy-ci","state":"failure"}]}),
+        )],
+    ));
+    let server = FakeGitHubServer::start(routes).await;
+    let GitHubObserveResult::Observed { observation, .. } = server
+        .client()
+        .observe_reference(
+            pull_request_identity(),
+            Some(GitHubReferenceCursor {
+                etag: "\"pr-v1\"",
+                observation: &previous,
+            }),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("status change must be observed")
+    };
+    assert_eq!(observation.checks.len(), 3);
+    assert_eq!(observation.checks[2].kind, GitHubCheckKind::CommitStatus);
+    assert_eq!(observation.checks[2].conclusion.as_deref(), Some("failure"));
+}
+
+#[tokio::test]
+async fn rejects_commit_or_status_responses_for_a_different_sha() {
+    let server = FakeGitHubServer::start(vec![(
+        COMMIT_PATH,
+        vec![MockResponse::json(
+            StatusCode::OK,
+            &json!({"sha": NEW_HEAD_SHA}),
+        )],
+    )])
+    .await;
+    let result = server
+        .client()
+        .observe_reference(
+            GitHubReferenceIdentity::parse(&format!(
+                "https://github.com/acme/context/commit/{HEAD_SHA}"
+            ))
+            .unwrap(),
+            None,
+        )
+        .await;
+    assert!(result.is_err());
+    assert_eq!(server.requests().await.len(), 1);
+    assert!(
+        combined_check_observations(
+            &json!({"check_runs":[]}),
+            &json!({"sha":NEW_HEAD_SHA,"statuses":[]}),
+            HEAD_SHA
+        )
+        .is_err()
+    );
+}
+
+#[tokio::test]
+async fn rate_limit_headers_preserve_the_full_deadline_and_block_new_requests() {
+    for status in [StatusCode::FORBIDDEN, StatusCode::TOO_MANY_REQUESTS] {
+        let server = FakeGitHubServer::start(vec![(
+            "/limited",
+            vec![
+                MockResponse::json(status, &json!({"message":"provider-secret"}))
+                    .with_header("retry-after", "120"),
+            ],
+        )])
+        .await;
+        let client = server.client();
+        let error = client
+            .get_value("/limited", &contract_token(), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            AppError::ConnectorRateLimited {
+                retry_after_seconds: 120
+            }
+        ));
+        assert!(!error.to_string().contains("provider-secret"));
+        let blocked = client
+            .get_value("/another-reference", &contract_token(), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            blocked,
+            AppError::ConnectorRateLimited {
+                retry_after_seconds: 120
+            }
+        ));
+        assert_eq!(server.requests().await.len(), 1);
+        // Advance only the local test clock boundary, then demonstrate recovery.
+        *client.retry_not_before.lock().await = Some(tokio::time::Instant::now());
+        server.state.responses.lock().await.insert(
+            "/limited".into(),
+            vec![MockResponse::json(
+                StatusCode::OK,
+                &json!({"recovered":true}),
+            )]
+            .into(),
+        );
+        assert!(
+            client
+                .get_value("/limited", &contract_token(), None)
+                .await
+                .is_ok()
+        );
+        assert_eq!(server.requests().await.len(), 1);
+    }
+}
+
+#[tokio::test]
+async fn primary_403_limit_uses_reset_time_and_the_stricter_retry_after() {
+    let now = Utc::now();
+    let reset = (now.timestamp() + 120).to_string();
+    let server = FakeGitHubServer::start(vec![(
+        "/limited",
+        vec![
+            MockResponse::json(StatusCode::FORBIDDEN, &json!({}))
+                .with_header("x-ratelimit-remaining", "0")
+                .with_header("x-ratelimit-reset", &reset)
+                .with_header("retry-after", "10"),
+        ],
+    )])
+    .await;
+    let error = server
+        .client()
+        .get_value("/limited", &contract_token(), None)
+        .await
+        .unwrap_err();
+    let AppError::ConnectorRateLimited {
+        retry_after_seconds,
+    } = error
+    else {
+        panic!("403 with exhausted quota must be retryable")
+    };
+    assert!((120..=121).contains(&retry_after_seconds));
+    assert_eq!(server.requests().await.len(), 1);
+}
+
+#[tokio::test]
+async fn rate_limit_response_exposes_a_sanitized_retry_after_header() {
+    use axum::response::IntoResponse;
+    let response = AppError::ConnectorRateLimited {
+        retry_after_seconds: 120,
+    }
+    .into_response();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.headers().get("retry-after").unwrap(), "120");
 }
