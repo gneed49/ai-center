@@ -11,14 +11,26 @@ Les tickets ci-dessous forment un graphe. Un ticket dépendant commence après
 intégration de ses prérequis. Les branches de travail sont fusionnées dans la
 branche de consolidation après leurs validations ciblées.
 
-| Ticket  | Objet                                                  | Dépendances   | Statut  |
-| ------- | ------------------------------------------------------ | ------------- | ------- |
-| ACP-T01 | Intégration locale isolée                              | Aucune        | Prêt    |
-| ACP-T02 | Invalidation ciblée des versions sources               | Aucune        | Prêt    |
-| ACP-T03 | Références GitHub repository, PR, commit et checks     | Aucune        | Prêt    |
-| ACP-T04 | Certification des parcours desktop manquants           | T01, T02, T03 | À faire |
-| ACP-T05 | Revue du protocole d'évaluation et gates de promotion  | Aucune        | À faire |
-| ACP-T06 | Revue Standards/Spec, corrections et preuves courantes | T01–T05       | À faire |
+| Ticket  | Objet                                                  | Dépendances        | Statut                                            |
+| ------- | ------------------------------------------------------ | ------------------ | ------------------------------------------------- |
+| ACP-T01 | Intégration locale isolée                              | Aucune             | Intégré et vérifié localement                     |
+| ACP-T02 | Invalidation ciblée des versions sources               | Aucune             | Intégré et vérifié localement                     |
+| ACP-T03 | Références GitHub repository, PR, commit et checks     | Aucune             | Intégré ; contrats simulés et PostgreSQL vérifiés |
+| ACP-T04 | Certification des parcours desktop manquants           | T01, T02, T03, T07 | En cours                                          |
+| ACP-T05 | Revue du protocole d'évaluation et gates de promotion  | Aucune             | En cours ; gates live ouvertes                    |
+| ACP-T06 | Revue Standards/Spec, corrections et preuves courantes | T01–T05, T07–T10   | À faire                                           |
+| ACP-T07 | Évaluation structurée de couverture                    | T02                | Intégré et vérifié localement                     |
+| ACP-T08 | Traçabilité du travail externe                         | T03, T07           | En cours                                          |
+| ACP-T09 | Dépendances web                                        | Aucune             | En cours                                          |
+| ACP-T10 | Smoke métier du client Tauri Linux                     | T01                | Préparation ; exécution native en attente         |
+
+Point de contrôle du 5 septembre 2026 : T01, T02, T03 et T07 sont réunis au
+commit `37921d8`. Le cycle isolé complet passe : 32 pgTAP, neuf tests métier
+PostgreSQL, restauration de 39 tables et 96 policies, magic link local et
+parcours Chromium full-stack jusqu'au handoff rechargé. Le nettoyage de la
+stack est confirmé. Ces preuves utilisent le moteur déterministe et des faux
+fournisseurs ; elles ne ferment pas les gates de valeur, GitHub live ou alpha
+privée. Le build Tauri Linux passe ; son smoke métier reste distinct.
 
 ## ACP-T01 — Intégration locale isolée
 
@@ -110,9 +122,9 @@ exact des gates restant ouverts, branche unique et PR relisible.
 
 ## Écarts additionnels confirmés pendant la lecture du code
 
-Ces tickets complètent le graphe initial. T04 et T06 attendent également leur
-intégration. T07 attend T02 ; T08 attend T03 et T07 afin de limiter les conflits
-sur les contrats et l'orchestration métier.
+Ces tickets complètent le graphe initial. T07 attend T02 ; T08 attend T03 et
+T07. T04 commence par les parcours indépendants de T08 ; la certification
+consolidée de T06 attend leur intégration à tous les deux.
 
 ### ACP-T07 — Évaluation structurée de couverture
 

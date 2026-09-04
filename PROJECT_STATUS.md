@@ -1,11 +1,12 @@
 ---
 project: AI Center
 status_schema: 1
-last_reviewed: 2026-09-03
+last_reviewed: 2026-09-05
 stage: candidate-alpha
 health: amber
 canonical_path: /home/gneed49/Documents/projects/AICenter
 audit_base_commit: 8a6e0da08bc2cd47088e0b25af398ec3ba30312c
+verified_consolidation_commit: 37921d81f2336fc88d98986d4bd798ba6f516f49
 tracking_commit: resolve-with-git-log--1---PROJECT_STATUS.md
 ---
 
@@ -13,7 +14,11 @@ tracking_commit: resolve-with-git-log--1---PROJECT_STATUS.md
 
 ## Résumé
 
-AI Center est une fondation desktop/web de contrôle de contexte et de cohérence. La branche de référence est `feat/alpha-context-proof`, 14 commits devant l'ancien MVP `feat/unified-dev-flow`. La fondation est solide, mais les portes externes empêchent encore une release alpha.
+AI Center est une fondation desktop/web de contrôle de contexte et de cohérence.
+La reprise du plan Alpha Context Proof se poursuit sur `feat/alpha-context-proof`
+dans le checkout de ce projet ChatGPT. Le chemin canonique ci-dessus est conservé ;
+son commit de suivi local a été repris sans modifier ce checkout canonique.
+Les changements de cette reprise sont locaux ; les gates de release restent ouvertes.
 
 ## Ce qui est en place
 
@@ -25,21 +30,27 @@ AI Center est une fondation desktop/web de contrôle de contexte et de cohérenc
 
 ## Preuves
 
-- PR draft n°1 ouverte, fusionnable et propre au 3 septembre 2026.
-- CI Desktop et OCI vertes au commit d'audit.
-- Registre : 75 tests Rust, 32 pgTAP, 6 PostgreSQL, 4 Vitest, 57 Playwright simulés, 1 full-stack Chromium et 9 tests offline.
-- Équivalence de restauration enregistrée pour 39 tables et 96 policies.
+- PR draft n°1 et CI Desktop/OCI vérifiées sur le commit distant `8a6e0da` avant reprise ; les nouveaux commits locaux n'ont pas encore de preuve CI distante.
+- Consolidation `37921d8` : stack isolée T01, invalidation ciblée T02, GitHub repository/PR/commit T03 et couverture structurée indépendante T07 intégrés.
+- Cycle local complet réussi : 32 pgTAP, neuf tests métier PostgreSQL, magic link et refus de permissions attendus, un parcours Chromium full-stack jusqu'au handoff rechargé.
+- Restauration de 39 tables et 96 policies vérifiée ; aucune ressource de la stack jetable après nettoyage.
+- 17 tests de garde de stack, liens Markdown et scanner de secrets réussis. Le build Tauri Linux depuis la consolidation passe ; il ne constitue pas un smoke métier natif.
+- [Tickets et point de contrôle](specs/alpha-context-proof/tickets.md) ; [registre détaillé](specs/alpha-context-proof/validation.md), dont les preuves antérieures restent datées.
 
 ## Risques et portes
 
 - Quota OpenAI et évaluation comparative réels non terminés.
 - Corpus réels supplémentaires et GitHub App privée à valider.
-- Smoke Tauri interactif, workflow manuel, HTTPS privé, dogfood et alpha équipe à réaliser.
+- Correction du cache au changement d'identité, certification des parcours, traçabilité externe, protocole d'évaluation et dépendances encore en cours de consolidation.
+- Smoke Tauri interactif en attente d'autorisation de l'environnement de validation ; workflow manuel, HTTPS privé, dogfood et alpha équipe à réaliser.
 - Android est hors du jalon Alpha Context Proof actuel.
 
 ## Prochaine étape
 
-Fermer les gates du registre de preuve dans l'ordre : fournisseur réel, corpus, GitHub App, Tauri manuel, hébergement privé, dogfood, équipe alpha. Ne pas créer `v0.2.0-alpha.1` avant cela.
+Terminer T04/T05/T08/T09/T10, réunir les changements et effectuer la revue
+Standards/Spec avant mise à jour de la PR. Fermer ensuite les gates réelles du
+plan avec corpus autorisé, fournisseurs configurés, annotations humaines et
+périodes d'usage requises. Ne pas créer `v0.2.0-alpha.1` avant leur réussite.
 
 ## Mise à jour par un agent
 
