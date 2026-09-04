@@ -155,3 +155,20 @@ L'audit npm courant signale `fast-uri` 3.1.5 et `qs` 6.15.3. Mettre à jour les
 résolutions compatibles, vérifier le diff du lockfile et relancer audit, build
 et validations web. Ne pas déplacer des dépendances pour masquer les avis.
 T06 attend également T09. Ce ticket est indépendant des changements métier.
+
+### ACP-T10 — Smoke métier du client Tauri Linux
+
+**Exigences :** ACP-071 ; phases 1, 8 et 10.
+
+Le job Tauri actuel compile seulement le binaire. Ajouter un smoke WebDriver
+qui lance le vrai client Linux avec un profil et un affichage jetables, puis
+parcourt des actions métier contre la stack déterministe isolée T01. Utiliser
+un overlay de configuration limité aux origines loopback de test, sans élargir
+la CSP produit ni toucher au mobile gelé. Les pilotes et l'affichage virtuel
+restent des dépendances de validation.
+
+**Acceptation :** application native chargée, projet et connaissances persistés,
+pack/handoff lisibles après reload, capture et assertions de rendu ; nettoyage
+des processus et du profil. Le workflow pré-alpha exécute réellement ce smoke
+en plus du build. Un succès local ne certifie pas le déploiement privé HTTPS.
+T10 dépend de T01 et rejoint les prérequis de T06.
