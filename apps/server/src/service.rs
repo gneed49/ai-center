@@ -2737,7 +2737,7 @@ async fn resolve_insight_command(
     }
     let row: Option<ResolutionKnowledgeRow> = sqlx::query_as(
         "select k.id, k.workspace_id, k.context_node_id, k.latest_version,
-                v.entry_type, v.title, v.rationale, v.id
+                v.entry_type, v.title, v.rationale, v.statement, v.id
          from app.knowledge_entries k
          join app.knowledge_entry_versions v
            on v.knowledge_entry_id = k.id and v.version_number = k.latest_version
@@ -2762,6 +2762,7 @@ async fn resolve_insight_command(
         entry_type,
         old_title,
         old_rationale,
+        old_statement,
         old_version_id,
     ) = row.ok_or_else(|| {
         AppError::Conflict(
@@ -2777,6 +2778,10 @@ async fn resolve_insight_command(
     let next_rationale = rationale
         .as_deref()
         .map_or(old_rationale.as_str(), str::trim);
+    validate_revision_changes(
+        (&old_title, &old_statement, &old_rationale),
+        (next_title, statement, next_rationale),
+    )?;
     let (new_version_id, new_version_public_id): (i64, Uuid) = sqlx::query_as(
         "insert into app.knowledge_entry_versions (
            knowledge_entry_id, workspace_id, project_id, context_node_id, version_number,
@@ -2810,7 +2815,8 @@ async fn resolve_insight_command(
     .bind(project.id)
     .fetch_one(&mut *tx)
     .await?;
-    invalidate_dependent_projections(&mut tx, project.id, &[old_version_id]).await?;
+    invalidate_dependent_projections(&mut tx, project.id, &[old_version_id], state.actor_id)
+        .await?;
     sqlx::query(
         "update app.insights set status = 'resolved', resolution_justification = $2,
                 resolved_by_actor_id = $3, resolved_at = now(), updated_at = now()
@@ -2901,8 +2907,8 @@ pub async fn project_history(
     Ok(history)
 }
 
-type KnowledgeRevisionRow = (i64, i64, i64, i64, i32, String, String, String, i64);
-type ResolutionKnowledgeRow = (i64, i64, i64, i32, String, String, String, i64);
+type KnowledgeRevisionRow = (i64, i64, i64, i64, i32, String, String, String, String, i64);
+type ResolutionKnowledgeRow = (i64, i64, i64, i32, String, String, String, String, i64);
 
 pub async fn revise_knowledge_for_project(
     state: &AppState,
@@ -2944,7 +2950,7 @@ async fn revise_knowledge_command(
     let mut tx = state.begin_request().await?;
     let row: Option<KnowledgeRevisionRow> = sqlx::query_as(
         "select k.id, k.workspace_id, k.project_id, k.context_node_id, k.latest_version,
-                v.entry_type, v.title, v.rationale, v.id
+                v.entry_type, v.title, v.rationale, v.statement, v.id
          from app.knowledge_entries k
          join app.workspaces w on w.id = k.workspace_id
          join app.projects p on p.id = k.project_id
@@ -2967,6 +2973,7 @@ async fn revise_knowledge_command(
         entry_type,
         old_title,
         old_rationale,
+        old_statement,
         old_version_id,
     ) = row.ok_or(AppError::NotFound)?;
     let next_version = latest_version + 1;
@@ -2980,6 +2987,10 @@ async fn revise_knowledge_command(
         .rationale
         .as_deref()
         .map_or(old_rationale.as_str(), str::trim);
+    validate_revision_changes(
+        (&old_title, &old_statement, &old_rationale),
+        (title, statement, rationale),
+    )?;
     let version_public_id: Uuid = sqlx::query_scalar(
         "insert into app.knowledge_entry_versions (
            knowledge_entry_id, workspace_id, project_id, context_node_id, version_number,
@@ -3011,7 +3022,8 @@ async fn revise_knowledge_command(
     .bind(project_id)
     .fetch_one(&mut *tx)
     .await?;
-    invalidate_dependent_projections(&mut tx, project_id, &[old_version_id]).await?;
+    invalidate_dependent_projections(&mut tx, project_id, &[old_version_id], state.actor_id)
+        .await?;
     sqlx::query(
         "insert into app.domain_events (
            workspace_id, project_id, event_type, aggregate_kind, aggregate_public_id, payload
@@ -3074,47 +3086,207 @@ async fn invalidate_projections(
     Ok(())
 }
 
+fn validate_revision_changes(
+    previous: (&str, &str, &str),
+    proposed: (&str, &str, &str),
+) -> AppResult<()> {
+    if (previous.0.trim(), previous.1.trim(), previous.2.trim())
+        == (proposed.0.trim(), proposed.1.trim(), proposed.2.trim())
+    {
+        return Err(AppError::Invalid(
+            "a knowledge revision must change its title, statement, or rationale".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Invalidates exact version dependencies without rewriting historical packs.
+/// An unrelated pack keeps its source graph version, so the separate handoff
+/// and generation guards still reject it after the graph has advanced.
 async fn invalidate_dependent_projections(
     tx: &mut Transaction<'_, Postgres>,
     project_id: i64,
-    _changed_version_ids: &[i64],
+    changed_version_ids: &[i64],
+    actor_id: Uuid,
 ) -> AppResult<()> {
-    sqlx::query(
-        "update app.context_packs cp
+    let packs: Vec<(i64, Uuid, bool)> = sqlx::query_as(
+        "with candidates as (
+           select cp.id,
+             not exists (
+               select 1 from app.context_pack_sources source
+               where source.context_pack_id = cp.id
+             ) and not exists (
+               select 1 from app.context_pack_selection_items selection
+               where selection.context_pack_id = cp.id
+                 and selection.decision = 'included'
+                 and selection.candidate_kind = 'external_reference_observation'
+             ) as missing_provenance,
+             exists (
+               select 1 from app.context_pack_sources source
+               where source.context_pack_id = cp.id
+                 and source.knowledge_entry_version_id = any($2)
+             ) or exists (
+               select 1 from app.context_pack_selection_items selection
+               where selection.context_pack_id = cp.id
+                 and selection.decision = 'included'
+                 and selection.knowledge_entry_version_id = any($2)
+             ) as depends_on_revision
+           from app.context_packs cp
+           where cp.project_id = $1 and cp.status = 'current'
+         )
+         update app.context_packs cp
          set status = 'stale', invalidated_at = now(),
-             stale_reason = 'global invalidation fallback after graph revision'
-         where cp.project_id = $1 and cp.status = 'current'
-         ",
+             stale_reason = case when candidate.missing_provenance
+               then 'global invalidation fallback: missing source provenance'
+               else 'included knowledge source version was revised' end
+         from candidates candidate
+         where cp.id = candidate.id
+           and (candidate.missing_provenance or candidate.depends_on_revision)
+         returning cp.id, cp.public_id, candidate.missing_provenance",
     )
     .bind(project_id)
-    .execute(&mut **tx)
-    .await?;
-    let stale_deliverable_ids: Vec<i64> = sqlx::query_scalar(
-        "update app.deliverables d
-         set status = 'stale', stale_at = now()
-         where d.project_id = $1 and d.status = 'committed'
-         returning d.id",
-    )
-    .bind(project_id)
+    .bind(changed_version_ids)
     .fetch_all(&mut **tx)
     .await?;
-    if !stale_deliverable_ids.is_empty() {
-        sqlx::query(
-            "update app.evidences set status = 'stale'
-             where deliverable_id = any($1) and status in ('candidate','valid')",
+    let pack_ids = packs.iter().map(|pack| pack.0).collect::<Vec<_>>();
+    let deliverables: Vec<(i64, Uuid, bool)> = sqlx::query_as(
+        "with candidates as (
+           select d.id,
+             d.source_context_pack_id is null and not exists (
+               select 1 from app.deliverable_sources source
+               where source.deliverable_id = d.id
+                 and source.source_kind in (
+                   'knowledge_entry_version', 'context_pack', 'external_reference_observation'
+                 )
+             ) as missing_provenance,
+             d.source_context_pack_id = any($3) or exists (
+               select 1 from app.deliverable_sources source
+               where source.deliverable_id = d.id
+                 and (source.knowledge_entry_version_id = any($2)
+                      or source.context_pack_id = any($3))
+             ) as depends_on_revision
+           from app.deliverables d
+           where d.project_id = $1 and d.status in ('draft', 'committed')
+         )
+         update app.deliverables d
+         set status = 'stale', stale_at = now()
+         from candidates candidate
+         where d.id = candidate.id
+           and (candidate.missing_provenance or candidate.depends_on_revision)
+         returning d.id, d.public_id, candidate.missing_provenance",
+    )
+    .bind(project_id)
+    .bind(changed_version_ids)
+    .bind(&pack_ids)
+    .fetch_all(&mut **tx)
+    .await?;
+    let deliverable_ids = deliverables.iter().map(|item| item.0).collect::<Vec<_>>();
+    // A proof may cite the revised requirement directly, even when its
+    // deliverable has no dependency on that requirement in its own content.
+    let evidence_ids: Vec<i64> = sqlx::query_scalar(
+        "update app.evidences
+         set status = 'stale'
+         where project_id = $1 and status in ('candidate', 'valid')
+           and (requirement_version_id = any($2) or deliverable_id = any($3))
+         returning id",
+    )
+    .bind(project_id)
+    .bind(changed_version_ids)
+    .bind(&deliverable_ids)
+    .fetch_all(&mut **tx)
+    .await?;
+    let affected_coverage_deliverables: Vec<i64> = sqlx::query_scalar(
+        "update app.requirement_coverage
+         set status = 'missing',
+             explanation = 'Projection obsolète après révision d’une source dépendante',
+             updated_at = now()
+         where project_id = $1
+           and (requirement_version_id = any($2)
+                or deliverable_id = any($3) or evidence_id = any($4))
+         returning deliverable_id",
+    )
+    .bind(project_id)
+    .bind(changed_version_ids)
+    .bind(&deliverable_ids)
+    .bind(&evidence_ids)
+    .fetch_all(&mut **tx)
+    .await?;
+    sqlx::query(
+        "update app.deliverables d
+         set coverage_status = case
+           when not exists (
+             select 1 from app.requirement_coverage c where c.deliverable_id = d.id
+           ) then 'missing'
+           when not exists (
+             select 1 from app.requirement_coverage c
+             where c.deliverable_id = d.id and c.status <> 'covered'
+           ) then 'covered'
+           when exists (
+             select 1 from app.requirement_coverage c
+             where c.deliverable_id = d.id and c.status = 'covered'
+           ) then 'partial'
+           else 'missing' end
+         where d.project_id = $1 and (d.id = any($2) or d.id = any($3))",
+    )
+    .bind(project_id)
+    .bind(&affected_coverage_deliverables)
+    .bind(&deliverable_ids)
+    .execute(&mut **tx)
+    .await?;
+
+    let fallback_pack_ids = packs
+        .iter()
+        .filter(|item| item.2)
+        .map(|item| item.1)
+        .collect::<Vec<_>>();
+    let fallback_deliverable_ids = deliverables
+        .iter()
+        .filter(|item| item.2)
+        .map(|item| item.1)
+        .collect::<Vec<_>>();
+    if !packs.is_empty()
+        || !deliverables.is_empty()
+        || !evidence_ids.is_empty()
+        || !affected_coverage_deliverables.is_empty()
+    {
+        let (workspace_id, project_public_id, graph_version): (i64, Uuid, i64) = sqlx::query_as(
+            "select workspace_id, public_id, graph_version from app.projects where id = $1",
         )
-        .bind(&stale_deliverable_ids)
-        .execute(&mut **tx)
+        .bind(project_id)
+        .fetch_one(&mut **tx)
         .await?;
-        sqlx::query(
-            "update app.requirement_coverage
-             set status = 'missing',
-                 explanation = 'Projection obsolète après révision de contexte',
-                 updated_at = now()
-             where deliverable_id = any($1)",
+        let source_version_ids: Vec<Uuid> = sqlx::query_scalar(
+            "select public_id from app.knowledge_entry_versions
+             where project_id = $1 and id = any($2) order by id",
         )
-        .bind(&stale_deliverable_ids)
-        .execute(&mut **tx)
+        .bind(project_id)
+        .bind(changed_version_ids)
+        .fetch_all(&mut **tx)
+        .await?;
+        audit(
+            tx,
+            workspace_id,
+            Some(project_id),
+            actor_id,
+            "projections.invalidated",
+            "project",
+            project_public_id,
+            None,
+            Some(json!({
+                "mode": "version_dependencies",
+                "source_version_ids": source_version_ids,
+                "resulting_graph_version": graph_version,
+                "context_pack_ids": packs.iter().map(|item| item.1).collect::<Vec<_>>(),
+                "deliverable_ids": deliverables.iter().map(|item| item.1).collect::<Vec<_>>(),
+                "evidence_count": evidence_ids.len(),
+                "coverage_count": affected_coverage_deliverables.len(),
+                "fallback": {
+                    "reason": "missing_source_provenance",
+                    "context_pack_ids": fallback_pack_ids,
+                    "deliverable_ids": fallback_deliverable_ids,
+                },
+            })),
+        )
         .await?;
     }
     Ok(())
@@ -3662,6 +3834,23 @@ mod tests {
 
     use super::AppState;
     use crate::{agent::DeterministicEngine, auth::RequestContext, error::AppError};
+
+    #[test]
+    fn revision_requires_a_content_change_after_trimming() {
+        let original = ("Title", "Statement", "Rationale");
+        assert!(super::validate_revision_changes(original, original).is_err());
+        assert!(
+            super::validate_revision_changes(original, (" Title ", " Statement\n", " Rationale "),)
+                .is_err()
+        );
+        for changed in [
+            ("New title", "Statement", "Rationale"),
+            ("Title", "New statement", "Rationale"),
+            ("Title", "Statement", "New rationale"),
+        ] {
+            assert!(super::validate_revision_changes(original, changed).is_ok());
+        }
+    }
 
     fn unscoped_state() -> AppState {
         AppState {
