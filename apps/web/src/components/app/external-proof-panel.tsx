@@ -103,10 +103,7 @@ export function ExternalProofPanel({
   });
   const refreshReference = useMutation({
     mutationFn: (command: ReferenceCommand) =>
-      api.refreshExternalReference(
-        command.referenceId,
-        command.idempotencyKey,
-      ),
+      api.refreshExternalReference(command.referenceId, command.idempotencyKey),
     onSuccess: (reference) => refreshProjection(reference.public_id),
   });
   const createEvidence = useMutation({
@@ -121,15 +118,14 @@ export function ExternalProofPanel({
           requirement_id: command.coverage.requirement_public_id,
           deliverable_id: deliverableId,
           deliverable_section_id: command.coverage.section_public_id,
-          title: `PR observée — ${command.coverage.requirement_title}`,
+          title: `Référence observée — ${command.coverage.requirement_title}`,
           description:
             "Preuve candidate issue d’une observation GitHub read-only.",
         },
         command.idempotencyKey,
       );
     },
-    onSuccess: (_evidence, command) =>
-      refreshProjection(command.referenceId),
+    onSuccess: (_evidence, command) => refreshProjection(command.referenceId),
   });
   const reviewEvidence = useMutation({
     mutationFn: (command: ReviewCommand) =>
@@ -139,8 +135,7 @@ export function ExternalProofPanel({
         command.decision,
         command.idempotencyKey,
       ),
-    onSuccess: (_evidence, command) =>
-      refreshProjection(command.referenceId),
+    onSuccess: (_evidence, command) => refreshProjection(command.referenceId),
   });
 
   function submit(event: FormEvent) {
@@ -154,7 +149,10 @@ export function ExternalProofPanel({
   }
 
   return (
-    <section className="border border-slate-200 bg-white" aria-labelledby="external-proof-title">
+    <section
+      className="border border-slate-200 bg-white"
+      aria-labelledby="external-proof-title"
+    >
       <div className="border-b border-slate-200 p-5 sm:p-6">
         <div className="flex items-center gap-2">
           <GitPullRequest className="size-4 text-indigo-600" aria-hidden />
@@ -163,19 +161,21 @@ export function ExternalProofPanel({
           </h2>
         </div>
         <p className="mt-2 text-sm leading-6 text-slate-600">
-          AI Center lit la PR et ses checks, puis attend votre validation. Il ne
-          crée ni branche, commit, commentaire ou pull request.
+          Observez un dépôt, une pull request ou un commit GitHub. Les preuves
+          portent sur un SHA précis et attendent votre validation humaine.
         </p>
-        <form className="mt-5 flex flex-col gap-3 sm:flex-row" onSubmit={submit}>
+        <form
+          className="mt-5 flex flex-col gap-3 sm:flex-row"
+          onSubmit={submit}
+        >
           <div className="min-w-0 flex-1">
-            <label className="sr-only" htmlFor="github-pull-request-url">
-              URL canonique de la pull request GitHub
+            <label className="sr-only" htmlFor="github-reference-url">
+              URL canonique du dépôt, de la pull request ou du commit GitHub
             </label>
             <input
-              id="github-pull-request-url"
+              id="github-reference-url"
               type="url"
               required
-              pattern="https://github\.com/.+/.+/pull/[0-9]+"
               placeholder="https://github.com/owner/repository/pull/123"
               value={url}
               onChange={(event) => setUrl(event.target.value)}
@@ -188,7 +188,9 @@ export function ExternalProofPanel({
             ) : (
               <ExternalLink aria-hidden />
             )}
-            {importReference.isPending ? "Observation…" : "Observer la PR"}
+            {importReference.isPending
+              ? "Observation…"
+              : "Observer la référence"}
           </Button>
         </form>
         {importReference.error ? (
@@ -264,7 +266,7 @@ export function ExternalProofPanel({
           })
         ) : (
           <p className="text-sm text-slate-500">
-            Aucune PR n’est encore rattachée à ce projet.
+            Aucune référence GitHub n’est encore rattachée à ce projet.
           </p>
         )}
         {refreshReference.error ? (
@@ -335,7 +337,7 @@ function ReferenceCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <a
-              className="font-semibold text-indigo-700 underline-offset-4 hover:underline"
+              className="break-all font-semibold text-indigo-700 underline-offset-4 hover:underline"
               href={fallback.canonical_url}
               target="_blank"
               rel="noreferrer"
@@ -344,7 +346,7 @@ function ReferenceCard({
             </a>
             <StatusPill status={fallback.sync_status} />
           </div>
-          <p className="mt-1 font-mono text-[11px] text-slate-500">
+          <p className="mt-1 break-all font-mono text-[11px] text-slate-500">
             {fallback.repository_full_name}
             {headSha ? ` · head ${headSha.slice(0, 12)}` : ""}
           </p>
@@ -373,27 +375,34 @@ function ReferenceCard({
         </p>
       ) : (
         <div className="mt-4 space-y-3">
-          {coverageItems.map((coverage) => {
-            const evidence = evidences.find(
-              (item) =>
-                item.requirement_version_public_id ===
-                  coverage.requirement_version_public_id &&
-                item.deliverable_public_id === coverage.deliverable_public_id,
-            );
-            return (
-              <EvidenceRow
-                key={coverage.requirement_version_public_id}
-                coverage={coverage}
-                evidence={evidence}
-                createPending={evidencePending}
-                reviewPending={reviewPending}
-                onCreate={() => onCreateEvidence(coverage)}
-                onReview={(decision) =>
-                  evidence && onReview(evidence.public_id, decision)
-                }
-              />
-            );
-          })}
+          {fallback.object_kind === "repository" ? (
+            <p className="text-xs text-muted-foreground">
+              Un dépôt décrit une source mutable. Importez une PR ou un commit
+              avec son SHA complet pour créer une preuve vérifiable.
+            </p>
+          ) : (
+            coverageItems.map((coverage) => {
+              const evidence = evidences.find(
+                (item) =>
+                  item.requirement_version_public_id ===
+                    coverage.requirement_version_public_id &&
+                  item.deliverable_public_id === coverage.deliverable_public_id,
+              );
+              return (
+                <EvidenceRow
+                  key={coverage.requirement_version_public_id}
+                  coverage={coverage}
+                  evidence={evidence}
+                  createPending={evidencePending}
+                  reviewPending={reviewPending}
+                  onCreate={() => onCreateEvidence(coverage)}
+                  onReview={(decision) =>
+                    evidence && onReview(evidence.public_id, decision)
+                  }
+                />
+              );
+            })
+          )}
           {!coverageItems.length ? (
             <p className="text-xs text-slate-500">
               Générez d’abord un plan avec des exigences et sections durables.
@@ -481,7 +490,13 @@ function PersistentMutationError({
     <div className="mt-4 border border-rose-200 bg-rose-50 p-3" role="alert">
       <p className="text-sm text-rose-800">{error.message}</p>
       {retry ? (
-        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={retry}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          onClick={retry}
+        >
           <RotateCcw aria-hidden />
           Réessayer avec la même commande
         </Button>

@@ -1,7 +1,7 @@
 //! Read-only external-reference orchestration.
 //!
 //! GitHub remains the canonical system. This module only observes an
-//! allowlisted pull-request projection, stores append-only observations, and
+//! allowlisted repository, PR, or commit projection, stores append-only observations, and
 //! lets a human promote an observed reference from candidate evidence to valid
 //! evidence. No code path in this module calls a GitHub write API.
 
@@ -21,20 +21,20 @@ use crate::{
     integrations::{
         GitHubRuntime,
         github::{
-            GitHubCheckObservation, GitHubObserveResult, GitHubPullRequestCursor,
-            GitHubPullRequestIdentity, GitHubPullRequestObservation,
+            GitHubCheckKind, GitHubCheckObservation, GitHubObject, GitHubObserveResult,
+            GitHubReferenceCursor, GitHubReferenceIdentity, GitHubReferenceObservation,
         },
     },
     service::AppState,
 };
 
-const EVIDENCE_TYPE: &str = "github_pull_request";
 const CREATE_OPERATION: &str = "external_reference.github_pr.create";
 const REFRESH_OPERATION: &str = "external_reference.github_pr.refresh";
 const EVIDENCE_CREATE_OPERATION: &str = "external_reference.evidence.create";
 const EVIDENCE_REVIEW_OPERATION: &str = "external_reference.evidence.review";
 
-/// Request body for tracking one canonical GitHub pull request.
+/// Request body for tracking a canonical GitHub repository, PR, or commit.
+/// The historical Rust name is retained for route compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CreatePullRequestReference {
     pub url: String,
@@ -67,7 +67,7 @@ pub struct ExternalReferenceSummary {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Immutable observation of the allowlisted GitHub pull-request state.
+/// Immutable observation of the allowlisted GitHub reference state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExternalReferenceObservationView {
     pub public_id: Uuid,
@@ -287,7 +287,7 @@ pub async fn list(
     Ok(rows.into_iter().map(ReferenceRecord::summary).collect())
 }
 
-/// Creates or replays a project-scoped GitHub pull-request reference.
+/// Creates or replays a project-scoped GitHub repository, PR, or commit reference.
 ///
 /// The durable idempotency claim and preflight lookup are committed before the
 /// GitHub request. The provider call therefore never holds a database lock or
@@ -305,7 +305,7 @@ pub async fn create_pull_request(
     idempotency_key: Uuid,
     input: CreatePullRequestReference,
 ) -> AppResult<ExternalReferenceView> {
-    let identity = GitHubPullRequestIdentity::parse(input.url.trim())?;
+    let identity = GitHubReferenceIdentity::parse(input.url.trim())?;
     let normalized_input = CreatePullRequestReference {
         url: identity.canonical_url(),
         tool_connection_id: input.tool_connection_id,
@@ -349,7 +349,7 @@ pub async fn create_pull_request(
 
     let provider_result = github
         .client
-        .observe_pull_request(identity.clone(), None)
+        .observe_reference(identity.clone(), None)
         .await;
     let (observation, etag) = match provider_result {
         Ok(GitHubObserveResult::Observed { observation, etag }) => (*observation, etag),
@@ -429,7 +429,7 @@ pub async fn refresh(
     let reference = load_reference_for_update(&mut claim_tx, state, reference_public_id).await?;
     let connection_id =
         resolve_reference_connection(&mut claim_tx, &reference, github.installation_id).await?;
-    let identity = GitHubPullRequestIdentity::parse(&reference.canonical_url)?;
+    let identity = GitHubReferenceIdentity::parse(&reference.canonical_url)?;
     let previous_observation = load_latest_current_observation(
         &mut claim_tx,
         reference.id,
@@ -471,10 +471,10 @@ pub async fn refresh(
     let cursor = etag
         .as_deref()
         .zip(previous_observation.as_ref())
-        .map(|(etag, observation)| GitHubPullRequestCursor { etag, observation });
+        .map(|(etag, observation)| GitHubReferenceCursor { etag, observation });
     let provider_result = github
         .client
-        .observe_pull_request(identity.clone(), cursor)
+        .observe_reference(identity.clone(), cursor)
         .await;
     match provider_result {
         Ok(GitHubObserveResult::NotModified) => {
@@ -529,6 +529,12 @@ pub async fn refresh(
             complete(&mut tx, &lease, &view).await?;
             tx.commit().await?;
             Ok(view)
+        }
+        Err(error @ AppError::ConnectorRateLimited { .. }) => {
+            // A rate limit says nothing about source availability. Preserve the
+            // last observation, reference state, evidence, and coverage.
+            record_provider_failure(state, context, &lease, &error).await?;
+            Err(error)
         }
         Err(error) if is_unavailable(&error) => {
             let mut tx = begin_scoped_transaction(state, context).await?;
@@ -588,7 +594,7 @@ pub async fn create_evidence(
     input: CreateExternalEvidence,
 ) -> AppResult<ExternalEvidenceView> {
     validate_evidence_input(&input)?;
-    let request_hash = idempotency::hash_request(&input)?;
+    let request_hash = evidence_create_hash(reference_public_id, &input)?;
     let mut tx = begin_scoped_transaction(state, context).await?;
     let reference = load_reference_for_update(&mut tx, state, reference_public_id).await?;
     if reference.sync_status != "current" {
@@ -693,7 +699,7 @@ pub async fn create_evidence(
     .bind(deliverable_id)
     .bind(section_id)
     .bind(reference.id)
-    .bind(EVIDENCE_TYPE)
+    .bind(format!("github_{}", reference.object_kind))
     .bind(input.title.trim())
     .bind(input.description.trim())
     .bind(source_reference)
@@ -1008,8 +1014,8 @@ async fn persist_observed_reference(
     state: &AppState,
     scope: ProjectScope,
     connection: ConnectionRecord,
-    identity: &GitHubPullRequestIdentity,
-    observation: &GitHubPullRequestObservation,
+    identity: &GitHubReferenceIdentity,
+    observation: &GitHubReferenceObservation,
     etag: Option<String>,
 ) -> AppResult<ExternalReferenceView> {
     let previous: Option<PreviousReferenceState> = sqlx::query_as(
@@ -1047,7 +1053,7 @@ async fn persist_observed_reference(
            workspace_id, project_id, tool_connection_id, provider, object_kind,
            external_id, canonical_url, repository_full_name, display_title,
            sync_status, etag, last_synced_at, created_by_actor_id
-         ) values ($1,$2,$3,'github','pull_request',$4,$5,$6,$7,
+         ) values ($1,$2,$3,'github',$10,$4,$5,$6,$7,
                    'current',$8,now(),$9)
          on conflict (project_id, provider, external_id)
          do update set tool_connection_id = excluded.tool_connection_id,
@@ -1069,6 +1075,7 @@ async fn persist_observed_reference(
     .bind(observation.title.trim())
     .bind(etag.clone())
     .bind(state.actor_id)
+    .bind(identity.object_kind())
     .fetch_one(&mut **tx)
     .await?;
 
@@ -1121,7 +1128,7 @@ async fn persist_observed_reference(
             scope.workspace_id,
             scope.project_id,
             reference_id,
-            "La pull request GitHub pointe désormais vers un nouveau head SHA",
+            "La référence GitHub pointe désormais vers un nouveau head SHA",
             "stale",
         )
         .await?;
@@ -1532,10 +1539,10 @@ async fn record_provider_failure(
     idempotency::fail(
         &mut tx,
         lease,
-        502,
-        "connector_unavailable",
+        error.status_code().as_u16(),
+        error.public_code(),
         connector_failure_disposition(error),
-        json!({ "code": "connector_unavailable", "message": "GitHub import failed" }),
+        json!({ "code": error.public_code(), "message": error.public_message() }),
     )
     .await?;
     tx.commit().await?;
@@ -1543,6 +1550,9 @@ async fn record_provider_failure(
 }
 
 fn connector_failure_disposition(error: &AppError) -> FailureDisposition {
+    if matches!(error, AppError::ConnectorRateLimited { .. }) {
+        return FailureDisposition::Retryable;
+    }
     let AppError::Connector(message) = error else {
         return FailureDisposition::Permanent;
     };
@@ -1570,6 +1580,15 @@ fn replay<T: for<'de> Deserialize<'de>>(response: idempotency::StoredResponse) -
         .map_err(|_| AppError::Internal("stored idempotent response is invalid".into()))
 }
 
+fn evidence_create_hash(
+    reference_public_id: Uuid,
+    input: &CreateExternalEvidence,
+) -> AppResult<String> {
+    idempotency::hash_request(
+        &json!({"external_reference_id": reference_public_id, "input": input}),
+    )
+}
+
 fn validate_evidence_input(input: &CreateExternalEvidence) -> AppResult<()> {
     if input.title.trim().is_empty() {
         return Err(AppError::Invalid("evidence title is required".into()));
@@ -1588,22 +1607,41 @@ fn validate_evidence_input(input: &CreateExternalEvidence) -> AppResult<()> {
 }
 
 fn validate_observation(
-    expected: &GitHubPullRequestIdentity,
-    observation: &GitHubPullRequestObservation,
+    expected: &GitHubReferenceIdentity,
+    observation: &GitHubReferenceObservation,
 ) -> AppResult<()> {
+    let kind_valid = match &expected.object {
+        GitHubObject::PullRequest { .. } => {
+            matches!(observation.state.as_str(), "open" | "closed")
+                && valid_git_object_id(&observation.base_sha)
+                && valid_git_object_id(&observation.head_sha)
+        }
+        GitHubObject::Repository => {
+            matches!(observation.state.as_str(), "active" | "archived")
+                && observation.base_sha.is_empty()
+                && observation.head_sha.is_empty()
+                && observation.commits.is_empty()
+                && observation.changed_paths.is_empty()
+                && observation.checks.is_empty()
+        }
+        GitHubObject::Commit { sha } => {
+            observation.state == "committed"
+                && observation.base_sha.is_empty()
+                && &observation.head_sha == sha
+                && observation.commits == [sha.clone()]
+        }
+    };
     if &observation.identity != expected
         || observation.canonical_url != expected.canonical_url()
         || observation.title.trim().is_empty()
-        || !matches!(observation.state.as_str(), "open" | "closed")
-        || !valid_git_object_id(&observation.base_sha)
-        || !valid_git_object_id(&observation.head_sha)
+        || !kind_valid
         || observation
             .commits
             .iter()
             .any(|sha| !valid_git_object_id(sha))
     {
         return Err(AppError::Connector(
-            "GitHub returned an invalid pull-request projection".into(),
+            "GitHub returned an invalid reference projection".into(),
         ));
     }
     Ok(())
@@ -1623,7 +1661,10 @@ fn decision_status(decision: EvidenceDecision) -> &'static str {
 fn is_unavailable(error: &AppError) -> bool {
     match error {
         AppError::Connector(message) => {
-            message.contains("status 403") || message.contains("status 404")
+            matches!(
+                message.as_str(),
+                "GitHub request returned status 403" | "GitHub request returned status 404"
+            )
         }
         _ => false,
     }
@@ -1634,14 +1675,17 @@ fn evidence_source_reference(canonical_url: &str, head_sha: &str) -> String {
 }
 
 fn observation_head_sha(state: &Value) -> Option<&str> {
-    state.get("head_sha").and_then(Value::as_str)
+    state
+        .get("head_sha")
+        .and_then(Value::as_str)
+        .filter(|sha| valid_git_object_id(sha))
 }
 
 fn head_changed(previous: Option<&str>, current: Option<&str>) -> bool {
     matches!((previous, current), (Some(previous), Some(current)) if previous != current)
 }
 
-fn normalized_observation_state(observation: &GitHubPullRequestObservation) -> Value {
+fn normalized_observation_state(observation: &GitHubReferenceObservation) -> Value {
     let mut changed_paths = observation.changed_paths.clone();
     changed_paths.sort();
     changed_paths.dedup();
@@ -1649,7 +1693,7 @@ fn normalized_observation_state(observation: &GitHubPullRequestObservation) -> V
     checks.sort_by(|left, right| check_key(left).cmp(&check_key(right)));
     json!({
         "provider": "github",
-        "object_kind": "pull_request",
+        "object_kind": observation.identity.object_kind(),
         "canonical_url": observation.canonical_url,
         "external_id": observation.identity.external_id(),
         "title": observation.title,
@@ -1667,7 +1711,7 @@ fn normalized_observation_state(observation: &GitHubPullRequestObservation) -> V
 }
 
 #[derive(Debug, Deserialize)]
-struct PersistedGitHubPullRequestState {
+struct PersistedGitHubReferenceState {
     provider: String,
     object_kind: String,
     canonical_url: String,
@@ -1689,16 +1733,16 @@ struct PersistedGitHubPullRequestState {
 }
 
 fn observation_from_persisted_state(
-    identity: &GitHubPullRequestIdentity,
+    identity: &GitHubReferenceIdentity,
     observed_state: &Value,
     observed_at: DateTime<Utc>,
-) -> AppResult<GitHubPullRequestObservation> {
-    let persisted: PersistedGitHubPullRequestState = serde_json::from_value(observed_state.clone())
+) -> AppResult<GitHubReferenceObservation> {
+    let persisted: PersistedGitHubReferenceState = serde_json::from_value(observed_state.clone())
         .map_err(|_| {
-            AppError::Internal("stored GitHub observation has an invalid projection".into())
-        })?;
+        AppError::Internal("stored GitHub observation has an invalid projection".into())
+    })?;
     if persisted.provider != "github"
-        || persisted.object_kind != "pull_request"
+        || persisted.object_kind != identity.object_kind()
         || persisted.canonical_url != identity.canonical_url()
         || persisted.external_id != identity.external_id()
     {
@@ -1706,7 +1750,7 @@ fn observation_from_persisted_state(
             "stored GitHub observation does not match its reference".into(),
         ));
     }
-    let observation = GitHubPullRequestObservation {
+    let observation = GitHubReferenceObservation {
         identity: identity.clone(),
         canonical_url: persisted.canonical_url,
         title: persisted.title,
@@ -1728,8 +1772,11 @@ fn observation_from_persisted_state(
     Ok(observation)
 }
 
-fn check_key(check: &GitHubCheckObservation) -> (&str, &str, Option<&str>, Option<&str>) {
+fn check_key(
+    check: &GitHubCheckObservation,
+) -> (GitHubCheckKind, &str, &str, Option<&str>, Option<&str>) {
     (
+        check.kind,
         check.name.as_str(),
         check.status.as_str(),
         check.conclusion.as_deref(),
@@ -1860,12 +1907,12 @@ const EVIDENCE_SELECT: &str = "select evidence.public_id,
 mod tests {
     use super::*;
 
-    fn observation(observed_at: &str, paths: Vec<&str>) -> GitHubPullRequestObservation {
-        GitHubPullRequestObservation {
-            identity: GitHubPullRequestIdentity {
+    fn observation(observed_at: &str, paths: Vec<&str>) -> GitHubReferenceObservation {
+        GitHubReferenceObservation {
+            identity: GitHubReferenceIdentity {
                 owner: "acme".into(),
                 repository: "context".into(),
-                number: 7,
+                object: GitHubObject::PullRequest { number: 7 },
             },
             canonical_url: "https://github.com/acme/context/pull/7".into(),
             title: "Keep product context explicit".into(),
@@ -1877,6 +1924,7 @@ mod tests {
             commits: vec!["b".repeat(40)],
             changed_paths: paths.into_iter().map(str::to_owned).collect(),
             checks: vec![GitHubCheckObservation {
+                kind: GitHubCheckKind::CheckRun,
                 name: "test".into(),
                 status: "completed".into(),
                 conclusion: Some("success".into()),
@@ -1909,7 +1957,15 @@ mod tests {
             "2026-08-24T10:00:00Z",
             vec!["src/b.rs", "src/a.rs", "src/a.rs"],
         );
-        let persisted = normalized_observation_state(&original);
+        let mut persisted = normalized_observation_state(&original);
+        // Existing PR observations predate the source-kind discriminator.
+        for check in persisted
+            .get_mut("checks")
+            .and_then(Value::as_array_mut)
+            .unwrap()
+        {
+            check.as_object_mut().unwrap().remove("kind");
+        }
         let restored = observation_from_persisted_state(
             &original.identity,
             &persisted,
@@ -1985,6 +2041,75 @@ mod tests {
     }
 
     #[test]
+    fn rate_limits_and_token_errors_do_not_invalidate_provider_evidence() {
+        let error = AppError::ConnectorRateLimited {
+            retry_after_seconds: 120,
+        };
+        assert!(!is_unavailable(&error));
+        assert_eq!(
+            connector_failure_disposition(&error),
+            FailureDisposition::Retryable
+        );
+        assert!(!is_unavailable(&AppError::Connector(
+            "GitHub App token request returned status 403".into()
+        )));
+    }
+
+    #[test]
+    fn evidence_creation_hash_includes_its_reference_target() {
+        let input = CreateExternalEvidence {
+            requirement_id: Uuid::new_v4(),
+            deliverable_id: Uuid::new_v4(),
+            deliverable_section_id: Uuid::new_v4(),
+            title: "Candidate".into(),
+            description: String::new(),
+        };
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+        assert_eq!(
+            evidence_create_hash(first, &input).unwrap(),
+            evidence_create_hash(first, &input).unwrap()
+        );
+        assert_ne!(
+            evidence_create_hash(first, &input).unwrap(),
+            evidence_create_hash(second, &input).unwrap()
+        );
+    }
+
+    #[test]
+    fn persisted_repository_and_commit_observations_roundtrip_and_bind_sha() {
+        let mut reference = observation("2026-08-25T10:00:00Z", vec![]);
+        reference.identity.object = GitHubObject::Repository;
+        reference.canonical_url = reference.identity.canonical_url();
+        reference.state = "active".into();
+        reference.base_sha.clear();
+        reference.head_sha.clear();
+        reference.commits.clear();
+        reference.checks.clear();
+        let value = normalized_observation_state(&reference);
+        assert!(observation_head_sha(&value).is_none());
+        assert_eq!(
+            observation_from_persisted_state(&reference.identity, &value, reference.observed_at)
+                .unwrap(),
+            reference
+        );
+        let sha = "2".repeat(40);
+        reference.identity.object = GitHubObject::Commit { sha: sha.clone() };
+        reference.canonical_url = reference.identity.canonical_url();
+        reference.state = "committed".into();
+        reference.head_sha = sha.clone();
+        reference.commits = vec![sha];
+        let value = normalized_observation_state(&reference);
+        assert_eq!(
+            observation_from_persisted_state(&reference.identity, &value, reference.observed_at)
+                .unwrap(),
+            reference
+        );
+        reference.head_sha = "3".repeat(40);
+        assert!(validate_observation(&reference.identity, &reference).is_err());
+    }
+
+    #[test]
     fn connector_retry_policy_separates_transport_and_permanent_failures() {
         for message in [
             "GitHub request failed",
@@ -2010,3 +2135,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod persistence_tests;

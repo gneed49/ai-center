@@ -47,6 +47,7 @@ export type MockApiState = {
   gateAttempts: number;
   latestHandoff: ReturnType<typeof buildHandoff> | null;
   externalImported: boolean;
+  externalReferenceUrl: string;
   externalHeadSha: string;
   evidenceStatus: "candidate" | "valid" | "stale" | "rejected" | null;
 };
@@ -246,17 +247,28 @@ function buildCoverage(status: "missing" | "covered" = "missing") {
 function buildExternalReference(
   headSha: string,
   evidenceStatus: "candidate" | "valid" | "stale" | "rejected" | null,
+  canonicalUrl = "https://github.com/gneed49/ai-center/pull/42",
 ) {
+  const kind = canonicalUrl.includes("/pull/")
+    ? "pull_request"
+    : canonicalUrl.includes("/commit/")
+      ? "commit"
+      : "repository";
   return {
     public_id: ids.reference,
     project_public_id: ids.project,
     tool_connection_public_id: ids.connection,
     provider: "github",
-    object_kind: "pull_request",
+    object_kind: kind,
     external_id: "gneed49/ai-center#42",
-    canonical_url: "https://github.com/gneed49/ai-center/pull/42",
+    canonical_url: canonicalUrl,
     repository_full_name: "gneed49/ai-center",
-    display_title: "PR #42 — preuve ContextPack",
+    display_title:
+      kind === "repository"
+        ? "gneed49/ai-center"
+        : kind === "commit"
+          ? `Commit ${headSha}`
+          : "PR #42 — preuve ContextPack",
     sync_status: "current",
     etag: '"proof-etag"',
     last_synced_at: now,
@@ -271,7 +283,7 @@ function buildExternalReference(
       observed_state: {
         state: "open",
         base_sha: "a".repeat(40),
-        head_sha: headSha,
+        head_sha: kind === "repository" ? undefined : headSha,
         checks: [
           { name: "desktop-ci", status: "completed", conclusion: "success" },
         ],
@@ -373,6 +385,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     latestHandoff:
       options.latestHandoff === false ? null : buildHandoff(initialPack),
     externalImported: false,
+    externalReferenceUrl: "https://github.com/gneed49/ai-center/pull/42",
     externalHeadSha: "b".repeat(40),
     evidenceStatus: null,
   };
@@ -571,26 +584,41 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
                 buildExternalReference(
                   state.externalHeadSha,
                   state.evidenceStatus,
+                  state.externalReferenceUrl,
                 ),
               ]
             : [],
         );
       state.externalImported = true;
+      state.externalReferenceUrl = (
+        request.postDataJSON() as { url: string }
+      ).url;
       return json(
-        buildExternalReference(state.externalHeadSha, state.evidenceStatus),
+        buildExternalReference(
+          state.externalHeadSha,
+          state.evidenceStatus,
+          state.externalReferenceUrl,
+        ),
       );
     }
 
     if (path === `/api/external-references/${ids.reference}`)
       return json(
-        buildExternalReference(state.externalHeadSha, state.evidenceStatus),
+        buildExternalReference(
+          state.externalHeadSha,
+          state.evidenceStatus,
+          state.externalReferenceUrl,
+        ),
       );
 
     if (path === `/api/external-references/${ids.reference}/evidence`) {
       state.evidenceStatus = "candidate";
       return json(
-        buildExternalReference(state.externalHeadSha, state.evidenceStatus)
-          .evidences[0],
+        buildExternalReference(
+          state.externalHeadSha,
+          state.evidenceStatus,
+          state.externalReferenceUrl,
+        ).evidences[0],
       );
     }
 
@@ -604,8 +632,11 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       state.evidenceStatus =
         body.decision === "validate" ? "valid" : "rejected";
       return json(
-        buildExternalReference(state.externalHeadSha, state.evidenceStatus)
-          .evidences[0],
+        buildExternalReference(
+          state.externalHeadSha,
+          state.evidenceStatus,
+          state.externalReferenceUrl,
+        ).evidences[0],
       );
     }
 
@@ -613,7 +644,11 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       state.externalHeadSha = "c".repeat(40);
       if (state.evidenceStatus === "valid") state.evidenceStatus = "stale";
       return json(
-        buildExternalReference(state.externalHeadSha, state.evidenceStatus),
+        buildExternalReference(
+          state.externalHeadSha,
+          state.evidenceStatus,
+          state.externalReferenceUrl,
+        ),
       );
     }
 
