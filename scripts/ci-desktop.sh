@@ -5,6 +5,7 @@ alpha_script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 alpha_repo_dir="$(cd -- "${alpha_script_dir}/.." && pwd)"
 
 cd -- "${alpha_repo_dir}"
+source "${alpha_script_dir}/integration-common.sh"
 
 usage() {
   cat <<'EOF'
@@ -19,6 +20,7 @@ Usage:
   ./scripts/ci-desktop.sh real-e2e
   ./scripts/ci-desktop.sh desktop
   ./scripts/ci-desktop.sh secret-scan
+  ./scripts/integration-stack.sh run
 
 Les commandes Android, iOS et mobile sont volontairement absentes.
 Les évaluations IA réelles ne sont jamais lancées par ce script.
@@ -47,11 +49,13 @@ quality() {
   cargo test --workspace --lib
   python3 -m py_compile scripts/alpha-eval.py scripts/alpha-live-eval.py
   python3 -m unittest scripts/tests/test_alpha_live_eval.py
+  python3 -m unittest discover -s scripts/tests -p 'test_integration_target.py'
   npm run build:web
   cargo build -p ai-center-server
 }
 
 integration() {
+  integration_require_stack
   require_command npm
   require_command cargo
   require_command psql
@@ -64,24 +68,9 @@ integration() {
     exit 1
   fi
 
-  case "${AI_CENTER_ADMIN_DATABASE_URL}" in
-    postgresql://*@127.0.0.1:54322/* | postgresql://*@localhost:54322/*) ;;
-    *)
-      printf 'La base administrateur d’intégration doit être le PostgreSQL Supabase local sur le port 54322.\n' >&2
-      exit 1
-      ;;
-  esac
-  case "${AI_CENTER_RUNTIME_DATABASE_URL}" in
-    postgresql://ai_center_runtime:*@127.0.0.1:54322/* | postgresql://ai_center_runtime:*@localhost:54322/*) ;;
-    *)
-      printf 'La base runtime d’intégration doit utiliser ai_center_runtime sur le PostgreSQL Supabase local.\n' >&2
-      exit 1
-      ;;
-  esac
-
   ./scripts/baseline-alpha-upgrade-smoke.sh
-  npm run supabase -- db reset --local
-  npm run supabase -- test db
+  integration_supabase db reset --local --yes
+  integration_supabase test db
 
   AI_CENTER_ADMIN_DATABASE_URL="${AI_CENTER_ADMIN_DATABASE_URL}" \
     ./scripts/runtime-db-role.sh verify
@@ -119,6 +108,17 @@ integration() {
     AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
     AI_CENTER_AGENT_MODE=deterministic \
     cargo test -p ai-center-server --test model_run_lifecycle -- --test-threads=1
+  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
+    AI_CENTER_ADMIN_DATABASE_URL="${AI_CENTER_ADMIN_DATABASE_URL}" \
+    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
+    AI_CENTER_AGENT_MODE=deterministic \
+    cargo test -p ai-center-server --test targeted_invalidation -- --test-threads=1
+  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
+    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
+    AI_CENTER_AGENT_MODE=deterministic \
+    cargo test -p ai-center-server --lib \
+      github_persistence_preserves_proofs_under_rate_limits_and_binds_idempotence_to_target \
+      -- --ignored --test-threads=1
 }
 
 backup_restore() {
@@ -148,6 +148,7 @@ e2e() {
 }
 
 real_e2e() {
+  integration_require_stack
   require_command npm
   require_command cargo
   require_command curl
@@ -176,23 +177,29 @@ real_e2e() {
   }
   trap cleanup_real_e2e EXIT
 
-  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
-    AI_CENTER_BIND=127.0.0.1:4317 \
+  (cd -- "${AI_CENTER_INTEGRATION_WORKDIR}" && \
+  exec env DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
+    AI_CENTER_BIND=127.0.0.1:4617 \
+    AI_CENTER_CORS_ORIGINS="${AI_CENTER_REAL_E2E_WEB_URL}" \
     AI_CENTER_AUTH_MODE=local \
     AI_CENTER_AGENT_MODE=deterministic \
     AI_CENTER_WORKSPACE_ID=10000000-0000-0000-0000-000000000001 \
     AI_CENTER_ACTOR_ID=00000000-0000-0000-0000-000000000001 \
-    target/debug/ai-center-server >"${alpha_real_e2e_api_log}" 2>&1 &
+    "${CARGO_TARGET_DIR:-${alpha_repo_dir}/target}/debug/ai-center-server") >"${alpha_real_e2e_api_log}" 2>&1 &
   alpha_real_e2e_api_pid=$!
 
-  VITE_API_URL=http://127.0.0.1:4317 \
-    npm run dev -w @ai-center/web -- --host 127.0.0.1 >"${alpha_real_e2e_web_log}" 2>&1 &
+  VITE_API_URL="${AI_CENTER_REAL_E2E_API_URL}" \
+    VITE_WORKSPACE_ID=10000000-0000-0000-0000-000000000001 \
+    VITE_SUPABASE_URL= VITE_SUPABASE_ANON_KEY= TAURI_DEV_HOST= \
+    node "${alpha_repo_dir}/node_modules/vite/bin/vite.js" \
+      --config apps/web/vite.integration.config.ts apps/web --host 127.0.0.1 --port 5183 --strictPort \
+      >"${alpha_real_e2e_web_log}" 2>&1 &
   alpha_real_e2e_web_pid=$!
 
   local alpha_attempt
   for alpha_attempt in {1..60}; do
-    if curl --fail --silent http://127.0.0.1:4317/api/health >/dev/null 2>&1 \
-      && curl --fail --silent http://127.0.0.1:5173/ >/dev/null 2>&1; then
+    if curl --fail --silent "${AI_CENTER_REAL_E2E_API_URL}/api/health" >/dev/null 2>&1 \
+      && curl --fail --silent "${AI_CENTER_REAL_E2E_WEB_URL}/" >/dev/null 2>&1; then
       break
     fi
     if ! kill -0 "${alpha_real_e2e_api_pid}" 2>/dev/null || ! kill -0 "${alpha_real_e2e_web_pid}" 2>/dev/null; then

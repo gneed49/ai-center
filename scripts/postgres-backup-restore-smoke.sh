@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 set +x
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/integration-common.sh"
+integration_require_stack
 
 export LC_ALL=C
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-5}"
@@ -13,7 +15,7 @@ require_command() {
 }
 
 : "${AI_CENTER_ADMIN_DATABASE_URL:?AI_CENTER_ADMIN_DATABASE_URL doit viser la base Supabase locale isolée}"
-: "${AI_CENTER_LOCAL_POSTGRES_PORT:=54322}"
+: "${AI_CENTER_LOCAL_POSTGRES_PORT:?port CI isolé requis}"
 
 if [[ ! "${AI_CENTER_LOCAL_POSTGRES_PORT}" =~ ^[0-9]{4,5}$ ]] \
   || (( AI_CENTER_LOCAL_POSTGRES_PORT < 1024 || AI_CENTER_LOCAL_POSTGRES_PORT > 65535 )); then
