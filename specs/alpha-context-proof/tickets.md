@@ -73,6 +73,11 @@ parcours complet plan/preuve/couverture/historique, erreurs par route et
 ressources hors scope. Vérifier les comportements dans le navigateur avant
 figer les tests. Les preuves simulées et full-stack restent identifiées.
 
+Vérifier également le changement d'utilisateur dans le même onglet et entre
+onglets : les requêtes en cours, caches et sélections de workspace de l'ancien
+acteur ne doivent jamais apparaître sous la nouvelle identité. La lecture du
+code montre actuellement un QueryClient global sans reset lié à l'identité.
+
 **Acceptation :** suites significatives sur Chromium 1440×900 et 1024×768,
 Firefox desktop ; zéro erreur inattendue, duplication, fuite ou violation axe
 critical/serious. La preuve native Tauri est distincte du build Linux.
@@ -141,3 +146,12 @@ le parcours de preuve. Vérifier toutes les relations au workspace et au projet.
 preuve candidate → validation humaine ; reload et retry conservent la même
 chaîne sans duplication. Les refreshes ajoutent des événements d'observation
 et préservent l'historique en cas de changement de SHA ou de perte d'accès.
+
+### ACP-T09 — Dépendances web
+
+**Exigences :** phase 1, audit des dépendances.
+
+L'audit npm courant signale `fast-uri` 3.1.5 et `qs` 6.15.3. Mettre à jour les
+résolutions compatibles, vérifier le diff du lockfile et relancer audit, build
+et validations web. Ne pas déplacer des dépendances pour masquer les avis.
+T06 attend également T09. Ce ticket est indépendant des changements métier.
