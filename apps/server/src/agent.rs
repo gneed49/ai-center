@@ -91,6 +91,28 @@ pub struct TechnicalPlanDraft {
     pub coverage: Vec<TechnicalPlanCoverageDraft>,
 }
 
+/// Independent review of a generated plan against its exact immutable pack.
+#[derive(Debug, Clone, Serialize)]
+pub struct CoverageEvaluationInput {
+    pub context_pack: Value,
+    pub technical_plan: TechnicalPlanDraft,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequirementCoverageAssessment {
+    pub requirement_version_public_id: Uuid,
+    pub source_version_ids: Vec<Uuid>,
+    pub section_keys: Vec<String>,
+    /// Describes the plan only; this is never an evidence validity status.
+    pub assessment: String,
+    pub explanation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoverageEvaluationDraft {
+    pub requirements: Vec<RequirementCoverageAssessment>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct StewardInput {
     pub candidate_pairs: Value,
@@ -125,6 +147,10 @@ pub trait AgentEngine: Send + Sync {
         &self,
         input: TechnicalPlanInput,
     ) -> AppResult<EngineOutput<TechnicalPlanDraft>>;
+    async fn evaluate_coverage(
+        &self,
+        input: CoverageEvaluationInput,
+    ) -> AppResult<EngineOutput<CoverageEvaluationDraft>>;
     async fn analyze_contradictions(
         &self,
         input: StewardInput,
@@ -284,6 +310,20 @@ impl AgentEngine for OpenAiEngine {
         .await
     }
 
+    async fn evaluate_coverage(
+        &self,
+        input: CoverageEvaluationInput,
+    ) -> AppResult<EngineOutput<CoverageEvaluationDraft>> {
+        self.request_structured(
+            "ai_center_coverage_assessment",
+            "Évalue exclusivement le plan fourni contre les exigences du ContextPack. Retourne exactement une évaluation par version d'exigence du pack. Cite cette exigence et uniquement des versions du pack, sans doublons. Associe uniquement les section_key des delivery_slices du plan. Classe planned si le plan traite l'exigence, partial si des lacunes restent, unaddressed sans section correspondante. Explique les lacunes en français. Une appréciation du plan ne constitue jamais une preuve, ne valide aucun résultat externe et ne signifie pas que le travail est exécuté."
+                .into(),
+            serde_json::to_value(input).map_err(|error| AppError::Internal(error.to_string()))?,
+            coverage_evaluation_schema(),
+        )
+        .await
+    }
+
     async fn analyze_contradictions(
         &self,
         input: StewardInput,
@@ -338,6 +378,26 @@ fn technical_plan_schema() -> Value {
                 }
             }
         }
+    })
+}
+
+fn coverage_evaluation_schema() -> Value {
+    json!({
+        "type": "object", "additionalProperties": false,
+        "required": ["requirements"],
+        "properties": { "requirements": {
+            "type": "array", "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["requirement_version_public_id", "source_version_ids", "section_keys", "assessment", "explanation"],
+                "properties": {
+                    "requirement_version_public_id": {"type": "string", "format": "uuid"},
+                    "source_version_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}, "uniqueItems": true},
+                    "section_keys": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+                    "assessment": {"type": "string", "enum": ["planned", "partial", "unaddressed"]},
+                    "explanation": {"type": "string"}
+                }
+            }
+        }}
     })
 }
 
@@ -481,6 +541,54 @@ impl AgentEngine for DeterministicEngine {
                 "Valider le parcours web desktop et Tauri Linux.".into(),
             ],
             coverage,
+        }))
+    }
+
+    async fn evaluate_coverage(
+        &self,
+        input: CoverageEvaluationInput,
+    ) -> AppResult<EngineOutput<CoverageEvaluationDraft>> {
+        let requirements = input
+            .context_pack
+            .get("knowledge")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|item| item.get("entry_type").and_then(Value::as_str) == Some("requirement"))
+            .filter_map(|item| item.get("version_public_id").and_then(Value::as_str))
+            .map(|id| {
+                let requirement_version_public_id = id
+                    .parse::<Uuid>()
+                    .map_err(|_| AppError::Invalid("invalid requirement version in pack".into()))?;
+                let section_keys = input
+                    .technical_plan
+                    .delivery_slices
+                    .iter()
+                    .filter(|section| {
+                        section
+                            .source_version_ids
+                            .contains(&requirement_version_public_id)
+                    })
+                    .map(|section| section.section_key.clone())
+                    .collect::<Vec<_>>();
+                Ok(RequirementCoverageAssessment {
+                    requirement_version_public_id,
+                    source_version_ids: vec![requirement_version_public_id],
+                    assessment: if section_keys.is_empty() {
+                        "unaddressed"
+                    } else {
+                        "planned"
+                    }
+                    .into(),
+                    section_keys,
+                    explanation:
+                        "Mapping du plan uniquement ; une preuve externe validée reste nécessaire."
+                            .into(),
+                })
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        Ok(deterministic_output(CoverageEvaluationDraft {
+            requirements,
         }))
     }
 

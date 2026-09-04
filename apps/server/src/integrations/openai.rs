@@ -577,6 +577,7 @@ mod tests {
                 "coverage": []
             }),
             Some("ai_center_steward_assessment") => json!({"assessments": []}),
+            Some("ai_center_coverage_assessment") => json!({"requirements": []}),
             _ => return StatusCode::UNPROCESSABLE_ENTITY.into_response(),
         };
         let text = serde_json::to_string(&output).expect("fixture output should serialize");
@@ -705,10 +706,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn openai_engine_routes_all_four_operations_through_the_hardened_client() {
+    async fn openai_engine_routes_all_five_operations_through_the_hardened_client() {
         use crate::agent::{
-            AgentEngine, AgentInput, ContextSelectionInput, OpenAiEngine, StewardInput,
-            TechnicalPlanInput,
+            AgentEngine, AgentInput, ContextSelectionInput, CoverageEvaluationInput, OpenAiEngine,
+            StewardInput, TechnicalPlanInput,
         };
 
         let server = start_fixture(FixtureMode::OperationContracts).await;
@@ -769,6 +770,18 @@ mod tests {
             .expect("steward contract should deserialize");
         assert!(steward.output.assessments.is_empty());
 
+        let coverage = engine
+            .evaluate_coverage(CoverageEvaluationInput {
+                context_pack: json!({"knowledge": []}),
+                technical_plan: plan.output,
+            })
+            .await
+            .expect("coverage assessment contract should deserialize");
+        assert!(coverage.output.requirements.is_empty());
+        assert_eq!(coverage.metadata.provider, "openai");
+        assert_eq!(coverage.metadata.input_tokens, Some(7));
+        assert_eq!(coverage.metadata.output_tokens, Some(3));
+
         let bodies = server
             .bodies
             .lock()
@@ -783,7 +796,8 @@ mod tests {
                 "ai_center_agent_turn",
                 "ai_center_context_selection",
                 "ai_center_technical_plan",
-                "ai_center_steward_assessment"
+                "ai_center_steward_assessment",
+                "ai_center_coverage_assessment"
             ]
         );
         assert!(bodies.iter().all(|body| {
