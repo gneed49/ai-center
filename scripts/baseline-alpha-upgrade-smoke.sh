@@ -6,6 +6,8 @@ alpha_script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 alpha_repo_dir="$(cd -- "${alpha_script_dir}/.." && pwd)"
 
 cd -- "${alpha_repo_dir}"
+source "${alpha_script_dir}/integration-common.sh"
+integration_require_stack
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then

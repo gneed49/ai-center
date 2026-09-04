@@ -46,6 +46,7 @@ jobs:
           scripts/auth-magic-link-smoke.sh
           scripts/baseline-alpha-upgrade-smoke.sh
           scripts/postgres-backup-restore-smoke.sh
+          scripts/integration-common.sh scripts/integration-stack.sh
       - run: ./scripts/ci-desktop.sh secret-scan
       - run: ./scripts/ci-desktop.sh quality
 
@@ -53,9 +54,6 @@ jobs:
     name: PostgreSQL integration
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      AI_CENTER_ADMIN_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
-      OPENAI_API_KEY: unused-local-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -83,30 +81,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
           echo "/usr/lib/postgresql/17/bin" >> "${GITHUB_PATH}"
-      - name: Generate an ephemeral local runtime password
-        shell: bash
-        run: |
-          runtime_password="$(openssl rand -hex 24)"
-          echo "::add-mask::${runtime_password}"
-          {
-            echo "AI_CENTER_RUNTIME_DB_PASSWORD=${runtime_password}"
-            echo "AI_CENTER_RUNTIME_DATABASE_URL=postgresql://ai_center_runtime:${runtime_password}@127.0.0.1:54322/postgres"
-          } >> "${GITHUB_ENV}"
-      - name: Start isolated Supabase stack
-        run: npm run supabase -- start
-      - name: Reset, test grants and run the flow as ai_center_runtime
-        run: ./scripts/ci-desktop.sh integration
-      - name: Prove local application backup and restore
-        run: ./scripts/ci-desktop.sh backup-restore
-      - name: Certify the real Supabase magic-link flow
-        run: ./scripts/ci-desktop.sh auth-smoke
       - name: Install Chromium for the real API smoke
         run: npx playwright install --with-deps chromium
-      - name: Traverse React, Axum and PostgreSQL
-        run: ./scripts/ci-desktop.sh real-e2e
-      - name: Stop isolated Supabase stack
+      - name: Certify the disposable PostgreSQL, Auth and desktop stack
+        run: ./scripts/integration-stack.sh run
+      - name: Stop only this disposable stack after interruption
         if: always()
-        run: npm run supabase -- stop --no-backup
+        run: ./scripts/integration-stack.sh stop
 
   browser:
     name: Chromium desktop E2E

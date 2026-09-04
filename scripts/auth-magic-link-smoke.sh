@@ -6,6 +6,8 @@ alpha_script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 alpha_repo_dir="$(cd -- "${alpha_script_dir}/.." && pwd)"
 
 cd -- "${alpha_repo_dir}"
+source "${alpha_script_dir}/integration-common.sh"
+integration_require_stack
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -22,22 +24,7 @@ require_command python3
 : "${AI_CENTER_ADMIN_DATABASE_URL:?AI_CENTER_ADMIN_DATABASE_URL doit viser le PostgreSQL Supabase local avec le rôle de migration}"
 : "${AI_CENTER_RUNTIME_DATABASE_URL:?AI_CENTER_RUNTIME_DATABASE_URL doit viser le PostgreSQL Supabase local avec ai_center_runtime}"
 
-case "${AI_CENTER_ADMIN_DATABASE_URL}" in
-  postgresql://*@127.0.0.1:54322/* | postgresql://*@localhost:54322/*) ;;
-  *)
-    printf 'La base administrateur du smoke Auth doit être le PostgreSQL Supabase local sur le port 54322.\n' >&2
-    exit 1
-    ;;
-esac
-case "${AI_CENTER_RUNTIME_DATABASE_URL}" in
-  postgresql://ai_center_runtime:*@127.0.0.1:54322/* | postgresql://ai_center_runtime:*@localhost:54322/*) ;;
-  *)
-    printf 'La base runtime du smoke Auth doit utiliser ai_center_runtime sur le PostgreSQL Supabase local.\n' >&2
-    exit 1
-    ;;
-esac
-
-alpha_bind="${AI_CENTER_AUTH_SMOKE_BIND:-127.0.0.1:4318}"
+alpha_bind="${AI_CENTER_AUTH_SMOKE_BIND}"
 if [[ ! "${alpha_bind}" =~ ^127\.0\.0\.1:([0-9]{2,5})$ ]]; then
   printf 'AI_CENTER_AUTH_SMOKE_BIND doit être une adresse loopback IPv4 explicite.\n' >&2
   exit 1
@@ -45,7 +32,7 @@ fi
 alpha_api_url="http://${alpha_bind}"
 alpha_workspace_id="10000000-0000-0000-0000-000000000001"
 alpha_forged_workspace_id="ffffffff-ffff-4fff-8fff-ffffffffffff"
-alpha_db_container="${AI_CENTER_SUPABASE_DB_CONTAINER:-supabase_db_AICenter}"
+alpha_db_container="${AI_CENTER_SUPABASE_DB_CONTAINER}"
 alpha_failure_stage="${AI_CENTER_AUTH_SMOKE_FAILURE_STAGE:-}"
 if [[ -n "${alpha_failure_stage}" && "${alpha_failure_stage}" != "after-membership" ]]; then
   printf 'AI_CENTER_AUTH_SMOKE_FAILURE_STAGE accepte uniquement after-membership.\n' >&2
@@ -247,7 +234,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if ! alpha_status_output="$(npx --no-install supabase status -o env 2>/dev/null)"; then
+if ! alpha_status_output="$(integration_supabase status -o env 2>/dev/null)"; then
   printf 'Impossible de lire les identifiants éphémères de la stack Supabase locale.\n' >&2
   exit 1
 fi
@@ -263,9 +250,9 @@ done <<< "${alpha_status_output}"
 unset alpha_status_output alpha_status_value
 
 case "${alpha_supabase_url}" in
-  http://127.0.0.1:54321 | http://localhost:54321) ;;
+  http://127.0.0.1:55321) ;;
   *)
-    printf 'La CLI Supabase doit retourner l’API locale sur le port 54321.\n' >&2
+    printf 'La CLI Supabase doit retourner l’API CI locale sur le port 55321.\n' >&2
     exit 1
     ;;
 esac
@@ -277,13 +264,14 @@ fi
 cargo build -p ai-center-server --bin ai-center-server
 
 alpha_server_log="$(mktemp -t ai-center-auth-smoke.XXXXXX.log)"
-DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
+(cd -- "${AI_CENTER_INTEGRATION_WORKDIR}" && \
+exec env DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
   AI_CENTER_BIND="${alpha_bind}" \
   AI_CENTER_AGENT_MODE=deterministic \
   AI_CENTER_AUTH_MODE=supabase \
   SUPABASE_URL="${alpha_supabase_url}" \
   RUST_LOG=ai_center_server=warn,tower_http=warn \
-  ./target/debug/ai-center-server >"${alpha_server_log}" 2>&1 &
+  "${CARGO_TARGET_DIR:-${alpha_repo_dir}/target}/debug/ai-center-server") >"${alpha_server_log}" 2>&1 &
 alpha_server_pid="$!"
 
 alpha_server_ready=false

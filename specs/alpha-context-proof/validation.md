@@ -151,19 +151,13 @@ python3 scripts/alpha-eval.py --help
 git diff --check
 ```
 
-Les commandes d'intégration demandant Docker sont exécutées séparément :
+La [stack d’intégration jetable](../../docs/operations/isolated-integration.md)
+exécute les migrations, la RLS, les tests PostgreSQL, la restauration, l’Auth
+et le parcours navigateur réel sur des ports et volumes distincts du
+développement. Docker est requis :
 
 ```bash
-npm run supabase -- start
-npm run supabase -- db reset --local
-AI_CENTER_ADMIN_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
-  AI_CENTER_RUNTIME_DATABASE_URL=postgresql://ai_center_runtime:<mot-de-passe-local>@127.0.0.1:54322/postgres \
-  AI_CENTER_RUNTIME_DB_PASSWORD=<mot-de-passe-local> \
-  AI_CENTER_AGENT_MODE=deterministic \
-  ./scripts/ci-desktop.sh integration
-AI_CENTER_ADMIN_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
-  ./scripts/ci-desktop.sh backup-restore
-npm run supabase -- stop --no-backup
+./scripts/integration-stack.sh run
 ```
 
 ## Interdictions de promotion

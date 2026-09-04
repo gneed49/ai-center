@@ -9,7 +9,7 @@ export default defineConfig({
   workers: 1,
   reporter: "line",
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: process.env.AI_CENTER_REAL_E2E_WEB_URL ?? "http://127.0.0.1:5183",
     reducedMotion: "reduce",
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
