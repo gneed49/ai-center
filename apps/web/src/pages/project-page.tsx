@@ -1,3 +1,5 @@
+import { notifyRequestError } from "@/lib/request-error";
+import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -14,7 +16,6 @@ import {
 } from "lucide-react";
 import { useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { toast } from "sonner";
 
 import { api, createIdempotencyKey } from "@/api/client";
 import type {
@@ -57,7 +58,7 @@ export function ProjectPage() {
       refresh();
       navigate(`/projects/${projectId}/sessions/${session.session.public_id}`);
     },
-    onError: (error) => toast.error(error.message),
+    onError: notifyRequestError,
   });
   const gate = useMutation({
     mutationFn: () => {
@@ -73,7 +74,7 @@ export function ProjectPage() {
           : "Produit prêt pour le handoff",
       );
     },
-    onError: (error) => toast.error(error.message),
+    onError: notifyRequestError,
   });
   const startSession = (nodeKey: string) => {
     const previous = createSession.variables;

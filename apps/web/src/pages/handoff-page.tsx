@@ -1,3 +1,4 @@
+import { notifyRequestError } from "@/lib/request-error";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -53,7 +54,7 @@ export function HandoffPage() {
       gateIdempotencyKey.current = null;
       queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
     },
-    onError: (error) => toast.error(error.message),
+    onError: notifyRequestError,
   });
   const handoff = useMutation({
     mutationFn: async () => {
@@ -74,7 +75,7 @@ export function HandoffPage() {
       queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
       toast.success("ContextPack transmis à l’agent Tech");
     },
-    onError: (error) => toast.error(error.message),
+    onError: notifyRequestError,
   });
   if (snapshot.isLoading || latestHandoff.isLoading) return <LoadingState />;
   if (snapshot.error)

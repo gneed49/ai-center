@@ -1,3 +1,4 @@
+import { notifyRequestError } from "@/lib/request-error";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Check, Network } from "lucide-react";
 import { useState } from "react";
@@ -33,7 +34,7 @@ export function NewProjectPage() {
       toast.success("Projet et scopes créés");
       navigate(`/projects/${project.public_id}`);
     },
-    onError: (error) => toast.error(error.message),
+    onError: notifyRequestError,
   });
 
   function submit(event: FormEvent) {

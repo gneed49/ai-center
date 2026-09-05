@@ -22,5 +22,19 @@ export default defineConfig({
         viewport: { width: 1440, height: 900 },
       },
     },
+    {
+      name: "chromium-compact-real-api",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1024, height: 768 },
+      },
+    },
+    {
+      name: "firefox-desktop-real-api",
+      use: {
+        ...devices["Desktop Firefox"],
+        viewport: { width: 1440, height: 900 },
+      },
+    },
   ],
 });
