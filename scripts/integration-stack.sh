@@ -29,7 +29,7 @@ case "${1:-help}" in
     if (( $# == 0 )); then set -- integration backup-restore auth-smoke real-e2e; fi
     for integration_phase in "$@"; do
       case "${integration_phase}" in
-        integration | backup-restore | auth-smoke | real-e2e) ;;
+        integration | backup-restore | auth-smoke | real-e2e | native-e2e) ;;
         *) printf 'Phase CI inconnue.\n' >&2; exit 2 ;;
       esac
     done
@@ -84,7 +84,7 @@ PY
     ;;
   *)
     printf '%s\n' \
-      'Usage: ./scripts/integration-stack.sh prepare|run [integration backup-restore auth-smoke real-e2e]|stop' \
+      'Usage: ./scripts/integration-stack.sh prepare|run [integration backup-restore auth-smoke real-e2e native-e2e]|stop' \
       'run prépare une stack jetable, exécute les contrôles puis supprime ses seuls volumes.'
     ;;
 esac

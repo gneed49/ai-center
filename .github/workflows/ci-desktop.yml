@@ -118,7 +118,7 @@ jobs:
           retention-days: 7
 
   desktop:
-    name: Tauri Linux smoke build
+    name: Tauri Linux build
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:

@@ -19,6 +19,8 @@ Usage:
   ./scripts/ci-desktop.sh e2e
   ./scripts/ci-desktop.sh real-e2e
   ./scripts/ci-desktop.sh desktop
+  ./scripts/ci-desktop.sh native-build
+  ./scripts/integration-stack.sh run integration native-e2e
   ./scripts/ci-desktop.sh secret-scan
   ./scripts/integration-stack.sh run
 
@@ -50,6 +52,7 @@ quality() {
   python3 -m py_compile scripts/alpha-eval.py scripts/alpha-live-eval.py
   python3 -m unittest discover -s scripts/tests -p 'test_alpha*.py'
   python3 -m unittest discover -s scripts/tests -p 'test_integration_target.py'
+  python3 -m unittest discover -s scripts/tests -p 'test_native_smoke.py'
   npm run build:web
   cargo build -p ai-center-server
 }
@@ -230,6 +233,82 @@ desktop() {
     --no-bundle
 }
 
+native_build() {
+  integration_environment
+  require_command npm
+  require_command cargo
+  local alpha_native_target
+  alpha_native_target="$(realpath -m -- "${AI_CENTER_NATIVE_TARGET_DIR:-${alpha_repo_dir}/target/native-smoke}")"
+  python3 scripts/native-smoke.py prepare
+  VITE_API_URL=http://127.0.0.1:4617 \
+    VITE_WORKSPACE_ID=10000000-0000-0000-0000-000000000001 \
+    VITE_SUPABASE_URL= VITE_SUPABASE_ANON_KEY= TAURI_DEV_HOST= \
+    npm run build:web
+  CARGO_TARGET_DIR="${alpha_native_target}" npm run tauri -- build --ci --no-bundle \
+    --config apps/desktop/src-tauri/tauri.conf.json \
+    --config .run/native-smoke/tauri.config.json
+  python3 scripts/native-smoke.py record-build \
+    --app "${alpha_native_target}/release/ai-center-desktop"
+}
+
+native_e2e() {
+  integration_require_stack
+  require_command curl
+  : "${AI_CENTER_RUNTIME_DATABASE_URL:?La base runtime jetable est requise}"
+  native_build
+  cargo build -p ai-center-server --bin ai-center-server
+  python3 - <<'PY'
+import socket
+with socket.socket() as probe:
+    try:
+        probe.bind(("127.0.0.1", 4617))
+    except OSError:
+        raise SystemExit("Le port API du smoke natif est occupé ; aucun processus existant ne sera arrêté.")
+PY
+  declare -g alpha_native_api_pid=""
+  cleanup_native_api() {
+    if [[ -n "${alpha_native_api_pid:-}" ]]; then
+      kill "${alpha_native_api_pid}" 2>/dev/null || true
+      wait "${alpha_native_api_pid}" 2>/dev/null || true
+      alpha_native_api_pid=""
+    fi
+  }
+  trap cleanup_native_api EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  (cd -- "${AI_CENTER_INTEGRATION_WORKDIR}" && \
+    exec env DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
+      AI_CENTER_BIND=127.0.0.1:4617 \
+      AI_CENTER_CORS_ORIGINS=tauri://localhost \
+      AI_CENTER_AUTH_MODE=local AI_CENTER_AGENT_MODE=deterministic \
+      AI_CENTER_WORKSPACE_ID=10000000-0000-0000-0000-000000000001 \
+      AI_CENTER_ACTOR_ID=00000000-0000-0000-0000-000000000001 \
+      "${CARGO_TARGET_DIR:-${alpha_repo_dir}/target}/debug/ai-center-server") \
+      >"${AI_CENTER_INTEGRATION_WORKDIR}/native-api.log" 2>&1 &
+  alpha_native_api_pid=$!
+  local alpha_native_ready=0 alpha_attempt alpha_native_artifacts alpha_native_target
+  for alpha_attempt in {1..60}; do
+    if ! kill -0 "${alpha_native_api_pid}" 2>/dev/null; then
+      printf 'L’API native de test s’est arrêtée avant le smoke.\n' >&2
+      return 1
+    fi
+    if curl --fail --silent http://127.0.0.1:4617/api/health >/dev/null; then
+      alpha_native_ready=1
+      break
+    fi
+    sleep 1
+  done
+  [[ "${alpha_native_ready}" == 1 ]] || { printf 'Timeout API native de test.\n' >&2; return 1; }
+  mkdir -p -- "${alpha_repo_dir}/.run/native-smoke/artifacts"
+  alpha_native_artifacts="$(mktemp -d "${alpha_repo_dir}/.run/native-smoke/artifacts/run.XXXXXXXX")"
+  alpha_native_target="$(realpath -m -- "${AI_CENTER_NATIVE_TARGET_DIR:-${alpha_repo_dir}/target/native-smoke}")"
+  python3 scripts/native-smoke.py run \
+    --app "${alpha_native_target}/release/ai-center-desktop" \
+    --output-dir "${alpha_native_artifacts}"
+  cleanup_native_api
+  trap - EXIT INT TERM
+}
+
 secret_scan() {
   require_command git
 
@@ -254,6 +333,12 @@ secret_scan() {
 }
 
 case "${1:-}" in
+  native-build)
+    native_build
+    ;;
+  native-e2e)
+    native_e2e
+    ;;
   quality)
     quality
     ;;
