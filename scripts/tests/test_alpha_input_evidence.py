@@ -5,7 +5,7 @@ import json
 import unittest
 
 from test_alpha_live_eval import campaign, config, live, private_cases
-from test_alpha_evaluation_protocol import fixture
+from test_alpha_evaluation_protocol import fixture, records_for_plan
 
 
 class InputEvidenceTests(unittest.TestCase):
@@ -159,6 +159,55 @@ class InputEvidenceTests(unittest.TestCase):
             del case["annotations"][field]
             with self.subTest(field=field), self.assertRaises(live.LiveEvalError):
                 live.validated_handoff_inputs(case, self.task)
+
+    def test_contract_anchor_is_shared_by_both_conditions_through_calibration(
+        self,
+    ) -> None:
+        contract = {
+            "contract_key": "technical-delivery-plan",
+            "required_sections": ["architecture", "implementation", "validation"],
+        }
+        pack = self.case["conditions"]["context_pack"]
+        pack["payload"]["content"]["contract"] = contract
+        pack["payload"]["content_hash"] = pack["context_pack_hash"] = live.sha256_json(
+            pack["payload"]["content"]
+        )
+        self.case["annotations"]["facts"][self.task["critical_fact_ids"][0]] = {
+            "content_pointer": "/contract",
+            "content_hash": live.sha256_json(contract),
+        }
+        live.validate_private_cases(self.cases, self.campaign)
+        inputs = live.validated_handoff_inputs(self.case, self.task)
+        for condition, captured in inputs.items():
+            with self.subTest(condition=condition):
+                self.assertEqual(captured["payload"]["contract"], contract)
+                self.assertEqual(captured["critical_facts_expected"], 1)
+                self.assertEqual(captured["critical_facts_present"], 1)
+
+        configuration = config(selected=False)
+        jobs = live.build_plan(
+            self.campaign, configuration, self.cases, "calibration", "cafe"
+        )["jobs"]
+        handoff_jobs = [job for job in jobs if job["case_id"] == "handoff-01"]
+        self.assertEqual(len(handoff_jobs), 4)
+        for job in handoff_jobs:
+            body, _ = live.request_for_job(job, self.campaign, configuration, self.cases)
+            prompt = json.loads(body["input"][0]["content"][0]["text"])
+            self.assertEqual(prompt["context"]["contract"], contract)
+            self.assertEqual(prompt["task"], self.case["task_text"])
+
+        runs = records_for_plan(self.campaign, configuration, self.cases, "calibration")
+        for run in runs:
+            if run["case_id"] == "handoff-01":
+                self.assertEqual(run["critical_facts_expected"], 1)
+                self.assertEqual(run["critical_facts_present"], 1)
+        summary = live.validate_calibration_evidence(
+            configuration, self.campaign, runs, self.cases
+        )
+        self.assertEqual(summary["recommended_model"], "model-a")
+        for model in summary["models"]:
+            self.assertTrue(model["passed"])
+            self.assertEqual(model["critical_fact_recall"], 1.0)
 
     def test_frozen_evidence_recomputes_counts_and_annotation_fingerprint(self) -> None:
         campaign_data, configuration, cases, runs = fixture()
