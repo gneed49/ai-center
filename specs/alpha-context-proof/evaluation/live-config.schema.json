@@ -98,9 +98,9 @@
           ],
           "properties": {
             "selected_model": { "type": "string" },
-            "runner_version": { "const": "1.1.0" },
-            "prompt_version": { "const": "alpha-context-proof-live-v1" },
-            "output_schema_version": { "const": "alpha-context-proof-live-v1" },
+            "runner_version": { "const": "1.2.0" },
+            "prompt_version": { "const": "alpha-context-proof-live-v2" },
+            "output_schema_version": { "const": "alpha-context-proof-live-v2" },
             "calibration_runs_hash": {
               "type": "string",
               "pattern": "^[a-f0-9]{64}$"

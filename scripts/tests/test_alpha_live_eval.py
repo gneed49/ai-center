@@ -127,36 +127,137 @@ def config(selected: bool = True) -> dict:
 
 
 def private_cases(source_campaign: dict) -> dict:
+    handoffs = {}
+    for index, task in enumerate(source_campaign["handoff_tasks"], start=1):
+        versions = [str(uuid.UUID(int=1000 + index * 10 + offset)) for offset in (1, 2)]
+        entries = [str(uuid.UUID(int=2000 + index * 10 + offset)) for offset in (1, 2)]
+        knowledge = [
+            {
+                "knowledge_public_id": entries[offset],
+                "version_public_id": versions[offset],
+                "version_number": 1,
+                "entry_type": "requirement",
+                "title": "Décision confirmée",
+                "statement": (
+                    "Conserver les décisions."
+                    if offset == 0
+                    else "Préférence hors sujet."
+                ),
+                "rationale": "Fixture synthétique",
+                "node_key": "product",
+            }
+            for offset in range(2)
+        ]
+        content = {
+            "objective": "Préparer le produit",
+            "project_summary": "Contexte français",
+            "graph_version": 3,
+            "contract": {},
+            "knowledge": knowledge[:1],
+            "provenance": [
+                {
+                    "knowledge_public_id": entries[0],
+                    "version_public_id": versions[0],
+                    "reason_code": "contract_required",
+                    "explanation": "Source du contrat",
+                }
+            ],
+        }
+        pack_hash = live.sha256_json(content)
+        pack = {
+            "public_id": str(uuid.UUID(int=3000 + index)),
+            "version": 1,
+            "status": "current",
+            "source_graph_version": 3,
+            "compiler_version": "alpha-context-compiler-v1",
+            "selection_mode": "deterministic",
+            "content_hash": pack_hash,
+            "token_budget": 12000,
+            "token_count": 100,
+            "compiled_at": "2026-09-05T00:00:00Z",
+            "invalidated_at": None,
+            "stale_reason": None,
+            "content": content,
+            "selection_items": [
+                {
+                    "candidate_public_id": version,
+                    "decision": "included" if offset == 0 else "excluded",
+                    "reason_code": (
+                        "contract_required" if offset == 0 else "out_of_scope"
+                    ),
+                    "explanation": "Annotation synthétique",
+                    "rank": offset,
+                    "estimated_tokens": 50,
+                    "is_mandatory": offset == 0,
+                }
+                for offset, version in enumerate(versions)
+            ],
+        }
+        snapshot = {
+            "project": {
+                "public_id": str(uuid.UUID(int=4000 + index)),
+                "graph_version": 3,
+                "objective": content["objective"],
+                "summary": content["project_summary"],
+            },
+            "knowledge": [
+                {
+                    "public_id": row["knowledge_public_id"],
+                    "created_at": "2026-09-05T00:00:00Z",
+                    **{
+                        key: value
+                        for key, value in row.items()
+                        if key != "knowledge_public_id"
+                    },
+                }
+                for row in knowledge
+            ],
+        }
+        handoffs[task["task_id"]] = {
+            "task_text": f"Prepare handoff {task['task_id']}",
+            "project_ref": task["project_ref"],
+            "annotations": {
+                "reviewer_ref": "synthetic-reviewer",
+                "reviewed_at": "2026-09-05T00:00:00Z",
+                "facts": {
+                    task["critical_fact_ids"][0]: {"source_version_ids": versions[:1]}
+                },
+                "items": {
+                    task["relevant_item_ids"][0]: versions[0],
+                    task["irrelevant_item_ids"][0]: versions[1],
+                },
+            },
+            "conditions": {
+                "context_pack": {
+                    "payload": pack,
+                    "allowed_source_ids": versions[:1],
+                    "context_pack_hash": pack_hash,
+                },
+                "full_dump": {
+                    "payload": snapshot,
+                    "allowed_source_ids": versions,
+                    "context_pack_hash": None,
+                },
+            },
+        }
     return {
         "schema_version": "1.0",
         "campaign_id": source_campaign["campaign_id"],
-        "handoffs": {
-            task["task_id"]: {
-                "task_text": f"Prepare handoff {task['task_id']}",
-                "conditions": {
-                    "context_pack": {
-                        "payload": {"knowledge": [task["critical_fact_ids"][0]]},
-                        "allowed_source_ids": [str(uuid.UUID(int=1000 + index))],
-                        "context_pack_hash": f"{index + 100:064x}",
-                    },
-                    "full_dump": {
-                        "payload": {"knowledge": ["all"]},
-                        "allowed_source_ids": [str(uuid.UUID(int=2000 + index))],
-                        "context_pack_hash": None,
-                    },
-                },
-            }
-            for index, task in enumerate(source_campaign["handoff_tasks"], start=1)
-        },
+        "handoffs": handoffs,
         "contradictions": {
             pair["pair_id"]: {
-                "left": {"version_id": pair["left_version_ref"], "text": "Keep forever"},
-                "right": {"version_id": pair["right_version_ref"], "text": "Delete after 30 days"},
+                "left": {
+                    "version_id": pair["left_version_ref"],
+                    "text": "Keep forever",
+                },
+                "right": {
+                    "version_id": pair["right_version_ref"],
+                    "text": "Delete after 30 days",
+                },
             }
             for pair in source_campaign["contradiction_pairs"]
         },
     }
-
 
 class LiveEvalTests(unittest.TestCase):
     def test_calibration_rejects_more_than_two_models(self) -> None:

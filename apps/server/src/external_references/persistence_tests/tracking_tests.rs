@@ -13,7 +13,7 @@ pub(super) async fn exercise_tracking(
     connection_id: Uuid,
     mut proof_input: CreateExternalEvidence,
 ) -> anyhow::Result<()> {
-    let input = CreatePullRequestReference {
+    let input = CreateGitHubReference {
         url: "https://github.com/acme/context/pull/9".into(),
         tool_connection_id: Some(connection_id),
         tracking: Some(ExternalTrackingInput {
@@ -24,7 +24,7 @@ pub(super) async fn exercise_tracking(
     let mut invalid = input.clone();
     invalid.tracking.as_mut().unwrap().transmission_confirmed = false;
     assert!(matches!(
-        create_pull_request(state, context, github, project_id, Uuid::new_v4(), invalid).await,
+        create_github_reference(state, context, github, project_id, Uuid::new_v4(), invalid).await,
         Err(AppError::Invalid(_))
     ));
     let other_project = service::create_project(
@@ -36,7 +36,7 @@ pub(super) async fn exercise_tracking(
     )
     .await?;
     assert!(matches!(
-        create_pull_request(
+        create_github_reference(
             state,
             context,
             github,
@@ -49,10 +49,10 @@ pub(super) async fn exercise_tracking(
     ));
     let key = Uuid::new_v4();
     let linked =
-        create_pull_request(state, context, github, project_id, key, input.clone()).await?;
+        create_github_reference(state, context, github, project_id, key, input.clone()).await?;
     assert_eq!(
         linked,
-        create_pull_request(state, context, github, project_id, key, input.clone()).await?
+        create_github_reference(state, context, github, project_id, key, input.clone()).await?
     );
     assert_eq!(linked.tracking.len(), 1);
     let chain = &linked.tracking[0];
@@ -68,7 +68,7 @@ pub(super) async fn exercise_tracking(
     let original_artifact = chain.artifacts[0].clone();
     let original_task_id = chain.task_public_id;
     let original_execution_id = chain.execution_public_id;
-    let repeated = create_pull_request(
+    let repeated = create_github_reference(
         state,
         context,
         github,
@@ -239,7 +239,7 @@ pub(super) async fn exercise_tracking(
         changed.tracking[0].artifacts
     );
     assert!(matches!(
-        create_pull_request(state, context, github, project_id, Uuid::new_v4(), input).await,
+        create_github_reference(state, context, github, project_id, Uuid::new_v4(), input).await,
         Err(AppError::Conflict(_))
     ));
     assert!(matches!(

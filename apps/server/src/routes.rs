@@ -22,7 +22,7 @@ use crate::{
     auth::{AuthRuntime, RequestContext},
     error::{AppError, AppResult},
     external_references::{
-        self, CreateExternalEvidence, CreatePullRequestReference, ExternalEvidenceView,
+        self, CreateExternalEvidence, CreateGitHubReference, ExternalEvidenceView,
         ExternalReferenceSummary, ExternalReferenceView, ReviewExternalEvidence,
     },
     idempotency::{self, BeginOutcome, BeginRequest, FailureDisposition, IdempotencyLease},
@@ -823,12 +823,12 @@ async fn create_external_reference(
     Extension(context): Extension<RequestContext>,
     Extension(idempotency_key): Extension<Uuid>,
     Path(project_id): Path<Uuid>,
-    Json(input): Json<CreatePullRequestReference>,
+    Json(input): Json<CreateGitHubReference>,
 ) -> AppResult<Json<ExternalReferenceView>> {
     let github = github_runtime(&state)?;
     let service = scoped(&state, &context);
     Ok(Json(
-        external_references::create_pull_request(
+        external_references::create_github_reference(
             &service,
             &context,
             &github,

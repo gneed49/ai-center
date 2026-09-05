@@ -5,7 +5,7 @@
 //! role) must be installed on that same transaction before these functions
 //! run, so forced RLS remains effective.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, future::Future, time::Duration};
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -40,9 +40,8 @@ pub struct BeginRequest<'a> {
 
 /// Proof that the caller currently owns a durable idempotency record.
 ///
-/// `locked_until` is also the lease generation. A stale worker cannot finalize
-/// a record after another worker has reclaimed it because reclaiming changes
-/// this value atomically.
+/// `generation` fences each claimant independently of the renewable deadline.
+/// Reclaiming changes it atomically, so a stale worker cannot finalize.
 #[derive(Debug, Clone, Serialize)]
 pub struct IdempotencyLease {
     pub record_public_id: Uuid,
@@ -52,6 +51,7 @@ pub struct IdempotencyLease {
     pub operation_key: String,
     pub idempotency_key: String,
     pub request_hash: String,
+    pub generation: Uuid,
     pub locked_until: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
 }
@@ -124,6 +124,7 @@ struct IdempotencyRecord {
     response_status: Option<i16>,
     response_body: Option<Value>,
     error_code: Option<String>,
+    lease_generation: Uuid,
     locked_until: Option<DateTime<Utc>>,
     expires_at: DateTime<Utc>,
     expired: bool,
@@ -203,7 +204,7 @@ pub async fn begin(
          do nothing
          returning id, public_id, workspace_id, project_id, actor_id,
                    operation_key, idempotency_key, request_hash, status,
-                   response_status, response_body, error_code, locked_until,
+                   response_status, response_body, error_code, lease_generation, locked_until,
                    expires_at, false as expired, false as reclaimable",
     )
     .bind(request.workspace_id)
@@ -231,7 +232,7 @@ pub async fn begin(
     let record = sqlx::query_as::<_, IdempotencyRecord>(
         "select id, public_id, workspace_id, project_id, actor_id,
                 operation_key, idempotency_key, request_hash, status,
-                response_status, response_body, error_code, locked_until,
+                response_status, response_body, error_code, lease_generation, locked_until,
                 expires_at, expires_at <= now() as expired,
                 coalesce(locked_until <= now(), false) as reclaimable
          from app.idempotency_records
@@ -274,6 +275,100 @@ pub async fn begin(
             expires_at: record.expires_at,
         }),
     }
+}
+
+/// Keeps provider work owned when invoked as part of an idempotent command.
+/// The service receives ownership errors and can mark its model run terminal.
+///
+/// # Errors
+/// Returns provider errors or an ownership conflict.
+pub fn with_optional_lease<'a, T: Send + 'a>(
+    state: &'a crate::service::AppState,
+    lease: Option<&'a IdempotencyLease>,
+    command: impl Future<Output = AppResult<T>> + Send + 'a,
+) -> impl Future<Output = AppResult<T>> + Send + 'a {
+    let command = Box::pin(command);
+    async move {
+        if let Some(lease) = lease {
+            with_lease(state, lease, command).await
+        } else {
+            command.await
+        }
+    }
+}
+
+/// Keeps a command owned while its future is active. Dropping this future also
+/// drops the provider work and renewal loop; no detached task survives cancellation.
+///
+/// # Errors
+/// Returns the command error, or a conflict if ownership cannot be renewed.
+pub fn with_lease<'a, T: Send + 'a>(
+    state: &'a crate::service::AppState,
+    lease: &'a IdempotencyLease,
+    command: impl Future<Output = AppResult<T>> + Send + 'a,
+) -> impl Future<Output = AppResult<T>> + Send + 'a {
+    let command = Box::pin(command);
+    async move {
+        let mut initial_tx = state.begin_request().await?;
+        if !renew(&mut initial_tx, lease).await? {
+            return Err(AppError::Conflict("command already finalized".into()));
+        }
+        initial_tx.commit().await?;
+        let heartbeat = Box::pin(async {
+            loop {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                let renewal = tokio::time::timeout(Duration::from_secs(10), async {
+                    let mut tx = state.begin_request().await?;
+                    let processing = renew(&mut tx, lease).await?;
+                    tx.commit().await?;
+                    Ok::<_, AppError>(processing)
+                })
+                .await
+                .map_err(|_| AppError::Conflict("command lease renewal timed out".into()))??;
+                if !renewal {
+                    // The command finalized atomically before returning its value.
+                    return std::future::pending::<AppResult<T>>().await;
+                }
+            }
+        });
+        tokio::select! {
+            biased;
+            result = command => result,
+            result = heartbeat => result,
+        }
+    }
+}
+
+/// Extends only an unexpired lease owned by the same generation.
+/// Returns false when this generation already finalized the command.
+///
+/// # Errors
+/// Returns a conflict for an expired/reclaimed lease, or a database error.
+pub async fn renew(
+    tx: &mut Transaction<'_, Postgres>,
+    lease: &IdempotencyLease,
+) -> AppResult<bool> {
+    assert_transaction_scope(tx, lease.workspace_id, lease.actor_id).await?;
+    let renewed: Option<bool> = sqlx::query_scalar(
+        "update app.idempotency_records
+         set locked_until = case when status = 'processing'
+               then now() + ($5::integer * interval '1 second') else locked_until end,
+             expires_at = greatest(expires_at, now() + ($6::integer * interval '1 second')),
+             updated_at = now()
+         where public_id = $1 and workspace_id = $2 and actor_id = $3
+           and lease_generation = $4
+           and (status <> 'processing' or locked_until > now())
+         returning status = 'processing'",
+    )
+    .bind(lease.record_public_id)
+    .bind(lease.workspace_id)
+    .bind(lease.actor_id)
+    .bind(lease.generation)
+    .bind(LEASE_DURATION_SECONDS)
+    .bind(RETENTION_SECONDS)
+    .fetch_optional(&mut **tx)
+    .await?;
+    renewed.ok_or_else(|| AppError::Conflict("command lease expired or was reclaimed".into()))
 }
 
 /// Persists the successful response produced by the lease owner.
@@ -360,7 +455,8 @@ async fn reset_expired(
 ) -> AppResult<BeginOutcome> {
     let record = sqlx::query_as::<_, IdempotencyRecord>(
         "update app.idempotency_records
-         set project_id = $2,
+         set lease_generation = gen_random_uuid(),
+             project_id = $2,
              request_hash = $3,
              status = 'processing',
              response_status = null,
@@ -373,7 +469,7 @@ async fn reset_expired(
          where id = $1
          returning id, public_id, workspace_id, project_id, actor_id,
                    operation_key, idempotency_key, request_hash, status,
-                   response_status, response_body, error_code, locked_until,
+                   response_status, response_body, error_code, lease_generation, locked_until,
                    expires_at, false as expired, false as reclaimable",
     )
     .bind(record_id)
@@ -397,12 +493,13 @@ async fn reclaim(
 ) -> AppResult<BeginOutcome> {
     let record = sqlx::query_as::<_, IdempotencyRecord>(
         "update app.idempotency_records
-         set locked_until = now() + ($2::integer * interval '1 second'),
+         set lease_generation = gen_random_uuid(),
+             locked_until = now() + ($2::integer * interval '1 second'),
              updated_at = now()
          where id = $1 and status = 'processing'
          returning id, public_id, workspace_id, project_id, actor_id,
                    operation_key, idempotency_key, request_hash, status,
-                   response_status, response_body, error_code, locked_until,
+                   response_status, response_body, error_code, lease_generation, locked_until,
                    expires_at, false as expired, false as reclaimable",
     )
     .bind(record.id)
@@ -426,7 +523,8 @@ async fn retry_failed(
     // arbitrary failed command into a second execution.
     let record = sqlx::query_as::<_, IdempotencyRecord>(
         "update app.idempotency_records
-         set status = 'processing',
+         set lease_generation = gen_random_uuid(),
+             status = 'processing',
              response_status = null,
              response_body = null,
              error_code = null,
@@ -438,7 +536,7 @@ async fn retry_failed(
            and response_body ->> 'retryable' = 'true'
          returning id, public_id, workspace_id, project_id, actor_id,
                    operation_key, idempotency_key, request_hash, status,
-                   response_status, response_body, error_code, locked_until,
+                   response_status, response_body, error_code, lease_generation, locked_until,
                    expires_at, false as expired, false as reclaimable",
     )
     .bind(record.id)
@@ -485,7 +583,7 @@ async fn finalize(
            and idempotency_key = $6
            and request_hash = $7
            and status = 'processing'
-           and locked_until = $12",
+           and lease_generation = $12",
     )
     .bind(lease.record_public_id)
     .bind(lease.workspace_id)
@@ -498,7 +596,7 @@ async fn finalize(
     .bind(status_code)
     .bind(&response.body)
     .bind(&response.error_code)
-    .bind(lease.locked_until)
+    .bind(lease.generation)
     .execute(&mut **tx)
     .await?;
 
@@ -511,7 +609,7 @@ async fn finalize(
     let existing = sqlx::query_as::<_, IdempotencyRecord>(
         "select id, public_id, workspace_id, project_id, actor_id,
                 operation_key, idempotency_key, request_hash, status,
-                response_status, response_body, error_code, locked_until,
+                response_status, response_body, error_code, lease_generation, locked_until,
                 expires_at, expires_at <= now() as expired,
                 coalesce(locked_until <= now(), false) as reclaimable
          from app.idempotency_records
@@ -723,6 +821,7 @@ impl IdempotencyRecord {
             operation_key: self.operation_key,
             idempotency_key: self.idempotency_key,
             request_hash: self.request_hash,
+            generation: self.lease_generation,
             locked_until,
             expires_at: self.expires_at,
         })
@@ -1035,6 +1134,7 @@ mod tests {
             response_status: None,
             response_body: None,
             error_code: None,
+            lease_generation: Uuid::new_v4(),
             locked_until: (status == "processing").then_some(now + TimeDelta::seconds(30)),
             expires_at: now + TimeDelta::hours(24),
             expired,

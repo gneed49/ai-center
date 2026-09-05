@@ -396,6 +396,7 @@ def validate_runs(
         "provider_response_ref",
         "request_hash",
         "runner_version",
+        "input_evidence_hash",
     }
     for record in runs:
         line = record.pop("__line__", "?")
@@ -970,7 +971,9 @@ def command_summarize(args: argparse.Namespace) -> int:
     spec.loader.exec_module(protocol)
     config = read_json(args.config)
     try:
-        protocol.validate_frozen_evidence(config, manifest, runs)
+        cases = read_json(protocol.ensure_private_path(args.cases))
+        protocol.validate_private_cases(cases, manifest)
+        protocol.validate_frozen_evidence(config, manifest, runs, cases)
         protocol.validate_reserve_evidence(config, runs)
     except protocol.LiveEvalError as error:
         raise ValidationError(str(error)) from error
@@ -1022,6 +1025,7 @@ def build_parser() -> argparse.ArgumentParser:
     summary_parser = subparsers.add_parser("summarize", help="Produire le rapport agrégé.")
     summary_parser.add_argument("--manifest", type=Path, required=True)
     summary_parser.add_argument("--config", type=Path, required=True)
+    summary_parser.add_argument("--cases", type=Path, required=True)
     summary_parser.add_argument("--runs", type=Path, required=True)
     summary_parser.add_argument("--evaluations", type=Path, required=True)
     summary_parser.add_argument("--output", type=Path, required=True)

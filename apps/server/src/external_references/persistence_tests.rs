@@ -23,6 +23,7 @@ use axum::{
     response::IntoResponse,
 };
 
+mod observation_cycles;
 mod tracking_tests;
 
 const HEAD_SHA: &str = "2222222222222222222222222222222222222222";
@@ -54,10 +55,11 @@ async fn provider(
         HEAD_SHA
     };
     let path = request.uri().path();
+    let check_status = if status == 202 { "pending" } else { "success" };
     let value = if path.ends_with("/check-runs") {
         json!({"check_runs":[{"name":"ci","status":"completed","conclusion":"success"}]})
     } else if path.ends_with("/status") {
-        json!({"sha":head_sha,"statuses":[]})
+        json!({"sha":head_sha,"statuses":[{"context":"deploy","state":check_status,"target_url":"https://github.com/acme/context/actions/runs/1","updated_at":"2026-08-25T00:00:00Z"}]})
     } else if path.ends_with("/files") {
         json!([{"filename":"src/main.rs"}])
     } else if path.ends_with("/commits") {
@@ -213,13 +215,13 @@ async fn github_persistence_preserves_proofs_under_rate_limits_and_binds_idempot
         "/pull/8".into(),
         format!("/commit/{HEAD_SHA}"),
     ] {
-        let input = CreatePullRequestReference {
+        let input = CreateGitHubReference {
             url: format!("https://github.com/acme/context{suffix}"),
             tool_connection_id: Some(connection),
             tracking: None,
         };
         let key = Uuid::new_v4();
-        let reference = create_pull_request(
+        let reference = create_github_reference(
             &state,
             &context,
             &github,
@@ -230,7 +232,8 @@ async fn github_persistence_preserves_proofs_under_rate_limits_and_binds_idempot
         .await?;
         assert_eq!(
             reference,
-            create_pull_request(&state, &context, &github, project.public_id, key, input).await?
+            create_github_reference(&state, &context, &github, project.public_id, key, input)
+                .await?
         );
         imported.push(reference);
     }
@@ -345,6 +348,16 @@ async fn github_persistence_preserves_proofs_under_rate_limits_and_binds_idempot
         &admin_pool,
         project.public_id,
         pack.public_id,
+        connection,
+        input.clone(),
+    )
+    .await?;
+    observation_cycles::exercise_cycles(
+        &state,
+        &context,
+        &github,
+        &mode,
+        project.public_id,
         connection,
         input,
     )

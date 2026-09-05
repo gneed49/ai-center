@@ -31,10 +31,10 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 
-RUNNER_VERSION = "1.1.0"
+RUNNER_VERSION = "1.2.0"
 FORMAT_VERSION = "1.0"
-PROMPT_VERSION = "alpha-context-proof-live-v1"
-OUTPUT_SCHEMA_VERSION = "alpha-context-proof-live-v1"
+PROMPT_VERSION = "alpha-context-proof-live-v2"
+OUTPUT_SCHEMA_VERSION = "alpha-context-proof-live-v2"
 RESPONSES_API_URL = "https://api.openai.com/v1/responses"
 API_KEY_ENV = "OPENAI_API_KEY"
 LIVE_CONFIRMATION = "RUN_OPENAI_ALPHA_CONTEXT_PROOF"
@@ -447,28 +447,9 @@ def validate_private_cases(cases: dict[str, Any], campaign: dict[str, Any]) -> N
     expected_pairs = {item["pair_id"] for item in campaign["contradiction_pairs"]}
     if set(handoffs) != expected_handoffs or set(contradictions) != expected_pairs:
         raise LiveEvalError("private case IDs do not exactly match the campaign")
+    task_manifest = {item["task_id"]: item for item in campaign["handoff_tasks"]}
     for case_id, case in handoffs.items():
-        if not isinstance(case, dict) or set(case) != {"task_text", "conditions"}:
-            raise LiveEvalError(f"{case_id}: invalid handoff case contract")
-        if not isinstance(case["task_text"], str) or not case["task_text"].strip():
-            raise LiveEvalError(f"{case_id}: task_text is required")
-        conditions = case["conditions"]
-        if not isinstance(conditions, dict) or set(conditions) != set(CONDITIONS):
-            raise LiveEvalError(f"{case_id}: both A/B conditions are required")
-        for condition, value in conditions.items():
-            if not isinstance(value, dict) or set(value) != {
-                "payload",
-                "allowed_source_ids",
-                "context_pack_hash",
-            }:
-                raise LiveEvalError(f"{case_id}:{condition}: invalid condition contract")
-            validate_uuid_list(value["allowed_source_ids"], f"{case_id}:{condition}")
-            pack_hash = value["context_pack_hash"]
-            if condition == "context_pack":
-                if not isinstance(pack_hash, str) or not re.fullmatch(r"[a-f0-9]{64}", pack_hash):
-                    raise LiveEvalError(f"{case_id}: context_pack_hash is required")
-            elif pack_hash is not None:
-                raise LiveEvalError(f"{case_id}: full_dump context_pack_hash must be null")
+        validated_handoff_inputs(case, task_manifest[case_id])
     pair_manifest = {item["pair_id"]: item for item in campaign["contradiction_pairs"]}
     for case_id, case in contradictions.items():
         if not isinstance(case, dict) or set(case) != {"left", "right"}:
@@ -486,6 +467,353 @@ def validate_private_cases(cases: dict[str, Any], campaign: dict[str, Any]) -> N
                 raise LiveEvalError(f"{case_id}:{side}: source UUID required") from error
             if not isinstance(value["text"], str) or not value["text"].strip():
                 raise LiveEvalError(f"{case_id}:{side}: text is required")
+
+
+def validated_handoff_inputs(
+    case: dict[str, Any], task: dict[str, Any]
+) -> dict[str, Any]:
+    """Validate captured exports and derive input metrics from reviewed source mappings."""
+    if not isinstance(case, dict) or set(case) != {
+        "task_text",
+        "project_ref",
+        "conditions",
+        "annotations",
+    }:
+        raise LiveEvalError(
+            "handoff requires captured exports and reviewed annotations"
+        )
+    if (
+        case["project_ref"] != task["project_ref"]
+        or not isinstance(case["task_text"], str)
+        or not case["task_text"].strip()
+    ):
+        raise LiveEvalError("handoff task/project binding is invalid")
+    conditions = case["conditions"]
+    if not isinstance(conditions, dict) or set(conditions) != set(CONDITIONS):
+        raise LiveEvalError("both captured A/B conditions are required")
+    for condition in conditions.values():
+        if not isinstance(condition, dict) or set(condition) != {
+            "payload",
+            "allowed_source_ids",
+            "context_pack_hash",
+        }:
+            raise LiveEvalError("invalid captured condition contract")
+        validate_uuid_list(condition["allowed_source_ids"], "captured condition")
+    pack = conditions["context_pack"]["payload"]
+    snapshot = conditions["full_dump"]["payload"]
+    if not isinstance(pack, dict) or not isinstance(snapshot, dict):
+        raise LiveEvalError(
+            "structured ContextPack export and ProjectSnapshot required"
+        )
+    required_pack_fields = {
+        "public_id",
+        "version",
+        "status",
+        "source_graph_version",
+        "compiler_version",
+        "selection_mode",
+        "content_hash",
+        "token_budget",
+        "token_count",
+        "compiled_at",
+        "invalidated_at",
+        "stale_reason",
+        "content",
+        "selection_items",
+    }
+    if set(pack) != required_pack_fields:
+        raise LiveEvalError("complete ContextPackSummary JSON export required")
+    for field in ("version", "token_budget", "token_count"):
+        if (
+            not isinstance(pack[field], int)
+            or isinstance(pack[field], bool)
+            or pack[field] <= 0
+        ):
+            raise LiveEvalError("invalid ContextPack version or token accounting")
+    if pack["token_count"] > pack["token_budget"]:
+        raise LiveEvalError("ContextPack exceeds its captured token budget")
+    try:
+        if (
+            datetime.fromisoformat(pack["compiled_at"].replace("Z", "+00:00")).tzinfo
+            is None
+        ):
+            raise ValueError()
+    except (TypeError, ValueError, AttributeError) as error:
+        raise LiveEvalError("ContextPack compilation timestamp required") from error
+    project = snapshot.get("project", {})
+    content = pack.get("content", {})
+    if not isinstance(project, dict) or not isinstance(content, dict):
+        raise LiveEvalError("invalid captured project/content")
+    try:
+        uuid.UUID(project["public_id"])
+        uuid.UUID(pack["public_id"])
+    except (KeyError, TypeError, ValueError, AttributeError) as error:
+        raise LiveEvalError("captured project and pack UUIDs required") from error
+    graph = project.get("graph_version")
+    if (
+        not isinstance(graph, int)
+        or isinstance(graph, bool)
+        or graph < 0
+        or pack.get("source_graph_version") != graph
+        or content.get("graph_version") != graph
+    ):
+        raise LiveEvalError("captured graph versions differ")
+    if (
+        pack.get("status") != "current"
+        or pack.get("invalidated_at") is not None
+        or pack.get("stale_reason") is not None
+    ):
+        raise LiveEvalError("ContextPack was not current at capture")
+    if (
+        not isinstance(pack.get("compiler_version"), str)
+        or not pack["compiler_version"].strip()
+        or pack.get("selection_mode") not in {"hybrid", "deterministic"}
+    ):
+        raise LiveEvalError("ContextPack compiler provenance is missing")
+    expected_content = {
+        "objective",
+        "project_summary",
+        "graph_version",
+        "contract",
+        "knowledge",
+        "provenance",
+    }
+    if set(content) != expected_content or not isinstance(content["contract"], dict):
+        raise LiveEvalError("invalid ContextPack content contract")
+    if content["objective"] != project.get("objective") or content[
+        "project_summary"
+    ] != project.get("summary"):
+        raise LiveEvalError("ContextPack project content differs from snapshot")
+    try:
+        # Non-finite numbers are not valid serde_json values.
+        encoded = json.dumps(
+            content,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise LiveEvalError("invalid ContextPack JSON") from error
+    pack_hash = hashlib.sha256(encoded).hexdigest()
+    if (
+        pack.get("content_hash") != pack_hash
+        or conditions["context_pack"]["context_pack_hash"] != pack_hash
+    ):
+        raise LiveEvalError("ContextPack content hash mismatch")
+    if conditions["full_dump"]["context_pack_hash"] is not None:
+        raise LiveEvalError("full_dump ContextPack hash must be null")
+    source_fields = {
+        "knowledge_public_id",
+        "version_public_id",
+        "version_number",
+        "entry_type",
+        "title",
+        "statement",
+        "rationale",
+        "node_key",
+    }
+    full = snapshot.get("knowledge")
+    selected = content.get("knowledge")
+    if not isinstance(full, list) or not full or not isinstance(selected, list):
+        raise LiveEvalError("captured knowledge arrays required")
+    normalized = [
+        {
+            "knowledge_public_id": row.get("public_id"),
+            **{key: row.get(key) for key in source_fields - {"knowledge_public_id"}},
+        }
+        for row in full
+        if isinstance(row, dict)
+    ]
+
+    def sources_by_id(rows: list[Any]) -> dict[str, Any]:
+        result = {}
+        for row in rows:
+            if not isinstance(row, dict) or set(row) != source_fields:
+                raise LiveEvalError("invalid captured knowledge version")
+            validate_uuid_list([row["version_public_id"]], "knowledge version")
+            validate_uuid_list([row["knowledge_public_id"]], "knowledge entry")
+            if (
+                not isinstance(row["version_number"], int)
+                or isinstance(row["version_number"], bool)
+                or row["version_number"] < 1
+                or not all(
+                    isinstance(row[key], str)
+                    for key in (
+                        "entry_type",
+                        "title",
+                        "statement",
+                        "rationale",
+                        "node_key",
+                    )
+                )
+            ):
+                raise LiveEvalError("invalid knowledge version fields")
+            if row["version_public_id"] in result:
+                raise LiveEvalError("duplicate captured knowledge version")
+            result[row["version_public_id"]] = row
+        return result
+
+    full_sources, pack_sources = sources_by_id(normalized), sources_by_id(selected)
+    if (
+        len(normalized) != len(full)
+        or not pack_sources
+        or any(full_sources.get(key) != row for key, row in pack_sources.items())
+    ):
+        raise LiveEvalError(
+            "ContextPack sources differ from the complete captured versions"
+        )
+    provenance = content.get("provenance")
+    ledger = pack.get("selection_items")
+    if not isinstance(provenance, list) or not isinstance(ledger, list):
+        raise LiveEvalError("ContextPack provenance and selection ledger required")
+    provenance_ids = [
+        row.get("version_public_id") for row in provenance if isinstance(row, dict)
+    ]
+    ledger_ids = [
+        row.get("candidate_public_id") for row in ledger if isinstance(row, dict)
+    ]
+    if (
+        len(provenance_ids) != len(provenance)
+        or len(set(provenance_ids)) != len(provenance_ids)
+        or set(provenance_ids) != set(pack_sources)
+    ):
+        raise LiveEvalError("ContextPack provenance differs from selected versions")
+    for row in provenance:
+        if (
+            row.get("knowledge_public_id")
+            != pack_sources[row["version_public_id"]]["knowledge_public_id"]
+            or not row.get("reason_code")
+            or not row.get("explanation")
+        ):
+            raise LiveEvalError("invalid ContextPack source provenance")
+    if (
+        len(ledger_ids) != len(ledger)
+        or len(set(ledger_ids)) != len(ledger_ids)
+        or set(ledger_ids) != set(full_sources)
+    ):
+        raise LiveEvalError("ContextPack selection ledger differs from captured corpus")
+    if any(row.get("decision") not in {"included", "excluded"} for row in ledger) or {
+        row["candidate_public_id"] for row in ledger if row["decision"] == "included"
+    } != set(pack_sources):
+        raise LiveEvalError("ContextPack included ledger differs from payload")
+    annotations = case["annotations"]
+    if (
+        not isinstance(annotations, dict)
+        or set(annotations) != {"reviewer_ref", "reviewed_at", "facts", "items"}
+        or not isinstance(annotations["reviewer_ref"], str)
+        or not annotations["reviewer_ref"].strip()
+    ):
+        raise LiveEvalError("human corpus review provenance required")
+    try:
+        if (
+            datetime.fromisoformat(
+                annotations["reviewed_at"].replace("Z", "+00:00")
+            ).tzinfo
+            is None
+        ):
+            raise ValueError()
+    except (ValueError, TypeError, AttributeError) as error:
+        raise LiveEvalError("human corpus review timestamp required") from error
+    facts, items = annotations["facts"], annotations["items"]
+    expected_items = set(task["relevant_item_ids"]) | set(task["irrelevant_item_ids"])
+    if (
+        not isinstance(facts, dict)
+        or set(facts) != set(task["critical_fact_ids"])
+        or not isinstance(items, dict)
+        or set(items) != expected_items
+    ):
+        raise LiveEvalError(
+            "annotations must cover the frozen facts and relevance labels"
+        )
+    if (
+        not all(isinstance(value, str) for value in items.values())
+        or len(set(items.values())) != len(items)
+        or set(items.values()) != set(full_sources)
+    ):
+        raise LiveEvalError(
+            "every captured knowledge unit needs one relevance annotation"
+        )
+    for fact in facts.values():
+        if isinstance(fact, dict) and set(fact) == {"source_version_ids"}:
+            validate_uuid_list(fact["source_version_ids"], "critical fact annotation")
+            if not set(fact["source_version_ids"]).issubset(full_sources):
+                raise LiveEvalError(
+                    "critical fact annotation points outside the captured corpus"
+                )
+        elif isinstance(fact, dict) and set(fact) == {
+            "content_pointer",
+            "content_hash",
+        }:
+            if fact["content_pointer"] not in {
+                "/objective",
+                "/project_summary",
+                "/contract",
+            } or fact["content_hash"] != sha256_json(
+                content[fact["content_pointer"][1:]]
+            ):
+                raise LiveEvalError(
+                    "critical fact content anchor differs from reviewed input"
+                )
+        else:
+            raise LiveEvalError(
+                "critical fact requires reviewed versions or content anchor"
+            )
+    dump_content = {
+        "objective": project["objective"],
+        "project_summary": project["summary"],
+        "graph_version": graph,
+        "knowledge": normalized,
+    }
+    result = {}
+    for condition_name, source_map, payload in (
+        ("context_pack", pack_sources, content),
+        ("full_dump", full_sources, dump_content),
+    ):
+        condition = conditions[condition_name]
+        if set(condition["allowed_source_ids"]) != set(source_map):
+            raise LiveEvalError("allowed source IDs differ from captured input")
+        fact_count = sum(
+            (
+                set(fact["source_version_ids"]).issubset(source_map)
+                if "source_version_ids" in fact
+                else fact["content_pointer"][1:] in payload
+                and sha256_json(payload[fact["content_pointer"][1:]])
+                == fact["content_hash"]
+            )
+            for fact in facts.values()
+        )
+        chosen_items = {
+            item_id for item_id, version_id in items.items() if version_id in source_map
+        }
+        result[condition_name] = {
+            "payload": payload,
+            "allowed_source_ids": sorted(source_map),
+            "context_pack_hash": condition["context_pack_hash"],
+            "input_evidence_hash": sha256_json(
+                {
+                    "project_ref": case["project_ref"],
+                    "payload": payload,
+                    "annotations": annotations,
+                }
+            ),
+            "critical_facts_expected": len(facts),
+            "critical_facts_present": fact_count,
+            "relevant_items_expected": len(task["relevant_item_ids"]),
+            "relevant_items_present": len(
+                chosen_items & set(task["relevant_item_ids"])
+            ),
+            "selected_items_total": len(source_map),
+            "irrelevant_items_selected": len(
+                chosen_items & set(task["irrelevant_item_ids"])
+            ),
+        }
+    return result
+
+INPUT_METRIC_FIELDS = (
+    "critical_facts_expected", "critical_facts_present", "relevant_items_expected",
+    "relevant_items_present", "selected_items_total", "irrelevant_items_selected", "input_evidence_hash",
+)
 
 
 def validate_uuid_list(value: Any, location: str) -> None:
@@ -540,14 +868,27 @@ def private_cases_template(campaign: dict[str, Any]) -> dict[str, Any]:
     for task in campaign["handoff_tasks"]:
         handoffs[task["task_id"]] = {
             "task_text": "REPLACE_PRIVATE_TASK",
+            "project_ref": task["project_ref"],
+            "annotations": {
+                "reviewer_ref": "REPLACE_PSEUDONYMOUS_REVIEWER",
+                "reviewed_at": "REPLACE_ISO_TIMESTAMP",
+                "facts": {
+                    fact: {"source_version_ids": ["REPLACE_SOURCE_UUID"]}
+                    for fact in task["critical_fact_ids"]
+                },
+                "items": {
+                    item: "REPLACE_SOURCE_UUID"
+                    for item in task["relevant_item_ids"] + task["irrelevant_item_ids"]
+                },
+            },
             "conditions": {
                 "context_pack": {
-                    "payload": {"replace": "REPLACE_PRIVATE_CONTEXT_PACK"},
+                    "payload": {"replace": "REPLACE_STRUCTURED_CONTEXT_PACK_EXPORT"},
                     "allowed_source_ids": ["REPLACE_SOURCE_UUID"],
                     "context_pack_hash": "REPLACE_SHA256_CONTEXT_PACK",
                 },
                 "full_dump": {
-                    "payload": {"replace": "REPLACE_PRIVATE_FULL_DUMP"},
+                    "payload": {"replace": "REPLACE_STRUCTURED_PROJECT_SNAPSHOT"},
                     "allowed_source_ids": ["REPLACE_SOURCE_UUID"],
                     "context_pack_hash": None,
                 },
@@ -572,7 +913,6 @@ def private_cases_template(campaign: dict[str, Any]) -> dict[str, Any]:
         "handoffs": handoffs,
         "contradictions": contradictions,
     }
-
 
 def case_kind(case_id: str) -> str:
     return "handoff" if case_id.startswith("handoff-") else "contradiction"
@@ -755,14 +1095,10 @@ HANDOFF_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "source_version_ids",
-        "critical_fact_ids_used",
-        "selected_item_ids",
         "deliverable",
     ],
     "properties": {
         "source_version_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": True},
-        "critical_fact_ids_used": {"type": "array", "items": {"type": "string"}, "uniqueItems": True},
-        "selected_item_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": True},
         "deliverable": {
             "type": "object",
             "additionalProperties": False,
@@ -796,11 +1132,19 @@ CONTRADICTION_SCHEMA = {
 
 
 def request_for_job(
-    job: dict[str, Any], campaign: dict[str, Any], config: dict[str, Any], cases: dict[str, Any]
+    job: dict[str, Any],
+    campaign: dict[str, Any],
+    config: dict[str, Any],
+    cases: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if job["case_kind"] == "handoff":
         private_case = cases["handoffs"][job["case_id"]]
-        condition = private_case["conditions"][job["condition"]]
+        task = next(
+            task
+            for task in campaign["handoff_tasks"]
+            if task["task_id"] == job["case_id"]
+        )
+        condition = validated_handoff_inputs(private_case, task)[job["condition"]]
         input_value = {
             "task": private_case["task_text"],
             "context": condition["payload"],
@@ -814,6 +1158,7 @@ def request_for_job(
         scoring = {
             "allowed_source_ids": condition["allowed_source_ids"],
             "context_pack_hash": condition["context_pack_hash"],
+            **{field: condition[field] for field in INPUT_METRIC_FIELDS},
         }
     else:
         private_case = cases["contradictions"][job["case_id"]]
@@ -863,7 +1208,6 @@ def request_for_job(
         },
     }
     return body, scoring
-
 
 def request_upper_bound_cost(
     body: dict[str, Any], config: dict[str, Any], model: dict[str, Any]
@@ -1089,16 +1433,14 @@ def validate_model_output(kind: str, output: dict[str, Any] | None) -> bool:
     if kind == "handoff":
         if set(output) != {
             "source_version_ids",
-            "critical_fact_ids_used",
-            "selected_item_ids",
             "deliverable",
         }:
             return False
         if not all(
             isinstance(output[field], list)
-            and len(output[field]) == len(set(output[field]))
             and all(isinstance(item, str) for item in output[field])
-            for field in ("source_version_ids", "critical_fact_ids_used", "selected_item_ids")
+            and len(output[field]) == len(set(output[field]))
+            for field in ("source_version_ids",)
         ):
             return False
         deliverable = output["deliverable"]
@@ -1106,13 +1448,23 @@ def validate_model_output(kind: str, output: dict[str, Any] | None) -> bool:
             isinstance(deliverable, dict)
             and set(deliverable) == {"summary", "actions", "risks"}
             and isinstance(deliverable["summary"], str)
+            and bool(deliverable["summary"].strip())
+            and bool(deliverable["actions"])
             and all(
                 isinstance(deliverable[field], list)
-                and all(isinstance(item, str) for item in deliverable[field])
+                and all(
+                    isinstance(item, str) and item.strip()
+                    for item in deliverable[field]
+                )
                 for field in ("actions", "risks")
             )
         )
-    if set(output) != {"source_version_ids", "predicted_label", "confidence", "explanation"}:
+    if set(output) != {
+        "source_version_ids",
+        "predicted_label",
+        "confidence",
+        "explanation",
+    }:
         return False
     confidence = output["confidence"]
     return (
@@ -1125,7 +1477,6 @@ def validate_model_output(kind: str, output: dict[str, Any] | None) -> bool:
         and 0 <= confidence <= 1
         and isinstance(output["explanation"], str)
     )
-
 
 def usage_and_cost(response: dict[str, Any], model: dict[str, Any]) -> tuple[int, int, Decimal]:
     usage = response.get("usage")
@@ -1160,7 +1511,9 @@ def build_run_record(
         job["case_kind"], output
     )
     source_ids = output.get("source_version_ids", []) if valid_output and output else []
-    source_ids_valid = bool(source_ids) and set(source_ids).issubset(scoring["allowed_source_ids"])
+    source_ids_valid = bool(source_ids) and set(source_ids).issubset(
+        scoring["allowed_source_ids"]
+    )
     record: dict[str, Any] = {
         "schema_version": FORMAT_VERSION,
         "run_id": job["run_id"],
@@ -1187,35 +1540,24 @@ def build_run_record(
         "request_hash": request_hash,
     }
     if job["case_kind"] == "handoff":
-        manifest_task = next(
-            item for item in campaign["handoff_tasks"] if item["task_id"] == job["case_id"]
-        )
-        critical = set(output.get("critical_fact_ids_used", [])) if valid_output and output else set()
-        selected = set(output.get("selected_item_ids", [])) if valid_output and output else set()
-        record.update(
-            {
-                "critical_facts_expected": len(manifest_task["critical_fact_ids"]),
-                "critical_facts_present": len(critical & set(manifest_task["critical_fact_ids"])),
-                "relevant_items_expected": len(manifest_task["relevant_item_ids"]),
-                "relevant_items_present": len(selected & set(manifest_task["relevant_item_ids"])),
-                "selected_items_total": len(selected),
-                "irrelevant_items_selected": len(selected & set(manifest_task["irrelevant_item_ids"])),
-            }
-        )
+        record.update({field: scoring[field] for field in INPUT_METRIC_FIELDS})
     else:
         manifest_pair = next(
-            item for item in campaign["contradiction_pairs"] if item["pair_id"] == job["case_id"]
+            item
+            for item in campaign["contradiction_pairs"]
+            if item["pair_id"] == job["case_id"]
         )
         record.update(
             {
                 "expected_label": manifest_pair["expected_label"],
-                "predicted_label": output.get("predicted_label", "ambiguous")
-                if valid_output and output
-                else "ambiguous",
+                "predicted_label": (
+                    output.get("predicted_label", "ambiguous")
+                    if valid_output and output
+                    else "ambiguous"
+                ),
             }
         )
     return record
-
 
 def project_for_case(campaign: dict[str, Any], case_id: str) -> str:
     collection = (
@@ -1336,6 +1678,8 @@ def validate_run_contracts(
     cases: dict[str, Any] | None = None,
 ) -> None:
     validator = aggregate_validator()
+    if cases is not None:
+        validate_private_cases(cases, campaign)
     try:
         validator.validate_runs([dict(record) for record in runs], campaign)
     except validator.ValidationError as error:
@@ -1385,7 +1729,12 @@ def validate_run_contracts(
                 raise LiveEvalError(
                     "run request or ContextPack differs from the private corpus"
                 )
-
+            if record["case_kind"] == "handoff" and any(
+                record.get(field) != scoring[field] for field in INPUT_METRIC_FIELDS
+            ):
+                raise LiveEvalError(
+                    "run input metrics differ from verified corpus annotations"
+                )
 
 def validate_calibration_evidence(
     config: dict[str, Any],
@@ -1481,14 +1830,7 @@ def validate_reserve_evidence(
                 and len({row["predicted_label"] for row in main_runs}) > 1
             )
         elif rule == "quality_metrics_vary":
-            fields = (
-                "structured_output_valid",
-                "source_ids_valid",
-                "critical_facts_present",
-                "relevant_items_present",
-                "selected_items_total",
-                "irrelevant_items_selected",
-            )
+            fields = ("structured_output_valid", "source_ids_valid")
             unstable = case_id.startswith("handoff-") and any(
                 len(
                     {
@@ -1729,7 +2071,7 @@ def command_register_reserve(args: argparse.Namespace) -> int:
     config = read_json(config_path)
     runs = read_jsonl(ensure_private_path(args.runs), allow_missing=False)
     validate_campaign(campaign)
-    validate_frozen_evidence(config, campaign, runs)
+    validate_frozen_evidence(config, campaign, runs, read_json(ensure_private_path(args.cases)))
     if args.case_id in config["reserve_case_ids"]:
         raise LiveEvalError("reserve justification is already registered")
     main_runs = [
@@ -1817,6 +2159,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     reserve.add_argument("--manifest", type=Path, required=True)
     reserve.add_argument("--config", type=Path, required=True)
+    reserve.add_argument("--cases", type=Path, required=True)
     reserve.add_argument("--runs", type=Path, required=True)
     reserve.add_argument("--case-id", required=True)
     reserve.add_argument(

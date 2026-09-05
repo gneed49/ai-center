@@ -9,7 +9,7 @@ use ai_center_server::{
     error::{AppError, AppResult},
     models::{
         AgentTurn, CompileContextPack, CreateHandoff, CreateProject, CreateSession,
-        DecideProposals, ProposalDecision, SendMessage,
+        DecideProposals, ProposalDecision, ReviseKnowledge, SendMessage,
     },
     service::{self, AppState},
 };
@@ -76,6 +76,71 @@ struct ContextFixture {
     project_public_id: Uuid,
     product_session_id: Uuid,
     pack_public_id: Uuid,
+}
+
+#[tokio::test]
+async fn feature_brief_publication_serializes_with_source_revision() -> Result<()> {
+    let fixture = prepare_context_fixture().await?;
+    let snapshot = service::snapshot(&fixture.state, fixture.project_public_id).await?;
+    let requirement = snapshot
+        .knowledge
+        .iter()
+        .find(|entry| entry.entry_type == "requirement")
+        .context("requirement fixture")?;
+    // Block exactly the deliverable insert, after its source reads, on the
+    // contract FK. Gate evaluation does not touch this row.
+    let mut contract_lock = fixture.admin_pool.begin().await?;
+    sqlx::query(
+        "select id from app.deliverable_contracts where contract_key='feature-brief' for update",
+    )
+    .fetch_all(&mut *contract_lock)
+    .await?;
+    let blocker_xid: String = sqlx::query_scalar("select pg_current_xact_id()::text")
+        .fetch_one(&mut *contract_lock)
+        .await?;
+    let brief_state = fixture.state.clone();
+    let project_id = fixture.project_public_id;
+    let brief_task =
+        tokio::spawn(
+            async move { service::generate_feature_brief(&brief_state, project_id).await },
+        );
+    let brief_pid = wait_for_transaction_waiter(&fixture.admin_pool, &blocker_xid)
+        .await?
+        .context("brief did not reach publication")?;
+    let publication_transaction_id = transaction_id_for_pid(&fixture.admin_pool, brief_pid)
+        .await?
+        .context("brief transaction missing")?;
+    let revision_state = fixture.state.clone();
+    let requirement_id = requirement.public_id;
+    let revision = ReviseKnowledge {
+        title: Some(requirement.title.clone()),
+        statement: format!("{} Une révision concurrente.", requirement.statement),
+        rationale: Some(requirement.rationale.clone()),
+    };
+    let revision_task = tokio::spawn(async move {
+        service::revise_knowledge_for_project(&revision_state, project_id, requirement_id, revision)
+            .await
+    });
+    let revision_waiter =
+        wait_for_transaction_waiter(&fixture.admin_pool, &publication_transaction_id).await?;
+    contract_lock.commit().await?;
+    let brief = brief_task.await??;
+    revision_task.await??;
+    ensure!(
+        revision_waiter.is_some(),
+        "revision must wait for the brief's source/commit transaction"
+    );
+    let after = service::snapshot(&fixture.state, project_id).await?;
+    let committed = after
+        .deliverables
+        .iter()
+        .find(|item| item.public_id == brief.public_id)
+        .context("brief disappeared")?;
+    ensure!(
+        committed.status == "stale",
+        "a later source revision must invalidate the just-published brief"
+    );
+    Ok(())
 }
 
 #[tokio::test]
