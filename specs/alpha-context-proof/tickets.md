@@ -120,6 +120,32 @@ d'implémentation après fusion. La release reste conditionnée aux gates du pla
 **Acceptation :** écarts techniques corrigés, résultats localisables, statut
 exact des gates restant ouverts, branche unique et PR relisible.
 
+**Corrections de revue du 2026-09-05 (baseline `90ca7588`) :**
+
+- Révision datée de l'ADR 0003 ; ouverture transactionnelle commune aux services,
+  steward et références en préservant leurs vérifications ; noms Rust GitHub
+  génériques sans modifier les routes, JSON ni clés d'opération historiques.
+- Observations append-only dédupliquées seulement contre le dernier état sous
+  verrou, ordonnées par événement appliqué. Les cycles de SHA, checks et perte
+  d'accès conservent le retour à un ancien contenu ; les retries restent uniques.
+- Bail renouvelé pendant chaque attente fournisseur, génération UUID distincte
+  du délai ; annulation du fournisseur à la perte du bail, puis model_run terminal.
+- Feature Brief et ProductReadyGate sérialisés avec la révision du graphe ; gate
+  devenu ancien refusé avant publication et brief publié invalidé par la révision
+  suivante.
+- Évaluation v1.2 : export JSON et empreinte du contenu vérifiés contre les
+  versions du snapshot ; annotations humaines préalables liées aux sources ;
+  compteurs d'entrée recalculés depuis la sélection réelle. Le livrable est
+  évalué humainement en aveugle, sans oracle textuel ni auto-déclaration d'IDs.
+
+Régressions ajoutées aux suites déjà collectées : publication du brief dans
+`context_pack_concurrency`, fournisseur de plus de 30 secondes/perte de bail
+avec run terminal dans `model_run_lifecycle`, cycles GitHub dans le contrat DB
+ignoré explicite existant, et intégrité/annotations dans les tests offline éval.
+La migration est générée depuis le schéma déclaratif ; aucune observation
+historique n'est réécrite. Les preuves courantes et gates externes restent
+consignées séparément dans le registre de validation.
+
 ## Écarts additionnels confirmés pendant la lecture du code
 
 Ces tickets complètent le graphe initial. T07 attend T02 ; T08 attend T03 et

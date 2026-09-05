@@ -455,7 +455,7 @@ async fn drain_steward_outbox_with(
     let mut summary = StewardDrainSummary::default();
 
     loop {
-        let mut claim_tx = begin_request(state).await?;
+        let mut claim_tx = state.begin_request().await?;
         let reclaimed = outbox
             .reclaim_expired_leases(
                 &mut claim_tx,
@@ -677,7 +677,7 @@ async fn prepare_run(
     project_public_id: Uuid,
     config: StewardConfig,
 ) -> AppResult<Option<ProjectSnapshot>> {
-    let mut tx = begin_request(state).await?;
+    let mut tx = state.begin_request().await?;
     let project: Option<(i64, i64, i64)> = sqlx::query_as(
         "select id, workspace_id, graph_version
          from app.projects
@@ -778,7 +778,7 @@ async fn persist_completed_run(
     raw_output: Value,
     assessments: Vec<ValidatedAssessment>,
 ) -> AppResult<StewardRunResult> {
-    let mut tx = begin_request(state).await?;
+    let mut tx = state.begin_request().await?;
     let current_graph_version: Option<i64> = sqlx::query_scalar(
         "select graph_version from app.projects
          where id = $1 and workspace_id = $2
@@ -1059,7 +1059,7 @@ async fn complete_cancelled_run(
 }
 
 async fn record_failed_run(state: &AppState, model_run_id: i64, error: &AppError) -> AppResult<()> {
-    let mut tx = begin_request(state).await?;
+    let mut tx = state.begin_request().await?;
     sqlx::query(
         "update app.model_runs
          set status = 'failed', error_class = $2, error_message = $3,
@@ -1094,7 +1094,7 @@ async fn record_invalid_run(
     raw_output: &Value,
     error: &AppError,
 ) -> AppResult<()> {
-    let mut tx = begin_request(state).await?;
+    let mut tx = state.begin_request().await?;
     let input_tokens = generated
         .metadata
         .input_tokens
@@ -1353,23 +1353,8 @@ fn request_workspace_id(state: &AppState) -> AppResult<i64> {
         .ok_or_else(|| AppError::Internal("request-scoped workspace context is missing".into()))
 }
 
-async fn begin_request(state: &AppState) -> AppResult<Transaction<'_, Postgres>> {
-    let mut tx = state.pool.begin().await?;
-    sqlx::query(
-        "select set_config('app.current_actor_id', $1, true),
-                set_config('app.current_workspace_id', $2, true),
-                set_config('app.current_workspace_role', $3, true)",
-    )
-    .bind(state.actor_id.to_string())
-    .bind(request_workspace_id(state)?.to_string())
-    .bind(&state.workspace_role)
-    .execute(&mut *tx)
-    .await?;
-    Ok(tx)
-}
-
 async fn current_graph_version(state: &AppState, project_public_id: Uuid) -> AppResult<i64> {
-    let mut tx = begin_request(state).await?;
+    let mut tx = state.begin_request().await?;
     let graph_version: Option<i64> = sqlx::query_scalar(
         "select graph_version from app.projects
          where public_id = $1 and workspace_id = $2",
@@ -1383,7 +1368,7 @@ async fn current_graph_version(state: &AppState, project_public_id: Uuid) -> App
 }
 
 async fn project_public_id_by_internal(state: &AppState, project_id: i64) -> AppResult<Uuid> {
-    let mut tx = begin_request(state).await?;
+    let mut tx = state.begin_request().await?;
     let project_public_id: Option<Uuid> = sqlx::query_scalar(
         "select public_id from app.projects where id = $1 and workspace_id = $2",
     )
@@ -1410,7 +1395,7 @@ async fn renew_event_lease(
     event: &ClaimedDomainEvent,
     worker_id: &str,
 ) -> AppResult<()> {
-    let mut tx = begin_request(state).await?;
+    let mut tx = state.begin_request().await?;
     outbox
         .renew_lease(&mut tx, event.public_id, worker_id, event.lease_attempt)
         .await
@@ -1425,7 +1410,7 @@ async fn acknowledge_event(
     event: &ClaimedDomainEvent,
     worker_id: &str,
 ) -> AppResult<()> {
-    let mut tx = begin_request(state).await?;
+    let mut tx = state.begin_request().await?;
     outbox
         .mark_processed(&mut tx, event.public_id, worker_id, event.lease_attempt)
         .await
@@ -1441,7 +1426,7 @@ async fn fail_event(
     worker_id: &str,
     error: &AppError,
 ) -> AppResult<()> {
-    let mut tx = begin_request(state).await?;
+    let mut tx = state.begin_request().await?;
     outbox
         .mark_failed(
             &mut tx,

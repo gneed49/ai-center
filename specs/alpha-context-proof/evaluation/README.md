@@ -96,6 +96,42 @@ soixante paires équilibrées. Avant toute préparation live :
    identifiants, jamais avec le contenu brut ;
 5. valider sans `--allow-placeholders`.
 
+## Intégrité des entrées et sens des mesures (révision du 2026-09-05)
+
+Les faits critiques et le contexte pertinent sont mesurés dans **l'entrée
+transmise à Tech**. Leur présence dans le livrable final reste un jugement
+humain, couvert par la notation aveugle et le besoin de reformulation. Les
+identifiants d'usage auto-déclarés par le modèle ne servent plus à ces compteurs.
+La sortie exige un résumé et au moins une action non vides ; aucune égalité
+textuelle ne juge sa qualité sémantique.
+
+Dans `private-cases.json`, chaque handoff relie explicitement son `project_ref`
+aux deux captures : l'export JSON `ContextPackSummary` pour A et le
+`ProjectSnapshot` complet pour B. Le runner vérifie le SHA-256 du seul
+`pack.content` (JSON compact UTF-8, clés triées), la graph version courante,
+le compilateur, les versions sources, leur contenu exact et le registre de
+sélection. Les versions incluses doivent être exactement celles de `knowledge`
+et de `provenance`, et appartenir au snapshot. L'allowlist historique doit être
+égale aux versions réellement présentes. Une capture modifiée ou une empreinte
+seulement déclarée est refusée avant calibration, gel et rapport.
+
+Les annotations privées requièrent `reviewer_ref`, `reviewed_at`, `facts` et
+`items`. Chaque fait du manifest référence ses `source_version_ids` exacts ;
+toutes ces versions doivent être sélectionnées pour le compter présent. Un
+fait de l'objectif, du résumé ou du contrat peut aussi employer
+`content_pointer` (`/objective`, `/project_summary`, `/contract`) et le
+`content_hash` SHA-256 du champ revu. Chaque élément pertinent ou hors sujet
+pointe vers une version ; toutes les unités du dump doivent être annotées une
+seule fois. La personne qui annote confirme la présence sémantique du fait et
+la pertinence de ces sources avant les réponses. Son pseudonyme et l'empreinte
+ne prouvent ni son identité réelle ni un consentement réel.
+
+Les compteurs viennent exclusivement de ces captures et annotations vérifiées.
+Le hash expurgé `input_evidence_hash` les lie au corpus privé ; `summarize`
+requiert `--cases` et recalcule les mesures. Les annotations ne sont transmises
+ni au modèle ni aux fichiers aveugles. Un simple hash garantit l'intégrité du
+contenu capturé, sans certifier cryptographiquement son origine serveur.
+
 ## 2. Initialiser le contrat live
 
 ```bash
@@ -206,7 +242,7 @@ incomplet, des types ou annotations invalides, des requêtes ne correspondant
 pas au corpus et tout run de production préexistant. Chaque modèle configuré
 doit avoir terminé la calibration avant la sélection.
 
-Le runner `1.1.0` exige ces empreintes et son champ `runner_version` sur les
+Le runner `1.2.0` exige ces empreintes et son champ `runner_version` sur les
 runs. Les anciens fichiers ne doivent pas être complétés artificiellement pour
 passer ces contrôles : une campagne destinée à la promotion doit repartir du
 protocole courant. Les résultats historiques restent des preuves historiques.
@@ -241,6 +277,7 @@ pour un handoff dont les métriques ont varié entre répétitions :
 python3 scripts/alpha-live-eval.py register-reserve \
   --manifest .run/alpha-context-proof/campaign.json \
   --config .run/alpha-context-proof/live-config.json \
+  --cases .run/alpha-context-proof/private-cases.json \
   --runs .run/alpha-context-proof/runs.jsonl \
   --case-id handoff-01 \
   --rule quality_metrics_vary
@@ -249,9 +286,9 @@ python3 scripts/alpha-live-eval.py register-reserve \
 Cette commande reste hors ligne, refuse un cas stable ou incomplet et enregistre
 l'empreinte de ses runs principaux. Elle ne modifie pas le contrat gelé.
 `predicted_labels_vary` s'applique seulement aux paires de cohérence ;
-`quality_metrics_vary` compare validité du schéma, validité des sources, faits
-critiques, éléments pertinents, total sélectionné et éléments hors sujet au
-sein d'une même condition de handoff. Une différence entre les deux conditions
+`quality_metrics_vary` compare validité du schéma et validité des sources au
+sein d'une même condition de handoff. Les mesures d'entrée sont fixes pour une
+capture et ses annotations gelées ; les modifier ne constitue pas une instabilité. Une différence entre les deux conditions
 ne suffit pas à déclarer une instabilité.
 
 Enregistrer tous les cas instables avant de créer le plan de réserve. Les
@@ -290,6 +327,7 @@ de la réessayer automatiquement.
 python3 scripts/alpha-eval.py summarize \
   --manifest .run/alpha-context-proof/campaign.json \
   --config .run/alpha-context-proof/live-config.json \
+  --cases .run/alpha-context-proof/private-cases.json \
   --runs .run/alpha-context-proof/runs.jsonl \
   --evaluations .run/alpha-context-proof/evaluations.jsonl \
   --output .run/alpha-context-proof/report.json

@@ -462,6 +462,7 @@ create table app.idempotency_records (
   expires_at timestamptz not null default (now() + interval '24 hours'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  lease_generation uuid not null default gen_random_uuid(),
   constraint idempotency_records_scope_key_unique
     unique (workspace_id, actor_id, operation_key, idempotency_key),
   constraint idempotency_records_operation_not_blank check (btrim(operation_key) <> ''),
@@ -815,8 +816,6 @@ create table app.external_reference_observations (
   observed_state jsonb not null default '{}'::jsonb,
   provider_updated_at timestamptz,
   observed_at timestamptz not null default now(),
-  constraint external_reference_observations_reference_hash_unique
-    unique (external_reference_id, content_hash),
   constraint external_reference_observations_status_valid check (
     observation_status in ('current', 'stale', 'unavailable')
   ),
@@ -829,7 +828,7 @@ create table app.external_reference_observations (
 );
 
 create index external_reference_observations_reference_observed_idx
-  on app.external_reference_observations(external_reference_id, observed_at desc);
+  on app.external_reference_observations(external_reference_id, id desc);
 create index external_reference_observations_workspace_id_idx
   on app.external_reference_observations(workspace_id);
 create index external_reference_observations_project_id_idx

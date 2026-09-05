@@ -91,7 +91,7 @@ impl AppState {
         }
     }
 
-    async fn begin_request(&self) -> AppResult<Transaction<'_, Postgres>> {
+    pub(crate) async fn begin_request(&self) -> AppResult<Transaction<'_, Postgres>> {
         let workspace_id = self.workspace_internal_id.ok_or_else(|| {
             AppError::Internal("request-scoped workspace context is missing".into())
         })?;
@@ -691,15 +691,17 @@ async fn send_message_command(
     )
     .await?;
     initial_tx.commit().await?;
-    let engine_result = match state
-        .engine
-        .respond(AgentInput {
+    let engine_result = match idempotency::with_optional_lease(
+        state,
+        lease,
+        state.engine.respond(AgentInput {
             scope_kind: session.scope_kind.clone(),
             instructions: session.instructions,
             user_message: content.into(),
             context: knowledge_context,
-        })
-        .await
+        }),
+    )
+    .await
     {
         Ok(result) => result,
         Err(error) => {
@@ -1194,6 +1196,16 @@ async fn evaluate_product_gate_command(
 ) -> AppResult<GateResult> {
     let mut tx = state.begin_request().await?;
     let project = project_by_public(&mut tx, state.workspace_id, project_public_id).await?;
+    let locked_graph_version: i64 =
+        sqlx::query_scalar("select graph_version from app.projects where id = $1 for update")
+            .bind(project.id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if locked_graph_version != project.graph_version {
+        return Err(AppError::Conflict(
+            "project changed while evaluating the ProductReadyGate".into(),
+        ));
+    }
     let (business_rules, requirements, acceptance_criteria, open_questions): (i64, i64, i64, i64) =
         sqlx::query_as(
             "select
@@ -1309,6 +1321,16 @@ async fn generate_feature_brief_command(
     }
     let mut tx = state.begin_request().await?;
     let project = project_by_public(&mut tx, state.workspace_id, project_public_id).await?;
+    let locked_graph_version: i64 =
+        sqlx::query_scalar("select graph_version from app.projects where id = $1 for update")
+            .bind(project.id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if locked_graph_version != project.graph_version || gate.graph_version != locked_graph_version {
+        return Err(AppError::Conflict(
+            "ProductReadyGate became stale before Feature Brief publication".into(),
+        ));
+    }
     let knowledge = knowledge_for_project(&mut tx, project.id)
         .await?
         .into_iter()
@@ -1567,7 +1589,13 @@ async fn compile_context_pack_command(
     read_tx.commit().await?;
 
     // Provider work happens only after the durable running run was committed.
-    let selection = match state.engine.select_context(selector_input).await {
+    let selection = match idempotency::with_optional_lease(
+        state,
+        lease,
+        state.engine.select_context(selector_input),
+    )
+    .await
+    {
         Ok(result) => result,
         Err(error) => {
             record_failed_model_run(state, model_run.id, &error).await?;
@@ -2122,7 +2150,13 @@ async fn generate_technical_plan_command(
     .await?;
     read_tx.commit().await?;
 
-    let generated = match state.engine.generate_technical_plan(plan_input).await {
+    let generated = match idempotency::with_optional_lease(
+        state,
+        lease,
+        state.engine.generate_technical_plan(plan_input),
+    )
+    .await
+    {
         Ok(result) => result,
         Err(error) => {
             record_failed_model_run(state, model_run.id, &error).await?;
@@ -2211,7 +2245,13 @@ async fn generate_technical_plan_command(
     )
     .await?;
     coverage_tx.commit().await?;
-    let assessed = match state.engine.evaluate_coverage(coverage_input).await {
+    let assessed = match idempotency::with_optional_lease(
+        state,
+        lease,
+        state.engine.evaluate_coverage(coverage_input),
+    )
+    .await
+    {
         Ok(result) => result,
         Err(error) => {
             record_failed_model_run(state, coverage_run.id, &error).await?;

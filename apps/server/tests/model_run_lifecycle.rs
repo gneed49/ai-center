@@ -19,6 +19,15 @@ use serde_json::Value;
 use sqlx::{PgPool, Postgres, Transaction, postgres::PgPoolOptions};
 use uuid::Uuid;
 
+#[path = "model_run_lifecycle/lease_tests.rs"]
+mod lease_tests;
+
+struct ProviderPause {
+    started: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
 struct ProbeEngine {
     pool: PgPool,
     actor_id: Uuid,
@@ -27,6 +36,7 @@ struct ProbeEngine {
     session_public_id: Uuid,
     fail_respond: bool,
     running_seen: Arc<AtomicBool>,
+    pause: Option<Arc<ProviderPause>>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -92,6 +102,11 @@ impl AgentEngine for ProbeEngine {
 
     async fn respond(&self, input: AgentInput) -> AppResult<EngineOutput<AgentTurn>> {
         self.observe_running_run().await?;
+        if let Some(pause) = &self.pause {
+            pause.calls.fetch_add(1, Ordering::SeqCst);
+            pause.started.notify_one();
+            pause.release.notified().await;
+        }
         if self.fail_respond {
             Err(ProviderError::new("OpenAI", ProviderErrorClass::Server, 3, Some(503)).into())
         } else {
@@ -186,6 +201,7 @@ async fn provider_failure_and_success_leave_terminal_model_runs() -> Result<()> 
     let failed_running_seen = Arc::new(AtomicBool::new(false));
     let failing_state = AppState {
         engine: Arc::new(ProbeEngine {
+            pause: None,
             pool: pool.clone(),
             actor_id,
             workspace_internal_id,
@@ -216,6 +232,7 @@ async fn provider_failure_and_success_leave_terminal_model_runs() -> Result<()> 
     let completed_running_seen = Arc::new(AtomicBool::new(false));
     let succeeding_state = AppState {
         engine: Arc::new(ProbeEngine {
+            pause: None,
             pool: pool.clone(),
             actor_id,
             workspace_internal_id,

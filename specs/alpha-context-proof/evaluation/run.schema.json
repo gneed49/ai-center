@@ -25,7 +25,7 @@
   ],
   "properties": {
     "schema_version": { "const": "1.0" },
-    "runner_version": { "const": "1.1.0" },
+    "runner_version": { "const": "1.2.0" },
     "run_id": { "type": "string", "minLength": 3 },
     "case_kind": { "enum": ["handoff", "contradiction"] },
     "case_id": { "type": "string" },
@@ -50,6 +50,7 @@
     "provider_status": { "type": "string", "minLength": 1 },
     "provider_response_ref": { "type": "string", "minLength": 1 },
     "request_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "input_evidence_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "critical_facts_expected": { "type": "integer", "minimum": 0 },
     "critical_facts_present": { "type": "integer", "minimum": 0 },
     "relevant_items_expected": { "type": "integer", "minimum": 0 },
@@ -58,5 +59,11 @@
     "irrelevant_items_selected": { "type": "integer", "minimum": 0 },
     "expected_label": { "enum": ["contradiction", "compatible", "ambiguous"] },
     "predicted_label": { "enum": ["contradiction", "compatible", "ambiguous"] }
-  }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "case_kind": { "const": "handoff" } } },
+      "then": { "required": ["input_evidence_hash"] }
+    }
+  ]
 }

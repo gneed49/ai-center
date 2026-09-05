@@ -29,8 +29,6 @@ def records_for_plan(
                 if task["task_id"] == job["case_id"]
             )
             output.update(
-                critical_fact_ids_used=task["critical_fact_ids"],
-                selected_item_ids=task["relevant_item_ids"],
                 deliverable={
                     "summary": "Synthetic handoff for offline testing.",
                     "actions": ["Review"],
@@ -246,8 +244,8 @@ class EvaluationProtocolTests(unittest.TestCase):
         ]
         if unstable:
             next(row for row in main if row["condition"] == "full_dump")[
-                "relevant_items_present"
-            ] = 0
+                "structured_output_valid"
+            ] = False
         self.config["reserve_case_ids"] = ["handoff-01"]
         self.config["reserve_justifications"] = {
             "handoff-01": {
@@ -302,7 +300,7 @@ class EvaluationProtocolTests(unittest.TestCase):
             self.campaign, all_runs, evaluations, {"handoff-01"}
         )
         self.assertTrue(report["sample"]["complete"])
-        self.assertTrue(report["gate_passed"])
+        self.assertFalse(report["gate_passed"], "the deliberately invalid output remains a quality failure")
         report = aggregate.build_report(
             self.campaign, self.runs, evaluations_for(self.runs), {"handoff-01"}
         )
@@ -339,11 +337,13 @@ class EvaluationProtocolTests(unittest.TestCase):
     ) -> None:
         manifest, configuration, cases, runs = fixture(full=True)
         live.validate_frozen_evidence(configuration, manifest, runs, cases)
-        with tempfile.TemporaryDirectory() as directory:
+        live.default_private_root().mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=live.default_private_root()) as directory:
             root = Path(directory)
             args = argparse.Namespace(
                 manifest=root / "campaign.json",
                 config=root / "config.json",
+                cases=root / "cases.json",
                 runs=root / "runs.jsonl",
                 evaluations=root / "evaluations.jsonl",
                 output=root / "report.json",
@@ -351,6 +351,7 @@ class EvaluationProtocolTests(unittest.TestCase):
             )
             args.manifest.write_text(json.dumps(manifest))
             args.config.write_text(json.dumps(configuration))
+            args.cases.write_text(json.dumps(cases))
             args.runs.write_text("\n".join(json.dumps(row) for row in runs) + "\n")
             args.evaluations.write_text(
                 "\n".join(json.dumps(row) for row in evaluations_for(runs)) + "\n"

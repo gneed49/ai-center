@@ -21,9 +21,9 @@
   ],
   "properties": {
     "schema_version": { "const": "1.0" },
-    "runner_version": { "const": "1.1.0" },
-    "prompt_version": { "const": "alpha-context-proof-live-v1" },
-    "output_schema_version": { "const": "alpha-context-proof-live-v1" },
+    "runner_version": { "const": "1.2.0" },
+    "prompt_version": { "const": "alpha-context-proof-live-v2" },
+    "output_schema_version": { "const": "alpha-context-proof-live-v2" },
     "campaign_id": { "type": "string" },
     "stage": { "enum": ["calibration", "main", "reserve"] },
     "created_at": { "type": "string", "format": "date-time" },

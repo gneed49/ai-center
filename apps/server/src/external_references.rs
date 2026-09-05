@@ -37,9 +37,8 @@ const EVIDENCE_CREATE_OPERATION: &str = "external_reference.evidence.create";
 const EVIDENCE_REVIEW_OPERATION: &str = "external_reference.evidence.review";
 
 /// Request body for tracking a canonical GitHub repository, PR, or commit.
-/// The historical Rust name is retained for route compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CreatePullRequestReference {
+pub struct CreateGitHubReference {
     pub url: String,
     /// Optional explicit connection selection. When omitted, the active
     /// connection matching the configured GitHub App installation is used.
@@ -277,8 +276,6 @@ struct EvidenceIdentifiers {
 #[derive(Debug, sqlx::FromRow)]
 struct PreviousReferenceState {
     head_sha: Option<String>,
-    observation_status: Option<String>,
-    observation_hash: Option<String>,
 }
 
 /// Lists GitHub references belonging to exactly one project and workspace.
@@ -311,16 +308,16 @@ pub async fn list(
 ///
 /// Returns a validation, scope, idempotency, connector, or database error when
 /// the import cannot be completed durably.
-pub async fn create_pull_request(
+pub async fn create_github_reference(
     state: &AppState,
     context: &RequestContext,
     github: &GitHubRuntime,
     project_public_id: Uuid,
     idempotency_key: Uuid,
-    input: CreatePullRequestReference,
+    input: CreateGitHubReference,
 ) -> AppResult<ExternalReferenceView> {
     let identity = GitHubReferenceIdentity::parse(input.url.trim())?;
-    let normalized_input = CreatePullRequestReference {
+    let normalized_input = CreateGitHubReference {
         url: identity.canonical_url(),
         tool_connection_id: input.tool_connection_id,
         tracking: input.tracking,
@@ -365,10 +362,12 @@ pub async fn create_pull_request(
     }
     claim_tx.commit().await?;
 
-    let provider_result = github
-        .client
-        .observe_reference(identity.clone(), None)
-        .await;
+    let provider_result = idempotency::with_lease(
+        state,
+        &lease,
+        github.client.observe_reference(identity.clone(), None),
+    )
+    .await;
     let (observation, etag) = match provider_result {
         Ok(GitHubObserveResult::Observed { observation, etag }) => (*observation, etag),
         Ok(GitHubObserveResult::NotModified) => {
@@ -438,7 +437,7 @@ pub async fn get(
     Ok(view)
 }
 
-/// Refreshes one reference using its last PR `ETag` and complete observation.
+/// Refreshes one reference using its last `ETag` and complete observation.
 ///
 /// A PR-level `304` never skips the bounded commits, files, or checks reads.
 /// Only a completely unchanged projection advances local sync bookkeeping. A
@@ -506,10 +505,12 @@ pub async fn refresh(
         .as_deref()
         .zip(previous_observation.as_ref())
         .map(|(etag, observation)| GitHubReferenceCursor { etag, observation });
-    let provider_result = github
-        .client
-        .observe_reference(identity.clone(), cursor)
-        .await;
+    let provider_result = idempotency::with_lease(
+        state,
+        &lease,
+        github.client.observe_reference(identity.clone(), cursor),
+    )
+    .await;
     match provider_result {
         Ok(GitHubObserveResult::NotModified) => {
             let mut tx = begin_scoped_transaction(state, context).await?;
@@ -1065,18 +1066,7 @@ async fn begin_scoped_transaction<'a>(
             "authenticated workspace internal id is invalid".into(),
         ));
     }
-    let mut tx = state.pool.begin().await?;
-    sqlx::query(
-        "select set_config('app.current_actor_id', $1, true),
-                set_config('app.current_workspace_id', $2, true),
-                set_config('app.current_workspace_role', $3, true)",
-    )
-    .bind(context.actor_id.to_string())
-    .bind(workspace_internal_id.to_string())
-    .bind(&context.workspace_role)
-    .execute(&mut *tx)
-    .await?;
-    Ok(tx)
+    state.begin_request().await
 }
 
 async fn resolve_connection(
@@ -1137,36 +1127,6 @@ async fn persist_observed_reference(
     observation: &GitHubReferenceObservation,
     etag: Option<String>,
 ) -> AppResult<ExternalReferenceView> {
-    let previous: Option<PreviousReferenceState> = sqlx::query_as(
-        "select last_current.observed_state ->> 'head_sha' as head_sha,
-                latest.observation_status,
-                latest.content_hash as observation_hash
-         from app.external_references reference
-         left join lateral (
-           select observed_state from app.external_reference_observations
-           where external_reference_id = reference.id
-             and workspace_id = reference.workspace_id
-             and project_id = reference.project_id
-             and observation_status = 'current'
-           order by observed_at desc, id desc limit 1
-         ) last_current on true
-         left join lateral (
-           select observation_status, content_hash from app.external_reference_observations
-           where external_reference_id = reference.id
-             and workspace_id = reference.workspace_id
-             and project_id = reference.project_id
-           order by observed_at desc, id desc limit 1
-         ) latest on true
-         where reference.project_id = $1 and reference.workspace_id = $2
-           and reference.provider = 'github' and reference.external_id = $3
-         for update of reference",
-    )
-    .bind(scope.project_id)
-    .bind(scope.workspace_id)
-    .bind(identity.external_id())
-    .fetch_optional(&mut **tx)
-    .await?;
-
     let reference_id: i64 = sqlx::query_scalar(
         "insert into app.external_references (
            workspace_id, project_id, tool_connection_id, provider, object_kind,
@@ -1198,32 +1158,39 @@ async fn persist_observed_reference(
     .fetch_one(&mut **tx)
     .await?;
 
-    let mut observed_state = normalized_observation_state(observation);
-    if previous
-        .as_ref()
-        .and_then(|state| state.observation_status.as_deref())
-        == Some("unavailable")
-    {
-        observed_state
-            .as_object_mut()
-            .expect("normalized observation is always an object")
-            .insert(
-                "recovered_from_unavailable_hash".into(),
-                Value::String(
-                    previous
-                        .as_ref()
-                        .and_then(|state| state.observation_hash.clone())
-                        .expect("an unavailable observation always has a content hash"),
-                ),
-            );
-    }
+    let previous: Option<PreviousReferenceState> = sqlx::query_as(
+        "select last_current.observed_state ->> 'head_sha' as head_sha
+         from app.external_references reference
+         left join lateral (
+           select observed_state from app.external_reference_observations
+           where external_reference_id = reference.id
+             and workspace_id = reference.workspace_id
+             and project_id = reference.project_id
+             and observation_status = 'current'
+           order by id desc limit 1
+         ) last_current on true
+         where reference.project_id = $1 and reference.workspace_id = $2
+           and reference.provider = 'github' and reference.external_id = $3
+         for update of reference",
+    )
+    .bind(scope.project_id)
+    .bind(scope.workspace_id)
+    .bind(identity.external_id())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let observed_state = normalized_observation_state(observation);
     let hash = content_hash(&observed_state);
     sqlx::query(
         "insert into app.external_reference_observations (
            workspace_id, project_id, external_reference_id, observation_status,
            content_hash, etag, observed_state, provider_updated_at, observed_at
-         ) values ($1,$2,$3,'current',$4,$5,$6,$7,$8)
-         on conflict (external_reference_id, content_hash) do nothing",
+         ) select $1,$2,$3,'current',$4,$5,$6,$7,$8
+         where $4 is distinct from (
+           select content_hash from app.external_reference_observations
+           where external_reference_id = $3 and workspace_id = $1 and project_id = $2
+           order by id desc limit 1
+         )",
     )
     .bind(scope.workspace_id)
     .bind(scope.project_id)
@@ -1262,46 +1229,39 @@ async fn append_recovery_observation(
     tx: &mut Transaction<'_, Postgres>,
     reference: &ReferenceRecord,
 ) -> AppResult<()> {
-    let previous: Option<(Value, Option<DateTime<Utc>>, String)> = sqlx::query_as(
-        "select current.observed_state, current.provider_updated_at,
-                unavailable.content_hash as unavailable_content_hash
-         from lateral (
-           select observed_state, provider_updated_at
-           from app.external_reference_observations
-           where external_reference_id = $1 and workspace_id = $2 and project_id = $3
-             and observation_status = 'current'
-           order by observed_at desc, id desc limit 1
-         ) current
-         join lateral (
-           select content_hash
-           from app.external_reference_observations
-           where external_reference_id = $1 and workspace_id = $2 and project_id = $3
-             and observation_status = 'unavailable'
-           order by observed_at desc, id desc limit 1
-         ) unavailable on true",
+    lock_observation_reference(tx, reference).await?;
+    let previous: Option<(Value, Option<DateTime<Utc>>)> = sqlx::query_as(
+        "select observed_state, provider_updated_at
+         from app.external_reference_observations
+         where external_reference_id = $1 and workspace_id = $2 and project_id = $3
+           and observation_status = 'current'
+         order by id desc limit 1",
     )
     .bind(reference.id)
     .bind(reference.workspace_id)
     .bind(reference.project_id)
     .fetch_optional(&mut **tx)
     .await?;
-    let Some((mut observed_state, provider_updated_at, unavailable_hash)) = previous else {
+    let Some((mut observed_state, provider_updated_at)) = previous else {
         return Ok(());
     };
+    // Older observations carried a recovery marker solely to evade global hash
+    // deduplication. Keep that history intact, but don't copy it into new states.
     observed_state
         .as_object_mut()
         .ok_or_else(|| AppError::Internal("stored GitHub observation is not an object".into()))?
-        .insert(
-            "recovered_from_unavailable_hash".into(),
-            Value::String(unavailable_hash),
-        );
+        .remove("recovered_from_unavailable_hash");
     let hash = content_hash(&observed_state);
     sqlx::query(
         "insert into app.external_reference_observations (
            workspace_id, project_id, external_reference_id, observation_status,
            content_hash, etag, observed_state, provider_updated_at, observed_at
-         ) values ($1,$2,$3,'current',$4,$5,$6,$7,now())
-         on conflict (external_reference_id, content_hash) do nothing",
+         ) select $1,$2,$3,'current',$4,$5,$6,$7,now()
+         where $4 is distinct from (
+           select content_hash from app.external_reference_observations
+           where external_reference_id = $3 and workspace_id = $1 and project_id = $2
+           order by id desc limit 1
+         )",
     )
     .bind(reference.workspace_id)
     .bind(reference.project_id)
@@ -1315,15 +1275,26 @@ async fn append_recovery_observation(
     Ok(())
 }
 
+async fn lock_observation_reference(
+    tx: &mut Transaction<'_, Postgres>,
+    reference: &ReferenceRecord,
+) -> AppResult<()> {
+    sqlx::query("select id from app.external_references where id = $1 and workspace_id = $2 and project_id = $3 for update")
+        .bind(reference.id).bind(reference.workspace_id).bind(reference.project_id)
+        .fetch_one(&mut **tx).await?;
+    Ok(())
+}
+
 async fn persist_unavailable(
     tx: &mut Transaction<'_, Postgres>,
     reference: &ReferenceRecord,
 ) -> AppResult<()> {
+    lock_observation_reference(tx, reference).await?;
     let last_current_hash: Option<String> = sqlx::query_scalar(
         "select content_hash from app.external_reference_observations
          where external_reference_id = $1 and workspace_id = $2 and project_id = $3
            and observation_status = 'current'
-         order by observed_at desc, id desc limit 1",
+         order by id desc limit 1",
     )
     .bind(reference.id)
     .bind(reference.workspace_id)
@@ -1340,8 +1311,12 @@ async fn persist_unavailable(
         "insert into app.external_reference_observations (
            workspace_id, project_id, external_reference_id, observation_status,
            content_hash, etag, observed_state, observed_at
-         ) values ($1,$2,$3,'unavailable',$4,$5,$6,now())
-         on conflict (external_reference_id, content_hash) do nothing",
+         ) select $1,$2,$3,'unavailable',$4,$5,$6,now()
+         where $4 is distinct from (
+           select content_hash from app.external_reference_observations
+           where external_reference_id = $3 and workspace_id = $1 and project_id = $2
+           order by id desc limit 1
+         )",
     )
     .bind(reference.workspace_id)
     .bind(reference.project_id)
@@ -1508,7 +1483,7 @@ async fn load_latest_observation(
                 provider_updated_at, observed_at
          from app.external_reference_observations
          where external_reference_id = $1 and workspace_id = $2 and project_id = $3
-         order by observed_at desc, id desc limit 1",
+         order by id desc limit 1",
     )
     .bind(reference_id)
     .bind(workspace_id)
@@ -1529,7 +1504,7 @@ async fn load_latest_current_observation(
          from app.external_reference_observations
          where external_reference_id = $1 and workspace_id = $2 and project_id = $3
            and observation_status = 'current'
-         order by observed_at desc, id desc limit 1",
+         order by id desc limit 1",
     )
     .bind(reference_id)
     .bind(workspace_id)
