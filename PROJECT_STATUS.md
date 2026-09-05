@@ -4,6 +4,7 @@ status_schema: 1
 last_reviewed: 2026-09-05
 stage: candidate-alpha
 health: amber
+publication_status: local_only_pending_owner_approval
 canonical_path: /home/gneed49/Documents/projects/AICenter
 audit_base_commit: 8a6e0da08bc2cd47088e0b25af398ec3ba30312c
 verified_consolidation_commit: a9b3140dab9c0d0c78a2da4633d874cd1c79e86f
@@ -40,6 +41,8 @@ La branche de consolidation est suivie par la PR n°1 ; les gates de release res
 - [Rapport daté de revue et validation](specs/alpha-context-proof/review-2026-09-05.md), [audit](docs/current-state-audit.md), [tickets](specs/alpha-context-proof/tickets.md), [PR n°1](https://github.com/gneed49/ai-center/pull/1) et [issue n°2](https://github.com/gneed49/ai-center/issues/2).
 
 ## Risques et portes
+
+- Publication bloquée : la revue automatique a refusé le push vers le dépôt public, faute d'autorisation explicite de publier ce code et cette documentation. Aucun nouveau commit de reprise n'a été poussé ; la PR distante reste à `8a6e0da`. Attendre l'accord du propriétaire sur le diff concret, sans autre canal de publication.
 
 - Schéma des observations et serveur à mettre à niveau ensemble : l'ancienne version du serveur utilise la contrainte retirée. Aucun déploiement effectué.
 - Campagne comparative réelle non réalisée ; deux projets supplémentaires, corpus autorisé, annotations humaines et GitHub App privée à valider.

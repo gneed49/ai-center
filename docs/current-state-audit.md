@@ -6,6 +6,10 @@
 >
 > [PR #1](https://github.com/gneed49/ai-center/pull/1), [issue de consolidation #2](https://github.com/gneed49/ai-center/issues/2).
 
+La publication de la reprise est en attente : le contrôle automatique a refusé
+le push vers le dépôt public sans accord explicite sur cette divulgation.
+La PR distante reste à `8a6e0da` ; aucun autre canal de publication utilisé.
+
 ## État de la consolidation
 
 Les tickets T01 à T10 sont réunis dans une seule branche. Les huit constats

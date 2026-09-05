@@ -19,7 +19,9 @@ preuves contrôlables.
 Le socle logiciel **Alpha Context Proof est consolidé** sur
 `feat/alpha-context-proof`, [PR #1](https://github.com/gneed49/ai-center/pull/1),
 avec suivi dans l'[issue #2](https://github.com/gneed49/ai-center/issues/2).
-Le point de contrôle fonctionnel est `a9b3140`. Les constats Standards/Spec et
+Les commits de reprise restent locaux : le push a été refusé par la revue
+automatique, en attente d’autorisation de publication sur le dépôt public. La
+PR distante reste à `8a6e0da`. Le point de contrôle fonctionnel est `a9b3140`. Les constats Standards/Spec et
 le dernier écart de calibration sont corrigés et revus. Les gates réels restent
 ouverts ; aucune release ou alpha équipe n'est annoncée.
 
