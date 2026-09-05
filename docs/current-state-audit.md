@@ -6,9 +6,10 @@
 >
 > [PR #1](https://github.com/gneed49/ai-center/pull/1), [issue de consolidation #2](https://github.com/gneed49/ai-center/issues/2).
 
-La publication de la reprise est en attente : le contrôle automatique a refusé
-le push vers le dépôt public sans accord explicite sur cette divulgation.
-La PR distante reste à `8a6e0da` ; aucun autre canal de publication utilisé.
+La reprise a été publiée le 5 septembre après l'accord explicite du propriétaire :
+le push normal de `8a6e0da` à `91dc76b` a transféré les 31 commits locaux sur la
+branche publique. La PR n°1 porte cette consolidation ; sa CI courante doit être
+vérifiée séparément des résultats locaux et des anciens runs d'août.
 
 ## État de la consolidation
 
@@ -96,8 +97,8 @@ déploiement n'a été effectué. Les détails sont dans le rapport de reprise.
 
 L'[audit du 25 août au commit publié](https://github.com/gneed49/ai-center/blob/8a6e0da08bc2cd47088e0b25af398ec3ba30312c/docs/current-state-audit.md)
 reste consultable. Les anciens nombres de tests et résultats CI sont propres
-à ce snapshot. La PR distante référence Desktop CI #22 et OCI #21 sur `8a6e0da` ;
-ces résultats ne s'étendent pas aux commits locaux de reprise.
+à ce snapshot. Desktop CI #22 et OCI #21 concernent `8a6e0da` ; ces résultats
+historiques ne s'étendent pas aux nouveaux commits publiés.
 
 - [Spécification](../specs/alpha-context-proof/spec.md), [plan](../specs/alpha-context-proof/plan.md) et [tickets](../specs/alpha-context-proof/tickets.md).
 - [Validation et gates](../specs/alpha-context-proof/validation.md).

@@ -19,11 +19,11 @@ les résultats sur le commit relu avant de les présenter comme courants.
 
 ## Publication de la reprise
 
-Le push du 5 septembre a été refusé par la revue automatique d'approbation :
-le code et la documentation seraient publiés sur un dépôt public sans accord
-explicite sur cette divulgation précise. Les commits de reprise restent locaux ;
-la PR n°1 distante reste à `8a6e0da`. L'issue n°2, qui renvoie seulement à des
-documents déjà publics, a été créée avec succès. Ne pas retenter le push ou
-utiliser un autre canal de publication avant l'accord explicite du propriétaire
-sur le diff proposé. La PR ne doit pas être marquée prête pour ces nouveaux
-changements tant qu'ils ne sont pas publiés et que leur CI n'est pas vérifiée.
+Après le refus initial du contrôle automatique, le propriétaire a explicitement
+autorisé la publication publique du diff proposé le 5 septembre. Le push normal
+de `8a6e0da` à `91dc76b` a réussi : les 31 commits de reprise sont publiés sur
+`feat/alpha-context-proof`. L'autorisation couvre aussi la mise à jour de la
+PR n°1 et la vérification de sa CI. La PR doit être marquée prête pour la revue
+du socle logiciel après réussite des contrôles sur son HEAD courant ; cela ne
+constitue ni une fusion vers `main`, ni une release, ni un déploiement. L'issue
+n°2 reste le suivi de cette consolidation.

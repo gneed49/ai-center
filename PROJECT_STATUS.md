@@ -4,7 +4,7 @@ status_schema: 1
 last_reviewed: 2026-09-05
 stage: candidate-alpha
 health: amber
-publication_status: local_only_pending_owner_approval
+publication_status: pushed_pr_open_release_gates_pending
 canonical_path: /home/gneed49/Documents/projects/AICenter
 audit_base_commit: 8a6e0da08bc2cd47088e0b25af398ec3ba30312c
 verified_consolidation_commit: a9b3140dab9c0d0c78a2da4633d874cd1c79e86f
@@ -42,7 +42,7 @@ La branche de consolidation est suivie par la PR n°1 ; les gates de release res
 
 ## Risques et portes
 
-- Publication bloquée : la revue automatique a refusé le push vers le dépôt public, faute d'autorisation explicite de publier ce code et cette documentation. Aucun nouveau commit de reprise n'a été poussé ; la PR distante reste à `8a6e0da`. Attendre l'accord du propriétaire sur le diff concret, sans autre canal de publication.
+- Publication autorisée par le propriétaire et effectuée le 5 septembre : les 31 commits de reprise jusqu'à `91dc76b` sont sur `feat/alpha-context-proof`, dans le dépôt public. La PR n°1 porte la consolidation ; vérifier la CI de son HEAD courant avant le passage en revue. La publication du code ne ferme pas les gates de release ci-dessous.
 
 - Schéma des observations et serveur à mettre à niveau ensemble : l'ancienne version du serveur utilise la contrainte retirée. Aucun déploiement effectué.
 - Campagne comparative réelle non réalisée ; deux projets supplémentaires, corpus autorisé, annotations humaines et GitHub App privée à valider.
