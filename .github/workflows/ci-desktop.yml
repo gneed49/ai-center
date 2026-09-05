@@ -1,0 +1,156 @@
+name: Desktop CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "feat/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  AI_CENTER_AGENT_MODE: deterministic
+  SUPABASE_TELEMETRY_DISABLED: "1"
+  DO_NOT_TRACK: "1"
+
+jobs:
+  quality:
+    name: Web and Rust quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.91.0
+        with:
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Tauri system dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+          librsvg2-dev patchelf libxdo-dev
+      - run: npm ci
+      - run: >-
+          bash -n scripts/dev.sh scripts/ci-desktop.sh
+          scripts/auth-magic-link-smoke.sh
+          scripts/baseline-alpha-upgrade-smoke.sh
+          scripts/postgres-backup-restore-smoke.sh
+          scripts/integration-common.sh scripts/integration-stack.sh
+      - run: ./scripts/ci-desktop.sh secret-scan
+      - run: ./scripts/ci-desktop.sh quality
+
+  postgres:
+    name: PostgreSQL integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.91.0
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --silent --show-error \
+            --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          printf '%s\n' \
+            'Types: deb' \
+            'URIs: https://apt.postgresql.org/pub/repos/apt' \
+            'Suites: noble-pgdg' \
+            'Components: main' \
+            'Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc' \
+            | sudo tee /etc/apt/sources.list.d/pgdg.sources >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "${GITHUB_PATH}"
+      - name: Install Chromium for the real API smoke
+        run: npx playwright install --with-deps chromium
+      - name: Certify the disposable PostgreSQL, Auth and desktop stack
+        run: ./scripts/integration-stack.sh run
+      - name: Stop only this disposable stack after interruption
+        if: always()
+        run: ./scripts/integration-stack.sh stop
+
+  browser:
+    name: Chromium desktop E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      VITE_API_URL: http://127.0.0.1:4317
+      AI_CENTER_PLAYWRIGHT_PROJECT: chromium-desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: ./scripts/ci-desktop.sh e2e
+      - name: Upload Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-desktop-diagnostics
+          path: |
+            /tmp/ai-center-playwright-results
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  desktop:
+    name: Tauri Linux build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.91.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Tauri system dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+          librsvg2-dev patchelf libxdo-dev
+      - run: npm ci
+      - run: ./scripts/ci-desktop.sh desktop
+
+  dependency-audit:
+    name: Dependency and secret audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.91.0
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - run: ./scripts/ci-desktop.sh secret-scan
+      - run: npm audit --omit=dev --audit-level=high
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit

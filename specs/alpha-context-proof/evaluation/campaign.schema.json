@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-center.local/schemas/alpha-context-proof/campaign.schema.json",
+  "title": "Alpha Context Proof campaign manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "campaign_id",
+    "budget_usd",
+    "privacy",
+    "projects",
+    "handoff_tasks",
+    "contradiction_pairs"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "campaign_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$" },
+    "budget_usd": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["calibration", "main", "reserve", "total"],
+      "properties": {
+        "calibration": { "const": 10 },
+        "main": { "const": 70 },
+        "reserve": { "const": 20 },
+        "total": { "const": 100 }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contains_secrets",
+        "contains_personal_data",
+        "contains_sensitive_data"
+      ],
+      "properties": {
+        "contains_secrets": { "const": false },
+        "contains_personal_data": { "const": false },
+        "contains_sensitive_data": { "const": false }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "project_ref",
+          "corpus_role",
+          "corpus_fingerprint",
+          "consent_confirmed"
+        ],
+        "properties": {
+          "project_ref": { "type": "string", "pattern": "^project-[0-9]{2}$" },
+          "corpus_role": { "enum": ["ai_center", "comparison"] },
+          "corpus_fingerprint": {
+            "type": "string",
+            "pattern": "^([a-f0-9]{64}|REPLACE_SHA256_PROJECT_[0-9]{2})$"
+          },
+          "consent_confirmed": { "type": "boolean" }
+        }
+      }
+    },
+    "handoff_tasks": {
+      "type": "array",
+      "minItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task_id",
+          "project_ref",
+          "critical_fact_ids",
+          "relevant_item_ids",
+          "irrelevant_item_ids"
+        ],
+        "properties": {
+          "task_id": { "type": "string", "pattern": "^handoff-[0-9]{2}$" },
+          "project_ref": { "type": "string" },
+          "critical_fact_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string" }
+          },
+          "relevant_item_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string" }
+          },
+          "irrelevant_item_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "contradiction_pairs": {
+      "type": "array",
+      "minItems": 60,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "pair_id",
+          "project_ref",
+          "left_version_ref",
+          "right_version_ref",
+          "expected_label"
+        ],
+        "properties": {
+          "pair_id": { "type": "string", "pattern": "^pair-[0-9]{3}$" },
+          "project_ref": { "type": "string" },
+          "left_version_ref": { "type": "string" },
+          "right_version_ref": { "type": "string" },
+          "expected_label": {
+            "enum": ["contradiction", "compatible", "ambiguous"]
+          }
+        }
+      }
+    }
+  }
+}

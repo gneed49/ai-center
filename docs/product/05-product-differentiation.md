@@ -1,7 +1,9 @@
 # AI Center — Stratégie de différenciation
 
-> Statut : proposition stratégique à challenger — version 0.1  
-> Date : 15 août 2026  
+> Statut : positionnement stratégique consolidé — version 0.2
+>
+> Date : 24 août 2026
+>
 > Objet : définir ce qui relève de la commodité, de la valeur produit et d’un avantage défendable.
 
 ## Résumé exécutif
@@ -14,7 +16,7 @@ La différenciation recommandée est plus précise :
 
 > **AI Center est la couche de pilotage contextuel qui transforme les décisions d’un projet en workflows exécutables, fournit à chaque agent le bon contexte et vérifie en continu que le travail produit reste cohérent avec l’intention.**
 
-Les agents de code, modèles et outils externes deviennent des exécutants interchangeables. AI Center possède :
+Les agents, modèles et outils externes restent des spécialistes interchangeables. AI Center possède :
 
 - l’organisation du projet ;
 - le graphe des décisions et connaissances ;
@@ -24,7 +26,26 @@ Les agents de code, modèles et outils externes deviennent des exécutants inter
 - les contrôles de cohérence ;
 - la traçabilité entre intention et preuve.
 
-La mobilité reste importante pour l’expérience personnelle visée, mais elle devient un canal de distribution et d’usage, pas la raison fondamentale d’acheter ou d’adopter le produit.
+GitHub, GitLab, Linear, Jira, Notion, Confluence, Figma, les bases de données et les outils de code restent les systèmes de production ou les sources de vérité de leur domaine. AI Center ne les absorbe pas : il les relie par un contexte commun et gouverné.
+
+La mobilité est différée. Elle pourra devenir plus tard un canal de distribution et d’usage, mais elle ne participe ni à la proposition de valeur ni à la consolidation actuelle.
+
+## Doctrine d’intégration avant remplacement
+
+AI Center entre dans une entreprise sans lui demander de changer son stack. La règle d’adoption est simple :
+
+> **Référencer avant de copier, connecter avant de reconstruire, gouverner le contexte sans confisquer l’outil.**
+
+| Système existant | Ce qui reste dans ce système | Ce qu’AI Center apporte |
+| --- | --- | --- |
+| GitHub / GitLab | Dépôts, commits, PR, CI/CD | Intention, ContextPack, liens et preuves |
+| Codex / Claude Code / Cursor / CLI | Production et modification du code | Scope, contraintes, contrat et contrôle du résultat |
+| Linear / Jira | Tickets, statuts et workflow d’équipe | Origine des décisions, dépendances et cohérence transverse |
+| Notion / Confluence / Drive | Documents canoniques | Provenance, synthèse contextuelle et impact des changements |
+| Figma | Designs, composants et commentaires | Décisions Produit, exigences et couverture UX |
+| Supabase et autres données | Schémas, données et opérations | Contraintes, décisions et preuves reliées au projet |
+
+Une fonction native de ticketing, documentation ou exécution pourra apparaître plus tard pour un nouvel utilisateur qui n’a aucun système en place. Elle restera optionnelle et ne devra jamais être une condition pour obtenir la valeur du plan de contrôle contextuel.
 
 ## Baseline concurrentielle en août 2026
 
@@ -77,13 +98,13 @@ Cette formulation insiste sur le fait qu’AI Center se trouve au-dessus des age
 
 ### Formulation marché
 
-**Agentic Project Operating System** — système d’exploitation agentique des projets.
+**AI Context Operating Layer** — couche opératoire du contexte IA.
 
-Cette formulation porte mieux la vision longue : structure du projet, agents, workflows, mémoire, automatisations et supervision dans un même système.
+Cette formulation porte la vision longue sans suggérer le remplacement du stack : structure du contexte, agents, workflows, mémoire, contrôles et supervision au-dessus des systèmes existants.
 
 ### Positionnement recommandé
 
-> AI Center transforme la connaissance d’un projet en système de pilotage exécutable : il structure les décisions, prépare le contexte pour les agents, orchestre les passages entre disciplines et vérifie que l’exécution reste cohérente avec l’intention.
+> AI Center transforme la connaissance d’un projet en système de pilotage actionnable : il structure les décisions, prépare le contexte pour les agents, orchestre les passages entre disciplines et vérifie que les résultats externes restent cohérents avec l’intention.
 
 ### Formule courte
 
@@ -225,7 +246,7 @@ Il doit pouvoir déléguer à :
 - Codex ;
 - Claude Code ;
 - GitHub Copilot ou un agent GitHub ;
-- un runner local ;
+- un runner externe local ;
 - un agent cloud ;
 - plus tard, des agents produit, design, recherche ou opérations.
 
@@ -330,8 +351,8 @@ Le premier template est consacré à la livraison d’une fonctionnalité logici
 3. contrôle de cohérence ;
 4. passage Tech ;
 5. plan et critères d’acceptation ;
-6. délégation à un agent de code ;
-7. retour des tests et artefacts ;
+6. transmission d’un ContextPack à un outil de code externe ;
+7. retour de références, tests et artefacts depuis cet outil ;
 8. vérification de couverture ;
 9. mise à jour du graphe.
 
@@ -348,7 +369,7 @@ Ce wedge exploite l’expérience réelle du premier utilisateur et crée une bo
 - mutation du graphe depuis la conversation ;
 - contradiction proactive ;
 - ContextPack compilé ;
-- handoff Produit → Tech → agent de code ;
+- handoff Produit → Tech → outil spécialisé externe ;
 - contrat de livrable ;
 - résultat et preuves réinjectés dans le graphe.
 
@@ -356,17 +377,17 @@ Ce wedge exploite l’expérience réelle du premier utilisateur et crée une bo
 
 | Élément | Ancien rôle implicite | Nouveau rôle |
 | --- | --- | --- |
-| Android | Élément du wedge | Première surface d’usage |
-| Runtime macOS | Cœur d’exécution différenciant | Premier adapter d’exécution choisi pour l’usage personnel |
+| Android | Élément du wedge | Différé ; aucun investissement ni test pendant la consolidation |
+| Runtime macOS | Cœur d’exécution différenciant | Hors cœur ; remplacé par une frontière d’intégration générique |
 | Agent de code | Fonction du produit | Exécutant externe interchangeable |
 | Chat | Interface principale | Outil contextuel dans un workflow guidé |
 | Markdown | Livrable/source de contexte | Projection et format d’échange |
 | Graphe | Mémoire structurée | État opérationnel et moteur de décision |
 | Template | Arborescence initiale | Operating model exécutable |
 
-### Révision recommandée du P0
+### Révision du P0
 
-Le P0 ne doit pas construire un système complet de contrôle du Mac. Il doit intégrer un seul exécutant derrière une interface minimale.
+Le P0 ne construit aucun système complet de contrôle du Mac, runner ou IDE. Il doit démontrer la continuité contextuelle et permettre de référencer au moins un résultat produit dans un système externe.
 
 La priorité devient :
 
@@ -374,10 +395,10 @@ La priorité devient :
 2. agents Produit et Tech ;
 3. contradiction et decision inbox ;
 4. Context Compiler ;
-5. handoff à un exécutant ;
-6. rapport et preuves réinjectés.
+5. handoff à un outil externe ;
+6. référence ou preuve réelle réinjectée.
 
-Le runner local peut être ce premier exécutant parce qu’il répond au besoin personnel, mais l’architecture ne doit pas identifier AI Center à ce runner.
+Après validation du P0, un connecteur étroit ferme la boucle sans déplacer la production dans AI Center. Il commence de préférence en lecture, export et import de preuves ; une écriture externe n’est ajoutée que si elle est indispensable au cas d’usage.
 
 ## Moat potentiel
 
@@ -437,43 +458,45 @@ Chaque insight doit avoir une source, un impact, une confiance et une action. Un
 4. **Tout agent possède un scope et un contrat explicites.**
 5. **Tout handoff reçoit un ContextPack et des critères de sortie.**
 6. **Toute proactivité est expliquée et actionnable.**
-7. **Toute exécution retourne des preuves et met à jour le graphe.**
+7. **Tout travail délégué retourne des références ou preuves et met à jour le graphe.**
 8. **Les valeurs par défaut sont opinionated ; la personnalisation est progressive.**
 9. **Les exécutants restent interchangeables.**
-10. **Mobile, web et desktop sont des surfaces d’un même système, pas sa proposition de valeur.**
+10. **Les surfaces clientes sont des canaux, pas la proposition de valeur ; le mobile est différé.**
 11. **La connaissance n’est pas copiée entre projets : elle est liée ou promue explicitement.**
 12. **La précision de la cohérence prime sur le volume des alertes.**
+13. **Les outils externes conservent leurs objets canoniques ; AI Center conserve leurs liens contextuels.**
+14. **Une intégration minimale précède toute fonction native équivalente.**
 
 ## Carte de positionnement
 
 | Couche | Produits principalement présents | Rôle d’AI Center |
 | --- | --- | --- |
-| Modèles et agents d’exécution | Cursor, Codex, Claude Code, Copilot | Les utiliser, les router et évaluer leurs résultats |
+| Modèles et agents spécialisés | Cursor, Codex, Claude Code, Copilot | Leur transmettre un contexte gouverné et évaluer leurs résultats |
 | Dépôts et delivery | GitHub, GitLab, CI/CD | Collecter les artefacts et preuves |
 | Tickets et coordination | Linear, Jira | Synchroniser tâches et état, sans nécessairement remplacer |
 | Documents et connaissance | Notion, Confluence, Drive | Importer ou référencer les sources de vérité existantes |
 | Graphe organisationnel général | Atlassian Teamwork Graph, plateformes de recherche | Se concentrer d’abord sur le graphe décisionnel du projet logiciel |
-| Pilotage contextuel du projet | Espace encore fragmenté | Posséder le workflow intention → contexte → exécution → preuve |
+| Pilotage contextuel du projet | Espace encore fragmenté | Posséder le workflow intention → contexte → outil externe → preuve |
 
 Cette carte décrit des centres de gravité, pas des frontières hermétiques.
 
 ## Décision stratégique proposée
 
-> AI Center ne doit pas chercher à devenir l’agent qui sait tout faire. Il doit devenir le système qui permet à plusieurs agents de faire le bon travail, avec le bon contexte, dans le bon ordre, sans perdre la cohérence du projet.
+> AI Center ne doit pas chercher à devenir l’agent ou l’outil qui sait tout faire. Il doit redonner à l’entreprise la maîtrise d’un contexte IA partagé, challengeable et traçable, puis permettre à ses outils existants de faire le bon travail sans perdre la cohérence du projet.
 
-Si cette décision est acceptée, `03-mvp-scope.md` devra être révisé pour :
+Cette décision est entérinée par l’ADR `0005-context-control-not-tool-replacement.md` et le scope MVP a été révisé pour :
 
 - retirer la mobilité et le runtime local de la formulation du différenciateur ;
 - introduire explicitement `ContextPack`, `DeliverableContract`, `Gate` et `Evidence` ;
-- repositionner le runner macOS comme premier adapter ;
-- placer le handoff Produit → Tech → exécution au centre du scénario de référence ;
+- remplacer le runner macOS par une frontière d’intégration générique ;
+- placer le handoff Produit → Tech → outil externe au centre du scénario de référence ;
 - évaluer la couverture intention → preuve en plus de la détection des contradictions.
 
 ## Questions à challenger
 
-1. La catégorie `Agentic Project Operating System` est-elle compréhensible, ou faut-il rester sur une promesse plus concrète ?
+1. La catégorie `AI Context Operating Layer` est-elle compréhensible, ou faut-il rester sur la promesse plus concrète de maîtrise du contexte IA d’entreprise ?
 2. Le premier wedge doit-il viser le solo builder, la petite équipe produit–tech ou l’agence de développement ?
 3. Jusqu’où un template doit-il imposer un workflow avant de devenir trop rigide ?
 4. Le graphe doit-il rester invisible la plupart du temps ou devenir une vue centrale du projet ?
-5. Le premier exécutant doit-il être un runner local, un agent cloud ou une abstraction offrant les deux ?
-6. Quelle preuve de résultat doit clôturer le premier workflow : document validé, tests, preview, commit ou pull request ?
+5. Quel système existant et quel type d’objet constituent le meilleur premier connecteur ?
+6. Quelle preuve réelle doit clôturer le premier workflow : ticket, document, tests, preview, commit ou pull request ?

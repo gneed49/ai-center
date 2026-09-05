@@ -1,0 +1,46 @@
+# Version control and local agent state
+.git
+.gitignore
+.agents
+.codex
+
+# Credentials and local configuration must never enter a build context
+.env
+.env.*
+**/.env
+**/.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Dependency and build output caches
+node_modules
+**/node_modules
+target
+**/target
+dist
+**/dist
+coverage
+**/coverage
+.cache
+**/.cache
+tmp
+**/tmp
+*.log
+
+# Product material and test artefacts are not runtime inputs
+sources
+docs
+specs
+playwright-report
+**/playwright-report
+test-results
+**/test-results
+**/__pycache__
+**/*.py[cod]
+
+# Mobile is explicitly outside the Alpha Context Proof image scope
+apps/desktop/src-tauri/gen/android
+docs/platforms/android.md
+specs/android-client

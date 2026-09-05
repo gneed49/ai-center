@@ -1,12 +1,16 @@
 # AI Center — Périmètre du MVP
 
-> Statut : scope validé pour démarrage — version 0.2  
-> Date : 15 août 2026  
+> Statut : scope consolidé — version 0.3
+>
+> Date : 24 août 2026
+>
 > Périmètre : première preuve utilisable du plan de contrôle contextuel, de l’intention jusqu’à la preuve.
 
 ## Résumé exécutif
 
-Le MVP d’AI Center ne doit être ni un clone de ChatGPT, ni un gestionnaire de projets enrichi de fichiers Markdown, ni un lanceur mobile d’agents de code. Il doit prouver que le graphe opérationnel d’un projet permet d’organiser le travail de plusieurs agents, de compiler le bon contexte lors d’un passage de relais et de vérifier que le livrable obtenu respecte toujours l’intention initiale.
+Le MVP d’AI Center ne doit être ni un clone de ChatGPT, ni un gestionnaire de projets enrichi de fichiers Markdown, ni un IDE, ni un lanceur d’agents de code. Il doit prouver qu’un plan de contrôle contextuel peut relier les décisions d’une entreprise, compiler le bon contexte pour chaque agent ou outil externe, puis vérifier que les résultats observés restent cohérents avec l’intention initiale.
+
+AI Center se greffe sur les systèmes déjà adoptés — GitHub, Linear, Notion, Figma, bases de données, Codex, Claude Code, Cursor ou CLI — au lieu de leur demander de migrer. Ces systèmes conservent leur rôle de source ou d’outil de production ; AI Center possède le contexte partagé, les handoffs, les contrats, la provenance et les contrôles transverses.
 
 La première version doit permettre à un utilisateur de :
 
@@ -18,10 +22,10 @@ La première version doit permettre à un utilisateur de :
 6. produire côté Tech un `TechnicalDeliveryPlan` relié aux exigences et accompagné d’une matrice de couverture ;
 7. détecter proactivement une contradiction entre une règle Produit et une décision Tech ;
 8. comprendre, accepter, rejeter ou résoudre cette contradiction ;
-9. rattacher chaque livrable et chaque preuve aux connaissances qui les ont provoqués ;
-10. retrouver le même état durable du projet depuis une interface web responsive, sur ordinateur comme sur téléphone.
+9. rattacher chaque livrable et chaque preuve, y compris une référence externe, aux connaissances qui les ont provoqués ;
+10. retrouver le même état durable du projet depuis une interface web desktop et le client Linux.
 
-Le graphe, le `ContextPack`, les contrats de livrables et les preuves sont présents dès le MVP. Sont différés : la personnalisation des templates, l’agent global inter-projets, la visualisation avancée du graphe, l’application Android native et le runtime macOS complet.
+Le graphe, le `ContextPack`, les contrats de livrables, les preuves et la notion de référence externe sont présents dès le MVP. Sont différés : la personnalisation des templates, l’agent global inter-projets, la visualisation avancée du graphe, les applications mobiles et toute infrastructure interne de production de code.
 
 ## Thèse produit testée
 
@@ -34,7 +38,7 @@ Le MVP doit tester conjointement quatre hypothèses :
 - **Contrôle** — un contrat de livrable et ses preuves permettent de savoir ce qui est réellement couvert, manquant ou incertain ;
 - **Proactivité** — une contradiction détectée et expliquée sans demande explicite constitue un moment de valeur suffisamment fort pour différencier AI Center.
 
-La mobilité et l’exécution distante ne sont plus des hypothèses fondatrices. Une PWA responsive suffit pour tester l’expérience sur plusieurs surfaces. Un premier adapter d’exécution réel sera ajouté après validation de la boucle contextuelle ; il démontrera l’interopérabilité, pas la différenciation.
+La mobilité et l’exécution interne ne sont pas des hypothèses fondatrices. La consolidation est testée sur le web desktop et le client Linux, sans Android. Un premier adapter externe étroit sera ajouté après validation de la boucle contextuelle ; il démontrera que le contexte peut sortir vers un outil existant et que ses preuves peuvent revenir sans duplication de sa fonction.
 
 ## Promesse du MVP
 
@@ -54,7 +58,7 @@ La mobilité et l’exécution distante ne sont plus des hypothèses fondatrices
 
 > « Le livrable paraît terminé, mais AI Center me montre qu’une exigence ne possède encore aucune preuve et qu’une décision récente invalide une partie du plan. »
 
-Ces trois moments forment la preuve différenciante : cohérence, continuité et contrôle. L’exécution de code viendra ensuite prolonger la même chaîne.
+Ces trois moments forment la preuve différenciante : cohérence, continuité et contrôle. La production de code, de tickets, de designs ou de documents reste effectuée par les outils spécialisés ; AI Center ferme la boucle en leur transmettant du contexte et en réintégrant leurs résultats.
 
 ## Scénario de référence
 
@@ -86,7 +90,8 @@ flowchart TD
     C --> D["ContextPack Tech"]
     D --> E["Handoff"]
     E --> F["Technical Delivery Plan"]
-    F --> G["Preuves et couverture"]
+    F --> X["Outil externe spécialisé"]
+    X --> G["Références, preuves et couverture"]
     G --> H["Contrôle de cohérence"]
     H --> B
 ```
@@ -96,7 +101,7 @@ flowchart TD
 | Dimension | Choix MVP | Préparation du futur |
 | --- | --- | --- |
 | Utilisateurs | Un seul utilisateur | Identifiants d’auteur et d’acteur présents dans les événements |
-| Surfaces | Web responsive / PWA | Applications natives et desktop possibles sans changer le domaine |
+| Surfaces | Web desktop et Tauri Linux | Autres clients possibles sans changer le domaine ; mobile différé |
 | Workspaces | Un workspace actif | Toutes les entités portent un `workspaceId` |
 | Projets | Plusieurs projets créables, un projet actif par session | Identifiants globaux permettant des relations inter-projets futures |
 | Template | Un template système `Produit + Tech` | Template, définitions de nœuds et profils d’agents modélisés comme données |
@@ -105,7 +110,7 @@ flowchart TD
 | Agent global | Un steward par projet | Couche Center inter-projets différée |
 | Proactivité | Contradictions et couverture manquante sur événements | Moteur extensible à d’autres insights |
 | Handoff | Produit vers Tech | Handoffs arbitraires définis par les templates |
-| Exécution | Livrable documentaire réel ; executor simulé derrière une interface | Premier adapter réel après validation du core |
+| Interopérabilité | Références externes manuelles et contrat d’adapter | Premier connecteur réel après validation du core |
 
 ## Modèle conceptuel minimal
 
@@ -171,7 +176,7 @@ Types indispensables :
 - `evidenced_by` ;
 - `implemented_by`.
 
-Les relations `tracked_by` et les connecteurs externes sont différés.
+La relation `tracked_by` et un objet générique `ExternalReference` font partie du modèle utile. Leur saisie manuelle suffit au MVP ; la synchronisation automatique et le catalogue de connecteurs sont différés.
 
 ### `Session`
 
@@ -207,19 +212,23 @@ Le `ProductReadyGate` du MVP vérifie notamment la présence d’un objectif, de
 
 ### `Evidence`
 
-Élément attestant qu’une exigence ou une partie d’un livrable est couverte : citation de livrable, décision validée, résultat de test, fichier, commit ou validation humaine. Dans la première tranche, les preuves sont documentaires et traçables ; les preuves issues du code arrivent avec le premier adapter réel.
+Élément attestant qu’une exigence ou une partie d’un livrable est couverte : citation de livrable, décision validée, résultat de test, fichier, commit, ticket, maquette, URL ou validation humaine. Dans la première tranche, les preuves peuvent être saisies ou référencées manuellement ; le premier connecteur automatise ensuite une partie de leur collecte.
 
 ### `Task`
 
-Travail explicite dérivé d’une décision, exigence ou résolution. Une tâche référence le `ContextPack` utilisé et le `DeliverableContract` attendu.
+Travail explicite dérivé d’une décision, exigence ou résolution. Une tâche référence le `ContextPack` utilisé et le `DeliverableContract` attendu. Elle peut rester un objet AI Center ou pointer vers un ticket Linear, Jira ou équivalent, sans copie obligatoire.
 
 ### `Execution`
 
-Tentative confiée à un agent ou un runner. Elle expose l’exécutant, le `ContextPack`, le contrat attendu, son état et son résultat. Le core MVP utilise un agent Tech interne et un executor simulé ; un runner réel appartient à l’alpha utilisable.
+Tentative confiée à un agent ou un outil spécialisé externe. Elle expose l’exécutant, le `ContextPack`, le contrat attendu, son état et les références de résultat. Une `Execution` est une enveloppe de pilotage et d’audit ; elle n’implique pas qu’AI Center exécute lui-même du code ou héberge le fournisseur.
 
 ### `Artifact`
 
-Résultat produit ou référencé : livrable, rapport, document généré, fichier, test, commit, URL de preview ou pull request. Le core MVP exige les livrables structurés et leur matrice de couverture ; fichiers, commits, preview et pull request arrivent avec les adapters d’exécution.
+Résultat produit ou référencé : livrable, rapport, document, fichier, test, commit, ticket, maquette, URL de preview ou pull request. AI Center conserve sa provenance et ses liens avec le graphe ; l’objet canonique peut continuer à vivre dans GitHub, Linear, Notion, Figma ou un autre système.
+
+### `ExternalReference`
+
+Pointeur durable vers un objet appartenant à un système externe. Il contient au minimum le fournisseur, le type d’objet, l’identifiant externe, l’URL éventuelle, le dernier état observé, la date de synchronisation et la provenance. Il évite de dupliquer l’intégralité d’un ticket, d’un document, d’un design ou d’un artefact de code dans AI Center.
 
 ### `Insight`
 
@@ -327,7 +336,7 @@ Les signaux peu confiants restent dans une boîte d’insights. Seuls les warnin
 
 Une contradiction acceptée reste visible. Si une entrée liée change, elle repasse en vérification et peut être rouverte.
 
-## Expérience web responsive MVP
+## Expérience web desktop MVP
 
 ### Écrans indispensables
 
@@ -367,51 +376,55 @@ Le graphe est rendu tangible par :
 
 Une vue globale en lecture seule pourra être ajoutée après validation de la boucle principale.
 
-## Exécution et adapters
+## Intégration des outils et adapters
 
-L’abstraction d’exécution existe dès le core MVP, mais la première preuve ne dépend pas de l’installation d’un runtime macOS. Le premier executor est simulé avec des événements réalistes afin de valider le contrat, le suivi et la réintégration du résultat sans construire prématurément une infrastructure distante.
+L’abstraction d’intégration existe dès le core MVP, mais elle représente une frontière de contexte, pas un moteur de production. AI Center prépare un `ContextPack`, le transmet à un système choisi, observe son état et rattache ses résultats au graphe. Le système externe conserve sa propre interface, ses données canoniques et son modèle d’autorisation.
 
 ### Core MVP
 
-- interface `ExecutorAdapter` indépendante du fournisseur ;
-- exécution documentaire réelle par l’agent Tech ;
-- executor de démonstration produisant plan, progression et résultat ;
-- `ContextPack` transmis comme entrée immutable ;
-- `DeliverableContract` transmis comme contrat de sortie ;
-- réintégration du résultat, des preuves et des limites dans le graphe.
+- objet `ExternalReference` indépendant du fournisseur ;
+- rattachement manuel d’un ticket, document, design, dépôt, commit, test ou URL ;
+- contrat `ToolAdapter` séparant export du contexte, lecture d’état et import de preuves ;
+- `ContextPack` versionné et immutable comme entrée de handoff ;
+- `DeliverableContract` comme description du résultat attendu ;
+- simulateur actuel conservé uniquement comme harnais de contrat, sans en faire une fonction produit ;
+- réintégration des références, preuves, limites et écarts dans le graphe.
 
 ### Alpha utilisable
 
-- intégration d’un seul agent de code cloud ou local derrière l’adapter ;
-- enregistrement d’un dépôt autorisé ;
-- événements structurés : plan, progression, demande, validation et résultat ;
-- lancement des validations disponibles ;
-- rapport final, références de fichiers ou commit ;
-- relations `implemented_by` et `evidenced_by`.
+- intégration d’un seul système externe, choisie pour fermer le scénario de référence ;
+- export explicite du `ContextPack` vers cet outil ;
+- lecture ou synchronisation d’un ensemble minimal d’objets et de statuts ;
+- rapport final et références d’artefacts réinjectés dans AI Center ;
+- relations `tracked_by`, `implemented_by` et `evidenced_by` ;
+- comportement dégradé clair lorsque le fournisseur est indisponible ;
+- journal des synchronisations et des décisions humaines.
+
+Le premier connecteur peut viser GitHub, un outil de tickets ou un agent de code. Le critère de choix n’est pas la quantité d’actions automatisées, mais la capacité à démontrer le cycle complet **contexte sortant → travail dans l’outil existant → preuve entrante → contrôle de cohérence**.
 
 ### Capacités exclues
 
-- contrôle arbitraire de tout macOS ;
-- computer use généralisé ;
-- plusieurs machines ou runners simultanés ;
-- orchestration autonome de plusieurs agents de code ;
-- éditeur de terminal complet dans AI Center ;
-- garantie de preview ou création automatique de pull request ;
-- détection automatique du drift entre code et connaissance.
+- IDE, terminal ou éditeur de code complet dans AI Center ;
+- runner local ou cloud détenu par AI Center ;
+- reproduction complète de Linear, Jira, Notion, Figma, GitHub ou d’une base de données ;
+- orchestration autonome et opaque de plusieurs agents de production ;
+- import ou réplication exhaustive d’un système d’entreprise ;
+- création automatique de pull request ou publication distante sans politique explicite ;
+- détection automatique exhaustive du drift entre tous les systèmes.
 
 ## Autorisations et confiance
 
-Le modèle anticipe au minimum :
+Chaque adapter possède des scopes minimaux et explicites. Le modèle anticipe au minimum :
 
-- lecture dans le dépôt autorisé ;
-- écriture dans le dépôt autorisé ;
-- exécution de commandes prévues par l’agent de code ;
+- lecture dans une source autorisée ;
+- création ou mise à jour d’un objet externe autorisé ;
+- transmission d’un `ContextPack` à l’agent ou à l’outil choisi ;
 - accès réseau ;
 - action hors du dépôt ;
 - opération destructive ;
 - publication distante, push ou création de PR.
 
-Règle proposée pour le premier adapter réel : la confirmation du plan autorise les opérations réversibles dans le dépôt choisi pendant l’exécution courante. Les actions destructives, les sorties de périmètre, l’accès à des secrets et les publications distantes exigent une autorisation explicite.
+Règle proposée pour le premier adapter réel : démarrer en lecture et import de preuves, puis n’autoriser une écriture externe que si elle est nécessaire à la preuve du cas d’usage. Les actions destructives, les sorties de périmètre, l’accès à des secrets et les publications distantes exigent une autorisation explicite dans AI Center ou dans l’outil qui demeure responsable de l’action.
 
 Chaque action importante reste auditée et rattachée à une exécution.
 
@@ -438,7 +451,8 @@ Chaque action importante reste auditée et rattachée à une exécution.
 - traiter son cycle de vie ;
 - détecter une exigence sans preuve ;
 - invalider ou revalider les projections affectées par une modification ;
-- présenter toute la boucle dans une web app responsive utilisable sur téléphone et ordinateur.
+- rattacher manuellement au moins une référence externe et l’utiliser comme preuve ;
+- présenter toute la boucle dans une web app desktop et le client Linux.
 
 ### P1 — utile pour une bêta crédible
 
@@ -448,11 +462,12 @@ Chaque action importante reste auditée et rattachée à une exécution.
 - génération de vues documentaires Markdown ;
 - suggestions de relations `references` ou `depends_on` ;
 - écran condensé de santé du projet ;
-- executor simulé avec événements structurés ;
-- un premier adapter réel d’agent de code local ou cloud ;
-- rattachement de fichiers, tests et commit comme preuves ;
-- ouverture d’une preview ou d’une pull request existante ;
-- fonctionnement dégradé propre lorsque l’executor est indisponible.
+- contrat générique `ToolAdapter` et journal de synchronisation ;
+- un premier connecteur réel vers un système externe ;
+- export d’un `ContextPack` et import d’un état ou d’une preuve réelle ;
+- rattachement de tickets, documents, designs, fichiers, tests ou commits comme preuves ;
+- ouverture de l’objet dans son outil source ;
+- fonctionnement dégradé propre lorsque le connecteur est indisponible.
 
 ### P2 — après validation du MVP
 
@@ -464,20 +479,20 @@ Chaque action importante reste auditée et rattachée à une exécution.
 - couche de connaissances partagées au workspace ;
 - promotion contrôlée d’une connaissance vers le workspace ;
 - vue graphe globale en lecture seule puis éditable ;
-- connecteurs Slack, Notion, Linear, Figma ou GitHub ;
+- catalogue de connecteurs Slack, Notion, Linear, Jira, Figma, GitHub, GitLab et bases de données ;
 - ingestion et mise à jour automatiques ;
 - drift connaissance ↔ implémentation ;
 - proactivité multi-signal ;
 - automatisations planifiées ;
-- application Android et application desktop natives ;
-- runtime macOS packagé et appairage distant ;
+- applications iOS et Android ;
+- éventuels modules natifs optionnels ne modifiant pas le cœur contextuel ;
 - widget ambiant et conversation vocale complète ;
 - collaboration, rôles, audit organisationnel et gouvernance.
 
 ## Ce qui est explicitement hors MVP
 
 - expérience grand public non technique ;
-- applications iOS, Android et desktop natives ;
+- applications iOS et Android ;
 - plusieurs utilisateurs dans le même workspace ;
 - marketplace de templates ou d’agents ;
 - nœuds et agents librement configurables par l’utilisateur ;
@@ -485,7 +500,9 @@ Chaque action importante reste auditée et rattachée à une exécution.
 - surveillance de tous les tokens par un watcher ;
 - autonomie sans politique d’autorisation ;
 - import exhaustif de l’écosystème d’entreprise ;
-- édition détaillée du code depuis le téléphone.
+- remplacement des outils de ticketing, documentation, design, code ou données ;
+- production et édition détaillées du code dans AI Center ;
+- tests Android ou investissement mobile pendant la consolidation du MVP.
 
 ## Séquencement de réalisation
 
@@ -497,7 +514,7 @@ Cette slice utilise des fixtures typées et aucune infrastructure lourde. Son ob
 
 ### Slice 1 — Walking skeleton persistant
 
-- web app responsive et API ;
+- web app desktop et API ;
 - modèle Project / ContextNode / KnowledgeEntry / Edge ;
 - template `Software Product Delivery` ;
 - création et versionnement des entrées ;
@@ -523,7 +540,7 @@ Cette slice utilise des fixtures typées et aucune infrastructure lourde. Son ob
 - relations entre exigences, sections et preuves ;
 - matrice de couverture.
 
-Cette slice produit le premier moment de valeur complet et doit être testée avant tout investissement dans un runner natif.
+Cette slice produit le premier moment de valeur complet et doit être testée avant tout investissement dans un connecteur ou une surface supplémentaire.
 
 ### Slice 4 — Steward et proactivité
 
@@ -544,14 +561,30 @@ Cette slice produit le premier moment de valeur complet et doit être testée av
 - instrumentation produit ;
 - tests end-to-end du scénario de référence.
 
-### Slice 6 — Premier adapter réel, après validation du core
+### Slice 6 — Premier connecteur externe, après validation du core
 
-- choix d’un agent local ou cloud ;
-- interface `ExecutorAdapter` ;
-- dépôt autorisé ;
-- événements, autorisations et interruption ;
-- rapport, fichiers et tests ;
-- preuves `implemented_by` et `evidenced_by`.
+- choix d’un système externe et d’un objet précis ;
+- interface `ToolAdapter` et mapping de l’identité externe ;
+- export versionné du `ContextPack` ;
+- lecture d’état et import d’une preuve réelle ;
+- scopes d’autorisation et comportement dégradé ;
+- preuves `tracked_by`, `implemented_by` ou `evidenced_by` ;
+- test end-to-end démontrant que l’objet reste canonique dans l’outil externe.
+
+### Contrat du suivi externe Alpha Context Proof
+
+Le suivi GitHub observe un dépôt, un commit ou une pull request en lecture seule.
+L’utilisateur peut déclarer explicitement le ContextPack qu’il a transmis à son
+outil. AI Center conserve alors une chaîne pack versionné → tâche → exécution
+observée → artefacts → preuves. Il ne déclenche pas ce travail dans l’outil et ne
+confond pas un résultat CI avec une validation humaine.
+
+Une preuve de cette chaîne cible explicitement un artefact et un livrable issu
+du même ContextPack courant. Un ancien SHA, un pack obsolète ou une référence
+inaccessible empêche une nouvelle validation. Les états et artefacts antérieurs
+restent consultables ; le rechargement et la reprise d’une commande ne dupliquent
+pas la chaîne. Les imports historiques sans pack déclaré restent identifiés
+comme tels, sans leur attribuer rétroactivement une transmission.
 
 ## Critères de sortie fonctionnels
 
@@ -559,7 +592,7 @@ Le MVP est considéré complet lorsque :
 
 1. un projet peut être créé avec ses nœuds Produit et Tech ;
 2. chaque nœud utilise réellement un profil d’agent et un contexte différents ;
-3. une session responsive peut produire des entrées atomiques confirmées ;
+3. une session desktop peut produire des entrées atomiques confirmées ;
 4. ces entrées persistent et sont retrouvées dans une autre session ;
 5. un `FeatureBrief` est produit et contrôlé par le `ProductReadyGate` ;
 6. un `ContextPack` Tech est compilé avec les versions et la provenance de ses sources ;
@@ -570,7 +603,8 @@ Le MVP est considéré complet lorsque :
 11. l’utilisateur peut accepter, résoudre ou rejeter le signal ;
 12. une modification d’entrée invalide puis réévalue les projections dépendantes ;
 13. au moins une absence de preuve est signalée et actionnable ;
-14. l’application et la session peuvent être fermées puis reprises sans perte d’état.
+14. une référence externe réelle peut être reliée à son exigence avec provenance ;
+15. l’application et la session peuvent être fermées puis reprises sans perte d’état.
 
 ## Critères de qualité
 
@@ -581,8 +615,8 @@ Le MVP est considéré complet lorsque :
 - un livrable distingue clairement contenu produit, sources, couverture et incertitudes ;
 - une contradiction expose sa confiance, sa sévérité et son explication ;
 - les alertes bloquantes restent rares et justifiables ;
-- un executor ne peut pas recevoir silencieusement plus de contexte ou de permissions que prévu ;
-- les événements d’exécution simulés ou réels sont structurés avant d’être résumés ;
+- un outil externe ne peut pas recevoir silencieusement plus de contexte ou de permissions que prévu ;
+- les exports, synchronisations et retours de preuve sont structurés avant d’être résumés ;
 - l’utilisateur peut toujours distinguer connaissance proposée, connaissance confirmée et résultat technique.
 
 ## Seuils d’évaluation IA provisoires
@@ -622,7 +656,7 @@ Les seuils devront être révisés avec un corpus réel ; une précision faible 
 | Templates futurs impossibles à ajouter | Template et profils modélisés comme données dès la v0 |
 | `ContextPack` opaque ou arbitraire | Provenance, versions, aperçu avant handoff et évaluation dédiée |
 | Gates bureaucratiques | Contrôles automatiques, explications courtes et override justifié |
-| Runtime trop ambitieux | Executor simulé dans le core, un adapter réel seulement après validation |
+| Dérive vers un IDE ou un super-outil | Frontière d’adapter explicite et systèmes externes conservés comme sources de vérité |
 | Trop d’autorisations | Contrats et permissions attachés à la tâche, confirmation ciblée pour le risque |
 | UX de graphe complexe | Relations rendues par cartes et détails, sans canvas complet |
 | Perte de la vision inter-projets | Identifiants globaux et endpoints d’arêtes extensibles, sans moteur inter-projets en v0 |
@@ -637,9 +671,10 @@ Les seuils devront être révisés avec un corpus réel ; une précision faible 
 6. **Le Markdown est une projection** : la source de vérité est structurée et requêtable.
 7. **Le Context Compiler et les contrats de livrables sont dans le P0** : ils transforment le graphe en système de travail.
 8. **Le premier handoff est Produit → Tech** : il constitue la boucle de validation prioritaire.
-9. **La première surface est une PWA responsive** : la mobilité est conservée sans financer deux produits prématurément.
-10. **Le runner n’est pas dans le core différenciant** : un executor simulé valide le protocole, puis un adapter réel ferme la boucle dans l’alpha.
+9. **La consolidation cible le web desktop et Linux** : Android, iOS et les tests mobiles sont explicitement différés.
+10. **La production appartient aux outils spécialisés** : AI Center transmet le contexte, observe le résultat et rattache les preuves ; il ne devient ni runner, ni IDE, ni clone des systèmes connectés.
 11. **Les relations inter-projets sont préparées dans le modèle, pas automatisées dans la première version**.
+12. **L’intégration précède le remplacement** : toute fonction native future doit être optionnelle et justifiée par une valeur supérieure à une référence ou un adapter.
 
 ## Arbitrages restant à confirmer
 
@@ -647,8 +682,9 @@ Les seuils devront être révisés avec un corpus réel ; une précision faible 
 - Une contradiction `candidate` apparaît-elle immédiatement, ou seulement après un seuil de confiance ?
 - Quel degré d’édition manuelle offrir dans les livrables structurés sans les transformer en traitement de texte ?
 - Le `ProductReadyGate` peut-il être contourné avec justification, ou seulement passer avec warning ?
-- Après validation du core, quel agent local ou cloud doit devenir le premier adapter réel ?
-- Le premier adapter doit-il travailler sur un dépôt de démonstration contrôlé ou un side project réel ?
+- Quel système externe et quel type d’objet ferment le mieux le premier cycle réel : GitHub/PR, Linear/ticket, Notion/document ou agent de code/tâche ?
+- Le premier connecteur doit-il rester en lecture/import, ou une écriture minimale est-elle indispensable à la démonstration ?
+- Quel projet réel et quelles données non sensibles serviront de corpus alpha ?
 
 ## Documents suivants recommandés
 
@@ -657,7 +693,7 @@ Le prochain travail ne doit pas être un document supplémentaire, mais la Slice
 1. `05-domain-model.md` — entités, agrégats, états, événements et invariants ;
 2. `06-system-architecture.md` — web app, API/control plane, moteur de contexte, workers et protocoles ;
 3. `07-security-and-trust-model.md` — autorisations, isolation et audit ;
-4. `08-ux-flows.md` — parcours responsive, mutations du graphe, handoff, contradiction et exécution ;
+4. `08-ux-flows.md` — parcours desktop, mutations du graphe, handoff, contradiction et intégrations ;
 5. `09-roadmap.md` — slices, dépendances et critères de passage.
 
 Le modèle de domaine doit précéder l’architecture technique : ici, les distinctions entre nœud, entrée, arête, insight, agent et exécution déterminent directement les frontières du système.
