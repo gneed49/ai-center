@@ -36,6 +36,8 @@ export type MockApiOptions = {
   messageResponseLostOnce?: boolean;
   gateFailsOnce?: boolean;
   externalProof?: boolean;
+  resolutionConflictOnce?: boolean;
+  resolutionDelayMs?: number;
 };
 
 export type MockApiState = {
@@ -45,6 +47,7 @@ export type MockApiState = {
   messageProviderAttempts: number;
   messageMutations: number;
   gateAttempts: number;
+  resolutionAttempts: number;
   latestHandoff: ReturnType<typeof buildHandoff> | null;
   externalImported: boolean;
   externalReferenceUrl: string;
@@ -369,7 +372,7 @@ function buildInsightDetail(graphVersion = 4, status = "open") {
 }
 
 export async function installMockApi(page: Page, options: MockApiOptions = {}) {
-  const graphVersion = options.graphVersion ?? 4;
+  let graphVersion = options.graphVersion ?? 4;
   const initialPack = buildContextPack(
     options.packStatus ?? "current",
     options.packGraphVersion ??
@@ -382,6 +385,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     messageProviderAttempts: 0,
     messageMutations: 0,
     gateAttempts: 0,
+    resolutionAttempts: 0,
     latestHandoff:
       options.latestHandoff === false ? null : buildHandoff(initialPack),
     externalImported: false,
@@ -654,6 +658,8 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
 
     if (path === "/api/insights") return json([buildInsight(graphVersion)]);
 
+    if (path === `/api/projects/${ids.project}/history`) return json([]);
+
     if (
       path === `/api/projects/${ids.project}/insights/${ids.insight}` &&
       request.method() === "GET"
@@ -664,6 +670,21 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       path === `/api/projects/${ids.project}/insights/${ids.insight}/resolve` &&
       request.method() === "POST"
     ) {
+      state.resolutionAttempts += 1;
+      if (options.resolutionDelayMs)
+        await new Promise((resolve) =>
+          setTimeout(resolve, options.resolutionDelayMs),
+        );
+      if (options.resolutionConflictOnce && state.resolutionAttempts === 1) {
+        graphVersion += 1;
+        return json(
+          {
+            code: "conflict",
+            message: "Une autre décision a changé le contexte.",
+          },
+          409,
+        );
+      }
       insightStatus = "resolved";
       return json(buildInsightDetail(graphVersion + 1, insightStatus));
     }

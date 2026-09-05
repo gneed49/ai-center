@@ -20,6 +20,7 @@ import type {
   WorkspaceSummary,
 } from "./types";
 import { resolveApiUrl } from "./url";
+import { captureRequestContext } from "./request-context";
 
 const API_URL = resolveApiUrl({
   configuredUrl: import.meta.env.VITE_API_URL,
@@ -37,17 +38,23 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const context = captureRequestContext();
   let response: Response;
   try {
     response = await fetch(`${API_URL}${path}`, {
       ...init,
+      signal:
+        init?.signal && context.signal
+          ? AbortSignal.any([init.signal, context.signal])
+          : (context.signal ?? init?.signal),
       headers: {
         "Content-Type": "application/json",
-        ...requestContextHeaders(),
+        ...context.headers,
         ...init?.headers,
       },
     });
   } catch (error) {
+    context.assertCurrent();
     throw new ApiError(
       error instanceof Error
         ? error.message
@@ -56,11 +63,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       "network_error",
     );
   }
+  context.assertCurrent();
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as {
       message?: string;
       code?: string;
     } | null;
+    context.assertCurrent();
     throw new ApiError(
       body?.message ?? `Erreur HTTP ${response.status}`,
       response.status,
@@ -68,19 +77,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
   if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
-}
-
-function requestContextHeaders(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const token = window.localStorage.getItem("ai-center.access-token");
-  const workspaceId =
-    window.localStorage.getItem("ai-center.workspace-id") ??
-    import.meta.env.VITE_WORKSPACE_ID;
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(workspaceId ? { "X-AI-Center-Workspace-Id": workspaceId } : {}),
-  };
+  const data = (await response.json()) as T;
+  context.assertCurrent();
+  return data;
 }
 
 export function createIdempotencyKey(): string {
@@ -108,6 +107,7 @@ async function prepareHandoff(
   sourceSessionId: UUID,
   idempotencyKeys: HandoffIdempotencyKeys = createHandoffIdempotencyKeys(),
 ) {
+  const context = captureRequestContext();
   const contextPack = await request<ContextPackSummary>(
     `/api/projects/${projectId}/context-packs`,
     {
@@ -120,6 +120,7 @@ async function prepareHandoff(
       } satisfies CompileContextPackInput),
     },
   );
+  context.assertCurrent();
   return request<HandoffView>(`/api/projects/${projectId}/handoffs`, {
     method: "POST",
     headers: mutationHeaders(idempotencyKeys.create),

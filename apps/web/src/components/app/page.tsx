@@ -75,6 +75,16 @@ export function ErrorState({
   const offline =
     (error instanceof ApiError && error.code === "network_error") ||
     (typeof navigator !== "undefined" && !navigator.onLine);
+  const statusTitle =
+    error instanceof ApiError
+      ? (
+          {
+            401: "Votre session doit être renouvelée",
+            403: "Accès refusé dans ce contexte",
+            404: "Ressource introuvable dans ce contexte",
+          } as Record<number, string>
+        )[error.status]
+      : undefined;
   return (
     <div
       className="border border-red-200 bg-red-50 p-6 text-red-900"
@@ -90,6 +100,7 @@ export function ErrorState({
         <div>
           <p className="font-semibold">
             {title ??
+              statusTitle ??
               (offline
                 ? "Connexion interrompue"
                 : "Le serveur n’a pas pu terminer cette action.")}

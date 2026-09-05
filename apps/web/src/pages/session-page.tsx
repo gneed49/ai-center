@@ -1,3 +1,4 @@
+import { notifyRequestError } from "@/lib/request-error";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -73,7 +74,7 @@ export function SessionPage() {
       refresh();
       requestAnimationFrame(() => composer.current?.focus());
     },
-    onError: (error) => toast.error(error.message),
+    onError: notifyRequestError,
   });
   const decide = useMutation({
     mutationFn: (command: {
@@ -99,7 +100,7 @@ export function SessionPage() {
       if (result.insight_ids.length)
         toast.warning("Une contradiction demande votre attention");
     },
-    onError: (error) => toast.error(error.message),
+    onError: notifyRequestError,
   });
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -339,7 +340,7 @@ export function SessionPage() {
         <aside className="bg-[#f7f8fb] p-4 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
                 Review queue
               </p>
               <h2 className="mt-1 text-lg font-semibold">

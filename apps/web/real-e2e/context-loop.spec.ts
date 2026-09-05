@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-test("traverse le vrai backend déterministe jusqu’au handoff persistant", async ({
+test("traverse le vrai backend déterministe jusqu’au plan, à sa couverture et à son historique", async ({
   page,
-}) => {
+}, testInfo) => {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
   const requestFailures: string[] = [];
@@ -62,6 +62,67 @@ test("traverse le vrai backend déterministe jusqu’au handoff persistant", asy
   await page.reload();
   await expect(page.getByText("Handoff terminé et courant")).toBeVisible();
   await expect(page.getByText(/Contexte inclus/)).toBeVisible();
+
+  const projectPath = new URL(page.url()).pathname.replace(/\/handoff$/, "");
+  await page.goto(`${projectPath}/deliverables`);
+  await expect(
+    page.getByRole("heading", { name: "Livrables et couverture" }),
+  ).toBeVisible();
+  const planCard = page.locator("aside > div").filter({
+    has: page.getByRole("heading", {
+      name: "Plan de livraison Tech",
+      exact: true,
+    }),
+  });
+  const generated = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/deliverables/technical-plan") &&
+      response.request().method() === "POST",
+  );
+  await planCard.getByRole("button", { name: "Générer" }).click();
+  const generatedResponse = await generated;
+  expect(generatedResponse.status()).toBe(200);
+  const plan = await generatedResponse.json();
+  expect(plan.coverage_status).toBe("missing");
+  expect(plan.content.coverage_assessment.requirements).toHaveLength(1);
+  expect(plan.content.coverage_assessment.requirements[0].assessment).toBe(
+    "planned",
+  );
+  await page.getByRole("link", { name: /Technical Delivery Plan/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Technical Delivery Plan", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Exigences reliées", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText(
+        "Aucune preuve externe validée n’est encore attachée à cette exigence.",
+      )
+      .first(),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Technical Delivery Plan", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("real-plan-coverage.png"),
+    fullPage: true,
+  });
+  await page.goto(`${projectPath}/history`);
+  await expect(
+    page.getByRole("heading", { name: "Historique du projet" }),
+  ).toBeVisible();
+  const committed = page.getByText("deliverable · committed", { exact: true });
+  await expect(committed).toHaveCount(1);
+  await committed.locator("..").locator("summary").click();
+  await expect(committed.locator("..").locator("pre")).toContainText(
+    "coverage_assessment",
+  );
+  await expect(committed.locator("..").locator("pre")).toContainText(
+    "Technical Delivery Plan",
+  );
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
   expect(requestFailures).toEqual([]);

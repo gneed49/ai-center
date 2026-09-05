@@ -27,16 +27,16 @@ export default function App() {
   }
   if (auth.enabled && auth.loading) {
     return (
-      <main className="grid min-h-dvh place-items-center bg-[#11182b] text-sm text-slate-300" role="status">
+      <main
+        className="grid min-h-dvh place-items-center bg-[#11182b] text-sm text-slate-300"
+        role="status"
+      >
         Restauration de la session sécurisée…
       </main>
     );
   }
   if (auth.enabled && !auth.session) return <LoginPage />;
-  if (
-    auth.enabled &&
-    !window.localStorage.getItem("ai-center.workspace-id")
-  ) {
+  if (auth.enabled && !auth.workspaceId) {
     return <WorkspacePicker />;
   }
   return (

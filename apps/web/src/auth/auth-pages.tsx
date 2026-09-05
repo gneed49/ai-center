@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, KeyRound, LoaderCircle } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router";
 
 import { api } from "@/api/client";
 import { Button } from "@/components/ui/button";
@@ -39,13 +40,18 @@ export function LoginPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-200">
           Alpha privée
         </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight">AI Center</h1>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+          AI Center
+        </h1>
         <p className="mt-3 text-sm leading-6 text-slate-300">
           Connectez-vous par lien magique pour accéder au plan de contrôle de
           contexte de votre workspace.
         </p>
         {sent ? (
-          <div className="mt-8 border border-emerald-300/25 bg-emerald-300/10 p-4 text-sm text-emerald-100" role="status">
+          <div
+            className="mt-8 border border-emerald-300/25 bg-emerald-300/10 p-4 text-sm text-emerald-100"
+            role="status"
+          >
             Le lien a été envoyé. Vous pouvez fermer cet onglet après avoir
             ouvert l’e-mail.
           </div>
@@ -63,13 +69,21 @@ export function LoginPage() {
               onChange={(event) => setEmail(event.target.value)}
               className="min-h-11 w-full border border-white/20 bg-slate-950/30 px-3 text-white outline-none focus:border-indigo-300"
             />
-            <Button className="min-h-11 w-full" disabled={pending} type="submit">
-              {pending ? <LoaderCircle className="animate-spin" /> : <ArrowRight />}
+            <Button
+              className="min-h-11 w-full"
+              disabled={pending}
+              type="submit"
+            >
+              {pending ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <ArrowRight />
+              )}
               Recevoir le lien magique
             </Button>
           </form>
         )}
-        {error ?? callbackError ? (
+        {(error ?? callbackError) ? (
           <p className="mt-4 text-sm text-rose-200" role="alert">
             {error ?? callbackError}
           </p>
@@ -84,12 +98,27 @@ export function AuthCallbackPage() {
   useEffect(() => {
     if (session) window.location.replace("/");
   }, [session]);
+  if (error)
+    return (
+      <main className="grid min-h-dvh place-items-center bg-[#11182b] px-6 text-white">
+        <section className="max-w-md text-center" role="alert">
+          <h1 className="text-2xl font-semibold">Connexion non établie</h1>
+          <p className="mt-4 text-sm leading-6 text-slate-300">
+            Ce lien n’a pas pu être vérifié. Demandez un nouveau lien et
+            ouvrez-le dans le même navigateur.
+          </p>
+          <Button asChild className="mt-6">
+            <Link to="/">Revenir à la connexion</Link>
+          </Button>
+        </section>
+      </main>
+    );
   return (
     <main className="grid min-h-dvh place-items-center bg-[#11182b] px-6 text-white">
       <div className="text-center" role="status" aria-live="polite">
         <LoaderCircle className="mx-auto size-7 animate-spin text-indigo-300" />
         <p className="mt-4 text-sm text-slate-300">
-          {error ?? "Vérification du lien sécurisé…"}
+          Vérification du lien sécurisé…
         </p>
       </div>
     </main>
@@ -97,7 +126,8 @@ export function AuthCallbackPage() {
 }
 
 export function WorkspacePicker() {
-  const { client } = useAuth();
+  const { client, selectWorkspace } = useAuth();
+  const navigate = useNavigate();
   const workspaces = useQuery({
     queryKey: ["workspaces"],
     queryFn: api.workspaces,
@@ -109,7 +139,9 @@ export function WorkspacePicker() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
           Workspace
         </p>
-        <h1 className="mt-3 text-2xl font-semibold">Choisir le contexte partagé</h1>
+        <h1 className="mt-3 text-2xl font-semibold">
+          Choisir le contexte partagé
+        </h1>
         {workspaces.isLoading ? (
           <p className="mt-6 text-sm text-slate-500" role="status">
             Chargement des accès…
@@ -129,11 +161,8 @@ export function WorkspacePicker() {
                 type="button"
                 className="flex min-h-16 items-center justify-between border border-slate-200 px-4 text-left hover:border-indigo-300 hover:bg-indigo-50"
                 onClick={() => {
-                  window.localStorage.setItem(
-                    "ai-center.workspace-id",
-                    workspace.public_id,
-                  );
-                  window.location.replace("/");
+                  selectWorkspace(workspace.public_id);
+                  navigate("/", { replace: true });
                 }}
               >
                 <span className="font-medium">{workspace.name}</span>

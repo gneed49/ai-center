@@ -5,6 +5,8 @@ export interface AuthContextValue {
   enabled: boolean;
   loading: boolean;
   session: Session | null;
+  workspaceId: string | null;
+  selectWorkspace: (workspaceId: string) => void;
   client: SupabaseClient | null;
   error: string | null;
 }

@@ -1,3 +1,4 @@
+import { notifyRequestError } from "@/lib/request-error";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -49,7 +50,7 @@ export function DeliverablesPage() {
       refresh();
       toast.success("Feature Brief généré");
     },
-    onError: (error) => toast.error(error.message),
+    onError: notifyRequestError,
   });
   const plan = useMutation({
     mutationFn: async (idempotencyKey: string) => {
@@ -70,7 +71,7 @@ export function DeliverablesPage() {
       refresh();
       toast.success("Technical Delivery Plan généré");
     },
-    onError: (error) => toast.error(error.message),
+    onError: notifyRequestError,
   });
   const generateBrief = () =>
     brief.mutate(

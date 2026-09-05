@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const port = process.env.AI_CENTER_WEB_E2E_PORT ?? "5173";
+const authPort = process.env.AI_CENTER_WEB_AUTH_E2E_PORT ?? "5184";
+
 export default defineConfig({
   testDir: "./e2e",
   outputDir: "/tmp/ai-center-playwright-results",
@@ -8,17 +11,29 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: "line",
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: `http://127.0.0.1:${port}`,
     reducedMotion: "reduce",
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
-  webServer: {
-    command: "npm run dev -w @ai-center/web -- --host 127.0.0.1",
-    url: "http://127.0.0.1:5173",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: `npm run dev -w @ai-center/web -- --host 127.0.0.1 --port ${port} --strictPort`,
+      url: `http://127.0.0.1:${port}`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: `npm run dev -w @ai-center/web -- --host 127.0.0.1 --port ${authPort} --strictPort`,
+      url: `http://127.0.0.1:${authPort}`,
+      env: {
+        VITE_SUPABASE_URL: "http://127.0.0.1:54329",
+        VITE_SUPABASE_ANON_KEY: "public-local-fixture",
+      },
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
   projects: [
     {
       name: "chromium-desktop",
