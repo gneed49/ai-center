@@ -115,6 +115,11 @@ et de `provenance`, et appartenir au snapshot. L'allowlist historique doit être
 égale aux versions réellement présentes. Une capture modifiée ou une empreinte
 seulement déclarée est refusée avant calibration, gel et rapport.
 
+Les deux conditions reçoivent la même tâche et le même contrat capturé dans
+`pack.content.contract`. Le contrat est un invariant de la comparaison ; il
+reste présent dans le dump complet comme dans le pack, indépendamment des
+versions de connaissance sélectionnées.
+
 Les annotations privées requièrent `reviewer_ref`, `reviewed_at`, `facts` et
 `items`. Chaque fait du manifest référence ses `source_version_ids` exacts ;
 toutes ces versions doivent être sélectionnées pour le compter présent. Un

@@ -762,6 +762,7 @@ def validated_handoff_inputs(
     dump_content = {
         "objective": project["objective"],
         "project_summary": project["summary"],
+        "contract": content["contract"],
         "graph_version": graph,
         "knowledge": normalized,
     }
