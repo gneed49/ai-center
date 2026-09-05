@@ -13,24 +13,26 @@ la date, la commande ou le scénario exact, l'environnement et le chemin de
 l'artefact. Les rapports de CI, captures et résultats agrégés sont conservés
 sans secret ni donnée du corpus.
 
-## État courant du registre
+## État courant du registre — 5 septembre 2026
 
-| Surface                        | Statut                       | Constat courant                                                                             | Preuve encore attendue                          |
-| ------------------------------ | ---------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Positionnement context-control | `Vérifié`                    | Docs, ADR, UI et API excluent IDE, runner et production de code.                            | Validation qualitative en dogfood.              |
-| Flow déterministe PostgreSQL   | `Vérifié`                    | Base neuve, rôle RLS, `mvp_flow` et navigateur full-stack passent localement et en CI.      | Exploitation prolongée sur l’hébergement alpha. |
-| ContextPack sélectif           | `Vérifié`                    | Obligations, exclusions, budget, raisons, versions, hash et stale testés.                   | Qualité sur corpus réel.                        |
-| Plan et couverture             | `Vérifié` déterministe       | Plan et couverture sont structurés depuis le pack, sans contenu `Credits v2` codé en dur.   | Sorties OpenAI et notation humaine.             |
-| Steward générique              | `Vérifié` déterministe       | Assessments complets, outbox, crash recovery et contradictions multiples.                   | Précision/rappel sur 60 paires réelles.         |
-| Résolution transactionnelle    | `Vérifié`                    | Révision, graph version, stale, recompilation et couverture rejoués sur PostgreSQL.         | Dogfood sur décisions réelles.                  |
-| Auth et isolation RLS          | `Vérifié` localement         | 32 pgtap, rôle runtime, magic link, viewer `403`, workspace forgé `403`, sans bearer `401`. | Rotation JWKS et déploiement HTTPS.             |
-| GitHub read-only               | `Présent mais non reproduit` | Client et ExternalReference certifiés par faux HTTP, ETag et anti-SSRF.                     | GitHub App privée et PR réelle.                 |
-| Backup/restore PostgreSQL      | `Vérifié`                    | 39 tables, 96 policies, structure/données comparées, cleanup confirmé.                      | Restauration sur l'hébergement alpha.           |
-| E2E UI desktop                 | `Vérifié`                    | 57/57 mockés sur trois projets desktop et 1/1 full-stack Chromium réel.                     | Scénarios d'erreur full-stack supplémentaires.  |
-| Campagne IA réelle             | `Futur`                      | Harness 9/9 ; premier appel réel bloqué par `insufficient_quota`.                           | Quota actif, corpus approuvé et rapport A/B.    |
-| CI de pull request             | `Vérifié`                    | Desktop CI #20 : 5/5 jobs ; OCI #19 : 3/3 jobs au commit `2162d60`.                         | Rejouer après toute modification fonctionnelle. |
-| Certification pré-alpha        | `Présent mais non reproduit` | Workflow manuel compact/Firefox/Tauri versionné.                                            | Premier run manuel complet.                     |
-| Android/iOS/mobile             | `Futur`                      | Explicitement différé et non bloquant.                                                      | Aucune preuve demandée pour ce jalon.           |
+Le [rapport de revue et validation](review-2026-09-05.md) identifie les commits,
+commandes et journaux du point de contrôle fonctionnel `a9b3140`. Les sections
+historiques datées ci-dessous ne sont pas une certification du nouveau HEAD.
+
+| Surface                             | Statut                            | Constat courant                                                                                                                        | Preuve encore attendue                                                |
+| ----------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Positionnement context-control      | `Vérifié`                         | Connaissances, packs, références et preuves ; aucune production de code ni écriture GitHub par l'application.                          | Valeur en dogfood.                                                    |
+| Révisions, concurrence et fiabilité | `Vérifié` localement              | 11 tests métier PostgreSQL ; versions ciblées, brief concurrent, bail renouvelé, perte de propriété terminale et cycles d'observation. | Exploitation prolongée.                                               |
+| Auth/RLS                            | `Vérifié` localement              | 32 pgTAP, rôle runtime, magic link, viewer 403, workspace forgé 403, absence de bearer 401.                                            | Rotation JWKS et HTTPS privé.                                         |
+| Compiler, plan et couverture        | `Vérifié` déterministe            | Sources exactes, hash, budget, sélection, deux runs distincts plan/couverture et blocage stale.                                        | Qualité IA et notation humaine sur corpus réel.                       |
+| GitHub et traçabilité externe       | `Vérifié` contre faux fournisseur | Repository/PR/commit/checks, ETag/rate limits, historique append-only, enveloppes et preuve candidate validable.                       | GitHub App privée et boucle réelle.                                   |
+| Web desktop                         | `Vérifié` avec API/Auth simulées  | 126/126 sur trois configurations ; source web inchangée après ces tests.                                                               | Exploration UI de la reprise, full-stack étendu local et smoke natif. |
+| Sauvegarde                          | `Vérifié` localement              | 39 tables, 96 policies restaurées et comparées sur le schéma corrigé ; cleanup confirmé.                                               | Hébergement alpha.                                                    |
+| Harness d'évaluation                | `Vérifié` offline                 | 27 tests, captures et métriques d'entrée vérifiées, même contrat A/B, gel et budget 10/70/20.                                          | Calibration, campagne réelle et évaluateurs.                          |
+| CI de PR                            | Workflows présents                | Les résultats du HEAD se consultent sur la PR ; les runs d'août sont historiques.                                                      | Statut CI correspondant au commit à relire.                           |
+| Pré-alpha et natif                  | `Présent mais non reproduit`      | Build Linux, script métier et workflow manuel présents ; contrôle interactif bloqué par l'environnement.                               | Exécution autorisée et capture métier réussies.                       |
+| G9, G10, G11                        | `Futur`                           | Corpus, fournisseurs, campagne A/B, une semaine propriétaire et deux semaines équipe encore ouverts.                                   | Preuves réelles prévues au plan.                                      |
+| Android/iOS/mobile                  | Hors périmètre                    | Aucun code mobile modifié, build, suite ou viewport exécuté pendant cette reprise.                                                     | Aucune preuve demandée pour ce jalon.                                 |
 
 ## Preuves reproduites le 25 août 2026
 
@@ -60,20 +62,20 @@ Android, iOS ou mobile n'a été lancée.
 
 ## Matrice des preuves
 
-| Gate                | ACP principaux         | Suite / scénario                 | Artefact attendu           | Statut                                                              |
-| ------------------- | ---------------------- | -------------------------------- | -------------------------- | ------------------------------------------------------------------- |
-| G0 Contrat          | ACP-001, 006, 070, 077 | Revue documentaire               | Spec et diagrammes         | `Vérifié` localement                                                |
-| G1 Reproductibilité | ACP-070, 071, 076, 077 | CI desktop                       | logs et builds             | `Vérifié` localement et en CI de PR                                 |
-| G2 Isolation        | ACP-029 à 032          | Tests DB/HTTP RLS                | rôles × opérations         | `Vérifié` localement                                                |
-| G3 Fiabilité        | ACP-033 à 039          | crash/replay/faux providers      | traces expurgées           | `Vérifié` localement                                                |
-| G4 Compiler         | ACP-010 à 021          | unités + intégration             | packs et exports           | `Vérifié` déterministe                                              |
-| G5 Steward          | ACP-040 à 046          | DB déterministe puis corpus réel | boucle + matrice confusion | boucle `Vérifiée`, qualité ouverte                                  |
-| G6 UI               | ACP-070, 071           | Playwright UF-01…UF-10           | traces desktop             | `Vérifié` mock + happy réel                                         |
-| G7 GitHub           | ACP-050 à 056          | faux GitHub puis dépôt autorisé  | observations et preuve     | faux HTTP `Vérifié`, live ouvert                                    |
-| G8 Certification    | ACP-030 à 077          | CI/pré-alpha complète            | rapport de certification   | CI de PR `Vérifiée` ; pré-alpha manuel `Présent mais non reproduit` |
-| G9 Valeur           | ACP-072 à 075          | Campagne A/B                     | `report.json` expurgé      | `Futur`                                                             |
-| G10 Dogfood         | Tous les P0            | Dix boucles réelles              | Registre de preuve         | `Futur`                                                             |
-| G11 Équipe          | Tous                   | Alpha privée deux semaines       | Décision de promotion      | `Futur`                                                             |
+| Gate                | ACP principaux         | Suite / scénario                 | Artefact attendu           | Statut                                                                 |
+| ------------------- | ---------------------- | -------------------------------- | -------------------------- | ---------------------------------------------------------------------- |
+| G0 Contrat          | ACP-001, 006, 070, 077 | Revue documentaire               | Spec et diagrammes         | `Vérifié` localement                                                   |
+| G1 Reproductibilité | ACP-070, 071, 076, 077 | CI desktop                       | logs et builds             | `Vérifié` localement ; CI du HEAD à consulter sur la PR                |
+| G2 Isolation        | ACP-029 à 032          | Tests DB/HTTP RLS                | rôles × opérations         | `Vérifié` localement                                                   |
+| G3 Fiabilité        | ACP-033 à 039          | crash/replay/faux providers      | traces expurgées           | `Vérifié` localement                                                   |
+| G4 Compiler         | ACP-010 à 021          | unités + intégration             | packs et exports           | `Vérifié` déterministe                                                 |
+| G5 Steward          | ACP-040 à 046          | DB déterministe puis corpus réel | boucle + matrice confusion | boucle `Vérifiée`, qualité ouverte                                     |
+| G6 UI               | ACP-070, 071           | Playwright UF-01…UF-10           | traces desktop             | `Vérifié` mock + happy réel                                            |
+| G7 GitHub           | ACP-050 à 056          | faux GitHub puis dépôt autorisé  | observations et preuve     | faux HTTP `Vérifié`, live ouvert                                       |
+| G8 Certification    | ACP-030 à 077          | CI/pré-alpha complète            | rapport de certification   | CI du HEAD à consulter ; pré-alpha manuel `Présent mais non reproduit` |
+| G9 Valeur           | ACP-072 à 075          | Campagne A/B                     | `report.json` expurgé      | `Futur`                                                                |
+| G10 Dogfood         | Tous les P0            | Dix boucles réelles              | Registre de preuve         | `Futur`                                                                |
+| G11 Équipe          | Tous                   | Alpha privée deux semaines       | Décision de promotion      | `Futur`                                                                |
 
 ## Scénarios E2E obligatoires
 
@@ -135,6 +137,12 @@ expurgés. La CI n'a ni clé, ni job live, ni permission de créer une PR.
 | Rappel contradiction                       |    ≥ 70 % |
 | Sorties structurées valides après retries  |    ≥ 95 % |
 | Coût total                                 | ≤ 100 USD |
+
+La présence des faits et le rappel du contexte mesurent les entrées réellement
+transmises, à partir des versions sources et ancres annotées humainement. Le
+contrat de tâche est identique dans les deux conditions. La qualité sémantique
+du livrable est évaluée séparément en aveugle ; les déclarations d'usage du
+modèle ne constituent pas les compteurs de présence ou de sélection.
 
 Le second évaluateur couvre au moins 25 % des comparaisons. Les égalités
 textuelles ne servent jamais d'oracle. Un seul seuil manqué place G9 en échec.

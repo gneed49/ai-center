@@ -16,12 +16,12 @@ preuves contrôlables.
 
 ## État réel au 5 septembre 2026
 
-La consolidation **Alpha Context Proof est en cours** sur
-`feat/alpha-context-proof`. La [PR draft #1](https://github.com/gneed49/ai-center/pull/1)
-porte encore le commit distant `8a6e0da` ; les changements de reprise réunis
-localement au point de contrôle `90ca758` ne sont pas encore poussés.
-La revue Standards/Spec a relevé huit corrections en cours, à valider avant
-livraison. Aucune release ou alpha équipe n'est annoncée.
+Le socle logiciel **Alpha Context Proof est consolidé** sur
+`feat/alpha-context-proof`, [PR #1](https://github.com/gneed49/ai-center/pull/1),
+avec suivi dans l'[issue #2](https://github.com/gneed49/ai-center/issues/2).
+Le point de contrôle fonctionnel est `a9b3140`. Les constats Standards/Spec et
+le dernier écart de calibration sont corrigés et revus. Les gates réels restent
+ouverts ; aucune release ou alpha équipe n'est annoncée.
 
 | Statut | Sens |
 | --- | --- |
@@ -30,28 +30,26 @@ livraison. Aucune release ou alpha équipe n'est annoncée.
 | `Déclaré` | Résultat historique sans reproduction sur la version courante. |
 | `Futur` | Résultat ou exploitation encore à réaliser. |
 
-Les [preuves détaillées et leurs limites](docs/current-state-audit.md) restent
-distinctes des gates réels du plan.
-
-| Surface | Preuve locale reproduite avant corrections de revue |
+| Surface | Preuve locale reproduite |
 | --- | --- |
-| Qualité | fmt, lint, Clippy strict et builds ; 89 tests Rust, 6 Vitest, 20 tests d'évaluation offline et 17 gardes de stack au commit `c8a723b`. |
-| Parcours desktop simulés | 126/126 au point `90ca758` : 42 scénarios sur Chromium 1440×900, Chromium 1024×768 et Firefox 1440×900. |
-| PostgreSQL et auth | `90ca758` : base neuve et upgrade, 32 pgTAP, neuf tests métier, rôle RLS runtime et magic link local avec refus attendus. |
-| Sauvegarde | `90ca758` : restauration et comparaison de 39 tables et 96 policies ; nettoyage confirmé. |
-| Tauri Linux | `90ca758` : binaire construit avec overlay isolé, empreinte enregistrée et quatre tests de garde ; parcours métier natif non exécuté. |
-| Navigateur sur API/DB réelles | `37921d8` : boucle jusqu'au handoff rechargé, 1/1 Chromium ; extension récente vers plan/couverture/historique non reproduite. |
+| Backend | 89 tests Rust, tous les tests compilés et Clippy strict sur `7a1a64c`, intégré sans changement de source. |
+| Évaluation | 27 tests offline et schémas valides sur `fc30ab6` ; métriques calculées depuis les entrées vérifiées et annotations humaines. |
+| PostgreSQL | `7a1a64c` : base neuve et upgrade, 32 pgTAP, 11 tests métier avec rôle RLS runtime ; appels longs et concurrence couverts. |
+| Sauvegarde et auth | `84634b7` : 39 tables et 96 policies restaurées/comparées ; magic link local et réponses attendues 200/200/403/403/401 ; nettoyage confirmé. |
+| Web | Six Vitest, lint et build sur `c8a723b` ; source web inchangée par les corrections de revue. |
+| Desktop simulé | 126/126 sur `90ca758` : 42 scénarios × Chromium 1440×900, Chromium 1024×768 et Firefox 1440×900 ; aucun retry. |
+| Tauri Linux | `90ca758` : build avec overlay isolé et empreinte ; quatre tests de garde. Le parcours métier natif n'a pas été exécuté. |
+| Navigateur sur API/DB réelles | Preuve antérieure `37921d8`, 1/1 jusqu'au handoff rechargé ; extension récente vers plan/couverture/historique non reproduite localement. |
 | Dépendances | Installation propre et audit npm sans avis ; audit Rust sans avis bloquant, avec avertissements et exception documentés. |
 
-La CI distante antérieure sur `8a6e0da` et les preuves du 25 août restent
-historiques. Les tests simulés prouvent les comportements UI ; les tests
-PostgreSQL prouvent séparément les mutations, permissions et reprises durables.
-Ces résultats n'établissent pas encore la qualité d'OpenAI ou une boucle avec
-une GitHub App privée.
+Le [rapport de revue et validation](specs/alpha-context-proof/review-2026-09-05.md)
+conserve versions, commandes et limites. L'[audit courant](docs/current-state-audit.md)
+sépare ces preuves des gates du plan. Les résultats CI du HEAD se consultent
+directement sur la PR ; les anciens runs d'août ne certifient pas cette reprise.
 
-Restent `Présent mais non reproduit` : exploration UI de cette reprise,
-smoke métier natif et CI du nouveau HEAD. L'environnement a bloqué l'exécution
-interactive ; aucun autre canal n'a été utilisé pour la contourner.
+Restent `Présent mais non reproduit` : exploration UI de cette reprise et smoke
+métier natif. L'environnement a bloqué l'exécution interactive ; aucun autre
+canal n'a été utilisé pour la contourner.
 
 Restent `Futur` : campagne comparative sur trois projets autorisés dans le budget
 de 100 USD, GitHub App privée, dix boucles propriétaires sur une semaine, puis
@@ -59,6 +57,8 @@ alpha HTTPS de deux à trois utilisateurs pendant deux semaines. Le quota OpenAI
 signalé en août n'a pas été recontrôlé. Aucun build, test ou viewport mobile
 n'appartient à ce jalon.
 
+La migration des observations et le serveur doivent être mis à niveau ensemble ;
+voir les [consignes de migration](specs/alpha-context-proof/review-2026-09-05.md#migration-et-exploitation).
 
 ## Proposition de valeur
 
@@ -241,8 +241,8 @@ npm run test:e2e -w @ai-center/web -- --project=firefox-desktop
 Le script [`scripts/ci-desktop.sh`](scripts/ci-desktop.sh) décrit les gates de
 qualité, d’intégration, de navigateur, de desktop et de secret scan. La CI de PR
 utilise `chromium-desktop`; la certification pré-alpha manuelle ajoute
-`chromium-compact` et `firefox-desktop`. Les résultats CI du commit distant `8a6e0da` sont historiques ; les nouveaux
-commits attendent leur run distant. La certification pré-alpha manuelle reste
+`chromium-compact` et `firefox-desktop`. Les résultats CI du commit distant `8a6e0da` sont historiques ; consulter la PR
+pour les résultats du HEAD courant. La certification pré-alpha manuelle reste
 `Présent mais non reproduit`.
 
 Les évaluations IA réelles ne sont jamais lancées en CI de PR. Leur harness et
@@ -251,9 +251,8 @@ leurs schémas sont documentés dans
 
 ## Gates encore ouverts
 
-La consolidation doit d’abord fermer les constats de revue et reproduire les
-validations concernées. L’alpha équipe reste interdite tant que les points
-suivants ne sont pas reproduits :
+Les constats de revue sont corrigés et leurs régressions passent. L’alpha
+équipe reste interdite tant que les points suivants ne sont pas reproduits :
 
 1. vérifier la configuration et le budget du projet OpenAI dédié, calibrer le modèle puis
    réussir la campagne A/B sur les trois projets autorisés ;

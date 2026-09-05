@@ -11,26 +11,33 @@ Les tickets ci-dessous forment un graphe. Un ticket dépendant commence après
 intégration de ses prérequis. Les branches de travail sont fusionnées dans la
 branche de consolidation après leurs validations ciblées.
 
-| Ticket  | Objet                                                  | Dépendances        | Statut                                            |
-| ------- | ------------------------------------------------------ | ------------------ | ------------------------------------------------- |
-| ACP-T01 | Intégration locale isolée                              | Aucune             | Intégré et vérifié localement                     |
-| ACP-T02 | Invalidation ciblée des versions sources               | Aucune             | Intégré et vérifié localement                     |
-| ACP-T03 | Références GitHub repository, PR, commit et checks     | Aucune             | Intégré ; contrats simulés et PostgreSQL vérifiés |
-| ACP-T04 | Certification des parcours desktop manquants           | T01, T02, T03, T07 | En cours                                          |
-| ACP-T05 | Revue du protocole d'évaluation et gates de promotion  | Aucune             | En cours ; gates live ouvertes                    |
-| ACP-T06 | Revue Standards/Spec, corrections et preuves courantes | T01–T05, T07–T10   | À faire                                           |
-| ACP-T07 | Évaluation structurée de couverture                    | T02                | Intégré et vérifié localement                     |
-| ACP-T08 | Traçabilité du travail externe                         | T03, T07           | En cours                                          |
-| ACP-T09 | Dépendances web                                        | Aucune             | En cours                                          |
-| ACP-T10 | Smoke métier du client Tauri Linux                     | T01                | Préparation ; exécution native en attente         |
+| Ticket  | Objet                                                  | Dépendances        | Statut                                                       |
+| ------- | ------------------------------------------------------ | ------------------ | ------------------------------------------------------------ |
+| ACP-T01 | Intégration locale isolée                              | Aucune             | Intégré et vérifié localement                                |
+| ACP-T02 | Invalidation ciblée des versions sources               | Aucune             | Intégré et vérifié localement                                |
+| ACP-T03 | Références GitHub repository, PR, commit et checks     | Aucune             | Intégré ; contrats simulés et PostgreSQL vérifiés            |
+| ACP-T04 | Certification des parcours desktop manquants           | T01, T02, T03, T07 | Intégré ; 126 tests UI simulés, contrôle exploratoire ouvert |
+| ACP-T05 | Revue du protocole d'évaluation et gates de promotion  | Aucune             | Technique vérifiée ; gates live ouvertes                     |
+| ACP-T06 | Revue Standards/Spec, corrections et preuves courantes | T01–T05, T07–T10   | Correctifs et revues vérifiés ; gates externes ouvertes      |
+| ACP-T07 | Évaluation structurée de couverture                    | T02                | Intégré et vérifié localement                                |
+| ACP-T08 | Traçabilité du travail externe                         | T03, T07           | Intégré et vérifié localement                                |
+| ACP-T09 | Dépendances web                                        | Aucune             | Intégré ; audit npm sans avis                                |
+| ACP-T10 | Smoke métier du client Tauri Linux                     | T01                | Code/build vérifiés ; exécution métier native bloquée        |
 
-Point de contrôle du 5 septembre 2026 : T01, T02, T03 et T07 sont réunis au
+Point de contrôle intermédiaire du 5 septembre 2026 : T01, T02, T03 et T07 sont réunis au
 commit `37921d8`. Le cycle isolé complet passe : 32 pgTAP, neuf tests métier
 PostgreSQL, restauration de 39 tables et 96 policies, magic link local et
 parcours Chromium full-stack jusqu'au handoff rechargé. Le nettoyage de la
 stack est confirmé. Ces preuves utilisent le moteur déterministe et des faux
 fournisseurs ; elles ne ferment pas les gates de valeur, GitHub live ou alpha
 privée. Le build Tauri Linux passe ; son smoke métier reste distinct.
+
+Point de contrôle final du socle : `a9b3140`. Les constats de revue sont
+corrigés ; 89 tests Rust, 27 tests évaluation, 11 tests métier et 32 pgTAP
+passent. Backup/auth du schéma corrigé et 126 tests desktop simulés sont
+qualifiés dans le [rapport daté](review-2026-09-05.md). Le smoke natif et les
+gates réels restent ouverts. La [PR #1](https://github.com/gneed49/ai-center/pull/1)
+porte la consolidation suivie par l'[issue #2](https://github.com/gneed49/ai-center/issues/2).
 
 ## ACP-T01 — Intégration locale isolée
 

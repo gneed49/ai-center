@@ -1,21 +1,19 @@
 # AI Center — état courant Alpha Context Proof
 
-> Revue du 5 septembre 2026 ; point de contrôle `90ca758`.
+> Revue du 5 septembre 2026 ; point de contrôle `a9b3140`.
 >
-> Branche locale : `feat/alpha-context-proof` ; base PR : `abb779c`.
+> Branche : `feat/alpha-context-proof` ; base PR : `abb779c`.
 >
-> La [PR #1](https://github.com/gneed49/ai-center/pull/1) reste draft au commit
-> distant `8a6e0da`. Les changements de cette reprise ne sont pas encore poussés.
+> [PR #1](https://github.com/gneed49/ai-center/pull/1), [issue de consolidation #2](https://github.com/gneed49/ai-center/issues/2).
 
 ## État de la consolidation
 
-La reprise réunit les tickets T01 à T10 dans une seule branche. La revue
-Standards/Spec a relevé huit corrections encore en cours : historique GitHub
-lors d'un retour à un état déjà observé, renouvellement des commandes longues,
-mesure des entrées d'évaluation, intégrité des exports utilisés pour la campagne,
-publication concurrente des Feature Briefs et trois points de cohérence du code
-et de l'ADR. Les résultats ci-dessous précèdent ces corrections et ne les
-certifient pas.
+Les tickets T01 à T10 sont réunis dans une seule branche. Les huit constats
+initiaux des revues Standards/Spec et la régression finale du contrat A/B sont
+corrigés, testés et revus. Aucun constat technique résiduel n'a été confirmé
+dans le périmètre relu. Le [rapport daté](../specs/alpha-context-proof/review-2026-09-05.md)
+conserve les commits, commandes et limites. Les gates réels du plan restent
+ouverts, en particulier l'exécution native et la preuve comparative.
 
 AI Center conserve son rôle de contrôle du contexte : connaissances versionnées,
 ContextPacks, passages de relais, références observées, preuves et couverture.
@@ -47,7 +45,7 @@ ni une CI distante, ni une publication, ni un déploiement.
 | Auth desktop | Changement d'identité atomique, annulation des requêtes antérieures, cache réinitialisé et réponses tardives rejetées ; saisies préservées lors des erreurs réessayables. |
 | GitHub | Repositories, PR, commits, checks et statuses ; limites 403/429 temporaires, ETag et références canoniques. |
 | Traçabilité externe | ContextPack transmis explicitement relié à tâche, exécution observée, événements, artefact, référence et preuve humaine ; aucune exécution de code par AI Center. |
-| Évaluation | Calibration et gel du corpus/contrat, répétitions principales/réserve, évaluateurs distincts et contrôles d'aveuglement renforcés ; corrections des métriques en cours de revue. |
+| Évaluation | Calibration et gel du corpus/contrat, répétitions principales/réserve, évaluateurs distincts et contrôles d'aveuglement renforcés ; métriques d'entrée vérifiées contre captures et annotations humaines. |
 | Desktop natif | Build avec configuration loopback isolée, script de parcours métier et CI manuelle ; exécution interactive non reproduite. |
 | Dépendances | Résolutions web corrigées et installation propre contrôlée. |
 
@@ -55,25 +53,25 @@ ni une CI distante, ni une publication, ni un déploiement.
 
 | Contrôle | Version et résultat | Limite |
 | --- | --- | --- |
-| Qualité | `c8a723b` : fmt, lint, Clippy strict, liens Markdown, builds web/serveur ; 89 tests Rust, 6 Vitest, 20 tests d'évaluation offline, 17 gardes stack | Un test DB est ignoré dans la suite unitaire et exécuté dans la phase DB. |
+| Qualité | `7a1a64c` : 89 tests Rust, compilation et Clippy strict ; `fc30ab6` : 27 tests évaluation ; web inchangé : 6 Vitest, lint/build, 17 gardes stack | Le test DB ignoré en unité est exécuté dans la phase DB. |
 | Desktop avec API/Auth simulées | `90ca758` : 126/126, soit 42 scénarios sur Chromium 1440×900, Chromium 1024×768 et Firefox 1440×900 ; aucun retry | Contrats simulés, pas de fournisseur réel. |
-| PostgreSQL | `90ca758` : base neuve, upgrade baseline→alpha, 32 pgTAP, neuf tests métier et vérification du rôle runtime NOBYPASSRLS | Stack Supabase locale jetable. |
-| Auth | `90ca758` : magic link local, réponses attendues 200/200/403/403/401 | Pas de domaine privé HTTPS ni rotation JWKS réelle. |
-| Sauvegarde | `90ca758` : restauration et comparaison de 39 tables et 96 policies, nettoyage confirmé | Pas de restauration sur l'hébergement alpha. |
+| PostgreSQL | `7a1a64c` : base neuve, upgrade baseline→alpha, 32 pgTAP, 11 tests métier et vérification du rôle runtime NOBYPASSRLS | Stack Supabase locale jetable. |
+| Auth | `84634b7` : magic link local, réponses attendues 200/200/403/403/401 | Pas de domaine privé HTTPS ni rotation JWKS réelle. |
+| Sauvegarde | `84634b7` : restauration et comparaison de 39 tables et 96 policies, nettoyage confirmé | Pas de restauration sur l'hébergement alpha. |
 | Linux | `90ca758` : build du vrai client avec overlay de smoke, ELF et empreinte produits ; quatre tests de garde hors interface | Le client métier n'a pas été lancé. |
 | Dépendances | npm : zéro avis au contrôle ; cargo audit : aucun avis bloquant, 18 avertissements et exception limitée à SQLx MySQL inactive documentés | État ponctuel des avis, pas une garantie générale. |
 | Navigateur sur API/DB réelles | `37921d8` : Chromium 1/1, intention → connaissances → gate → pack → handoff → reload | Preuve antérieure ; l'extension plan/couverture/historique du scénario actuel reste non reproduite. |
 
 Les commandes et journaux de ces contrôles sont détaillés dans le
-[registre de validation](../specs/alpha-context-proof/validation.md). Les
+[rapport de reprise](../specs/alpha-context-proof/review-2026-09-05.md). Les
 journaux bruts restent locaux et ne contiennent pas de corpus live publié.
 
 ## Limites et gates ouverts
 
 | Gate | Statut et preuve encore nécessaire |
 | --- | --- |
-| Revue finale | Corrections des huit constats en cours, puis nouvelles validations ciblées. |
-| CI du nouveau HEAD | `Présent mais non reproduit` : workflows versionnés ; pas encore de run distant des nouveaux commits. |
+| Revue finale | `Vérifié` : constats Standards/Spec fermés, régressions ciblées exécutées. |
+| CI du HEAD | Résultats à consulter sur la PR ; les anciens runs d'août ne constituent pas une preuve du HEAD courant. |
 | Exploration UI et smoke natif | `Présent mais non reproduit` : exécution bloquée par le contrôle d'autorisation de l'environnement ; pas de relance indirecte. Voir le [runbook natif](operations/native-desktop-smoke.md). |
 | Valeur comparative | `Futur` : trois projets réels autorisés, corpus annoté, calibration, campagne A/B et notation humaine ; budget ferme 100 USD. |
 | GitHub live | `Futur` : GitHub App privée read-only et boucle réelle après transmission du ContextPack. |
@@ -85,6 +83,10 @@ Le refus OpenAI `insufficient_quota` rapporté le 25 août est historique : le
 quota, les credentials et les fournisseurs réels n'ont pas été recontrôlés
 pendant cette reprise. Aucun consentement de corpus ni résultat live n'a été
 inventé.
+
+La migration des observations retire une contrainte utilisée par l'ancien
+serveur : schéma et serveur doivent être mis à niveau ensemble. Aucun
+déploiement n'a été effectué. Les détails sont dans le rapport de reprise.
 
 ## Historique et sources
 

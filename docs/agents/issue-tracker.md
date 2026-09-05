@@ -8,7 +8,10 @@ Pour cette reprise, lire [la spécification](../../specs/alpha-context-proof/spe
 [le graphe des tickets](../../specs/alpha-context-proof/tickets.md) et
 [le registre des validations](../../specs/alpha-context-proof/validation.md).
 Les identifiants ACP-T sont des tickets locaux ; ils ne désignent pas des numéros
-d'issues GitHub. Aucune issue n'est associée à ces tickets pour le moment.
+d'issues GitHub. L'[issue #2](https://github.com/gneed49/ai-center/issues/2)
+suit leur consolidation ; sa fermeture par la PR concerne le socle logiciel.
+Les gates opérationnels et durées du plan restent suivis dans le registre de
+validation, indépendamment de cette fermeture.
 
 Pour une revue de la consolidation, figer `origin/main` et utiliser
 `git diff origin/main...HEAD`. Les preuves antérieures sont datées ; vérifier

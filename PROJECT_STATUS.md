@@ -6,7 +6,7 @@ stage: candidate-alpha
 health: amber
 canonical_path: /home/gneed49/Documents/projects/AICenter
 audit_base_commit: 8a6e0da08bc2cd47088e0b25af398ec3ba30312c
-verified_consolidation_commit: 90ca75885da16845abaca513ca468984a5eabe79
+verified_consolidation_commit: a9b3140dab9c0d0c78a2da4633d874cd1c79e86f
 tracking_commit: resolve-with-git-log--1---PROJECT_STATUS.md
 ---
 
@@ -18,7 +18,7 @@ AI Center est une fondation desktop/web de contrôle de contexte et de cohérenc
 La reprise du plan Alpha Context Proof se poursuit sur `feat/alpha-context-proof`
 dans le checkout de ce projet ChatGPT. Le chemin canonique ci-dessus est conservé ;
 son commit de suivi local a été repris sans modifier ce checkout canonique.
-Les changements de cette reprise sont locaux ; les gates de release restent ouvertes.
+La branche de consolidation est suivie par la PR n°1 ; les gates de release restent ouvertes. Le statut CI du HEAD se consulte sur la PR, séparément des preuves locales ci-dessous.
 
 ## Ce qui est en place
 
@@ -30,31 +30,28 @@ Les changements de cette reprise sont locaux ; les gates de release restent ouve
 
 ## Preuves
 
-- Point de contrôle local `90ca758` : T01 à T10 réunis ; la revue Standards/Spec a trouvé huit corrections en cours, non couvertes par les résultats ci-dessous.
-- Qualité sur `c8a723b` : fmt, lint, Clippy strict, builds web/serveur, 89 tests Rust, 6 Vitest, 20 tests d'évaluation offline et 17 gardes stack.
-- Desktop API/Auth simulées sur `90ca758` : 126/126, soit 42 scénarios sur trois configurations desktop, sans retry.
-- PostgreSQL sur `90ca758` : base neuve, upgrade, 32 pgTAP, neuf tests métier, rôle runtime RLS ; auth locale avec réponses attendues 200/200/403/403/401.
-- Sauvegarde restaurée : 39 tables et 96 policies comparées ; nettoyage confirmé.
-- Client Tauri Linux compilé avec overlay de smoke et empreinte ; quatre tests de garde hors interface. Aucune exécution du parcours natif.
-- Parcours navigateur réel jusqu'au handoff rechargé : preuve antérieure sur `37921d8`. L'extension récente plan/couverture/historique reste non reproduite.
-- PR draft n°1 au commit distant `8a6e0da`, vérifiée ; aucune CI distante des nouveaux commits locaux.
-- [Audit courant](docs/current-state-audit.md), [tickets](specs/alpha-context-proof/tickets.md) et [registre détaillé](specs/alpha-context-proof/validation.md).
+- Consolidation fonctionnelle `a9b3140` : T01 à T10 réunis ; constats Standards/Spec et régression de calibration corrigés, revus et couverts par leurs tests.
+- `7a1a64c` : 89 tests Rust, compilation de tous les tests et Clippy strict ; `fc30ab6` : 27 tests d'évaluation offline et schémas valides.
+- PostgreSQL sur `7a1a64c`, sources identiques dans la fusion : base neuve, upgrade, 32 pgTAP, 11 tests métier, rôle runtime RLS. Concurrence du brief, fournisseur >31 secondes, perte de bail et cycles GitHub testés.
+- Sur `84634b7` : sauvegarde/restauration de 39 tables et 96 policies ; auth locale avec réponses attendues 200/200/403/403/401 ; nettoyage confirmé.
+- Web inchangé par les correctifs : six Vitest, lint/build ; 126 tests API/Auth simulées sur trois configurations desktop, sans retry.
+- Tauri Linux : build avec overlay de smoke et empreinte ; quatre tests de garde hors interface. Aucun parcours natif métier exécuté.
+- Ancien parcours navigateur réel jusqu'au handoff rechargé sur `37921d8`. Extension récente plan/couverture/historique non reproduite localement.
+- [Rapport daté de revue et validation](specs/alpha-context-proof/review-2026-09-05.md), [audit](docs/current-state-audit.md), [tickets](specs/alpha-context-proof/tickets.md), [PR n°1](https://github.com/gneed49/ai-center/pull/1) et [issue n°2](https://github.com/gneed49/ai-center/issues/2).
 
 ## Risques et portes
 
-- Huit constats de revue à corriger, puis validation consolidée à reproduire.
-- Protocole d'évaluation en cours de correction ; campagne comparative réelle non réalisée.
-- Corpus réels supplémentaires, annotations humaines et GitHub App privée à valider.
+- Schéma des observations et serveur à mettre à niveau ensemble : l'ancienne version du serveur utilise la contrainte retirée. Aucun déploiement effectué.
+- Campagne comparative réelle non réalisée ; deux projets supplémentaires, corpus autorisé, annotations humaines et GitHub App privée à valider.
 - Exploration UI et smoke Tauri bloqués par le contrôle d'autorisation de l'environnement ; aucune relance indirecte. Build et tests hors interface disponibles.
-- CI courante, HTTPS privé, dogfood d'une semaine et alpha équipe de deux semaines à réaliser.
+- HTTPS privé, dogfood d'une semaine et alpha équipe de deux semaines à réaliser.
 - Quota OpenAI historique non recontrôlé ; Android est hors du jalon actuel.
 
 ## Prochaine étape
 
-Fusionner les corrections de revue, reproduire les tests concernés et mettre à
-jour la PR avec les preuves exactes. Fermer ensuite les gates réelles avec
-corpus autorisé, fournisseurs configurés, annotations humaines et périodes
-requises. Ne pas créer `v0.2.0-alpha.1` avant leur réussite.
+Faire relire la PR avec ses preuves et son statut CI courant. Fermer ensuite
+les gates réelles avec corpus autorisé, fournisseurs configurés, annotations
+humaines et périodes requises. Ne pas créer `v0.2.0-alpha.1` avant leur réussite.
 
 ## Mise à jour par un agent
 
