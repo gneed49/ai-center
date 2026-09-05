@@ -115,7 +115,12 @@ Compléter ensuite les deux fichiers privés :
 - les UUID sources autorisés et le hash du ContextPack ;
 - un petit sous-ensemble `calibration_case_ids` couvrant au moins un handoff et
   une paire ;
-- `reserve_case_ids` uniquement pour les cas déclarés instables avant reprise.
+- `instability_rules` avant calibration : `quality_metrics_vary` pour une
+  variation des métriques de handoff entre répétitions d'une même condition,
+  `predicted_labels_vary` pour des labels de cohérence différents ;
+- `reserve_case_ids` vide et `reserve_justifications` vide au départ. La commande
+  `register-reserve` les complète après vérification des trois répétitions
+  principales du cas. Les règles choisies sont gelées avec la calibration.
 
 Configurer aussi une limite de dépense de 100 USD sur le projet OpenAI dédié.
 Le ledger local applique `10 + 70 + 20`, mais cette limite fournisseur reste la
@@ -190,12 +195,21 @@ pertinent et 70 % d'exactitude sur les contradictions du sous-échantillon :
 python3 scripts/alpha-live-eval.py freeze-model \
   --manifest .run/alpha-context-proof/campaign.json \
   --config .run/alpha-context-proof/live-config.json \
+  --cases .run/alpha-context-proof/private-cases.json \
   --runs .run/alpha-context-proof/runs.jsonl
 ```
 
-Le contrat gelé enregistre le modèle, les versions runner/prompt/schéma et le
-hash de tous les runs de calibration. Toute modification ultérieure invalide un
-plan déjà produit.
+Le contrat gelé enregistre le modèle, les versions runner/prompt/schéma, le hash
+des runs de calibration triés par identifiant, le manifest, le corpus privé et
+la configuration d'exécution. Le gel refuse un échantillon de calibration
+incomplet, des types ou annotations invalides, des requêtes ne correspondant
+pas au corpus et tout run de production préexistant. Chaque modèle configuré
+doit avoir terminé la calibration avant la sélection.
+
+Le runner `1.1.0` exige ces empreintes et son champ `runner_version` sur les
+runs. Les anciens fichiers ne doivent pas être complétés artificiellement pour
+passer ces contrôles : une campagne destinée à la promotion doit repartir du
+protocole courant. Les résultats historiques restent des preuves historiques.
 
 ## 4. Produire le plan A/B principal
 
@@ -204,6 +218,7 @@ python3 scripts/alpha-live-eval.py plan \
   --manifest .run/alpha-context-proof/campaign.json \
   --config .run/alpha-context-proof/live-config.json \
   --cases .run/alpha-context-proof/private-cases.json \
+  --runs .run/alpha-context-proof/runs.jsonl \
   --stage main \
   --output .run/alpha-context-proof/plans/main.json
 ```
@@ -219,14 +234,37 @@ L'évaluateur reçoit uniquement les fichiers `live/blind/`. Le fichier plan,
 
 ## 5. Réserve et reprise sûre
 
-Les répétitions quatre et cinq sont planifiées uniquement pour les
-`reserve_case_ids` dont l'instabilité a été constatée :
+Enregistrer d'abord le déclenchement d'une règle pré-enregistrée. Par exemple,
+pour un handoff dont les métriques ont varié entre répétitions :
+
+```bash
+python3 scripts/alpha-live-eval.py register-reserve \
+  --manifest .run/alpha-context-proof/campaign.json \
+  --config .run/alpha-context-proof/live-config.json \
+  --runs .run/alpha-context-proof/runs.jsonl \
+  --case-id handoff-01 \
+  --rule quality_metrics_vary
+```
+
+Cette commande reste hors ligne, refuse un cas stable ou incomplet et enregistre
+l'empreinte de ses runs principaux. Elle ne modifie pas le contrat gelé.
+`predicted_labels_vary` s'applique seulement aux paires de cohérence ;
+`quality_metrics_vary` compare validité du schéma, validité des sources, faits
+critiques, éléments pertinents, total sélectionné et éléments hors sujet au
+sein d'une même condition de handoff. Une différence entre les deux conditions
+ne suffit pas à déclarer une instabilité.
+
+Enregistrer tous les cas instables avant de créer le plan de réserve. Les
+répétitions quatre **et** cinq seront alors requises pour chaque condition des
+cas concernés, avec notes du propriétaire pour les deux nouveaux comparatifs.
+La couverture de 25 % du second évaluateur inclut ces comparatifs supplémentaires :
 
 ```bash
 python3 scripts/alpha-live-eval.py plan \
   --manifest .run/alpha-context-proof/campaign.json \
   --config .run/alpha-context-proof/live-config.json \
   --cases .run/alpha-context-proof/private-cases.json \
+  --runs .run/alpha-context-proof/runs.jsonl \
   --stage reserve \
   --output .run/alpha-context-proof/plans/reserve.json
 ```
@@ -251,16 +289,30 @@ de la réessayer automatiquement.
 ```bash
 python3 scripts/alpha-eval.py summarize \
   --manifest .run/alpha-context-proof/campaign.json \
+  --config .run/alpha-context-proof/live-config.json \
   --runs .run/alpha-context-proof/runs.jsonl \
   --evaluations .run/alpha-context-proof/evaluations.jsonl \
   --output .run/alpha-context-proof/report.json
 ```
 
-Le propriétaire note tous les comparatifs et le second évaluateur au moins
-25 %. L'ordre est aveugle et aucune égalité textuelle n'est utilisée comme
-oracle. Le rapport échoue tant que l'échantillon, le budget ou un seuil est
-incomplet. Seul un rapport agrégé relu et expurgé peut rejoindre le registre de
-release.
+Le propriétaire note tous les comparatifs et une personne distincte au moins
+25 %. Conserver une référence pseudonyme stable par personne, sans changer de
+référence entre rôles. Les `comparison_id` correspondent aux plans aveugles et
+doivent toujours identifier la même paire de runs. Les notes de calibration
+sont refusées dans les évaluations finales. L'ordre est aveugle et aucune
+égalité textuelle n'est utilisée comme oracle.
+
+L'agrégateur vérifie le contrat gelé et la calibration avant de calculer le
+rapport. Les répétitions principales 1–3 ne peuvent pas être remplacées par
+des réserves ; un cas déclaré instable exige les répétitions 4 et 5 complètes.
+Le rapport échoue tant que l'échantillon, le budget ou un seuil est incomplet.
+Seul un rapport agrégé relu et expurgé peut rejoindre le registre de release.
+Ces contrôles techniques ne prouvent ni l'identité des évaluateurs, ni leur
+aveuglement effectif, ni le consentement réel : ces preuves opérateur restent
+nécessaires. Les tests synthétiques ne ferment pas les gates de campagne réelle.
+
+Le protocole combine des mesures liées aux tâches et une évaluation humaine
+aveugle, conformément aux [bonnes pratiques d'évaluation OpenAI](https://developers.openai.com/api/docs/guides/evaluation-best-practices).
 
 ## Tests hors ligne
 

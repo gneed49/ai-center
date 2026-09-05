@@ -16,13 +16,24 @@
     "max_output_tokens",
     "request_overhead_tokens",
     "timeout_seconds",
-    "frozen_contract"
+    "frozen_contract",
+    "instability_rules",
+    "reserve_justifications"
   ],
   "properties": {
     "schema_version": { "const": "1.0" },
-    "campaign_id": { "type": "string", "minLength": 3 },
-    "pricing_version": { "type": "string", "minLength": 1 },
-    "pricing_verified_at": { "type": "string", "minLength": 1 },
+    "campaign_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "pricing_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pricing_verified_at": {
+      "type": "string",
+      "minLength": 1
+    },
     "models": {
       "type": "array",
       "minItems": 1,
@@ -32,13 +43,12 @@
         "additionalProperties": false,
         "required": ["id", "input_usd_per_million", "output_usd_per_million"],
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "input_usd_per_million": {
-            "type": ["number", "string"]
+          "id": {
+            "type": "string",
+            "minLength": 1
           },
-          "output_usd_per_million": {
-            "type": ["number", "string"]
-          }
+          "input_usd_per_million": { "type": ["number", "string"] },
+          "output_usd_per_million": { "type": ["number", "string"] }
         }
       }
     },
@@ -81,23 +91,59 @@
             "prompt_version",
             "output_schema_version",
             "calibration_runs_hash",
-            "frozen_at"
+            "frozen_at",
+            "campaign_hash",
+            "execution_config_hash",
+            "private_cases_hash"
           ],
           "properties": {
             "selected_model": { "type": "string" },
-            "runner_version": { "const": "1.0.0" },
+            "runner_version": { "const": "1.1.0" },
             "prompt_version": { "const": "alpha-context-proof-live-v1" },
-            "output_schema_version": {
-              "const": "alpha-context-proof-live-v1"
-            },
+            "output_schema_version": { "const": "alpha-context-proof-live-v1" },
             "calibration_runs_hash": {
               "type": "string",
               "pattern": "^[a-f0-9]{64}$"
             },
-            "frozen_at": { "type": "string", "format": "date-time" }
+            "frozen_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "campaign_hash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "execution_config_hash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "private_cases_hash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
           }
         }
       ]
+    },
+    "instability_rules": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["quality_metrics_vary", "predicted_labels_vary"] }
+    },
+    "reserve_justifications": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule", "main_runs_hash"],
+        "properties": {
+          "rule": { "enum": ["quality_metrics_vary", "predicted_labels_vary"] },
+          "main_runs_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
     }
   }
 }

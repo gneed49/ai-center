@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import random
@@ -30,7 +31,7 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 
-RUNNER_VERSION = "1.0.0"
+RUNNER_VERSION = "1.1.0"
 FORMAT_VERSION = "1.0"
 PROMPT_VERSION = "alpha-context-proof-live-v1"
 OUTPUT_SCHEMA_VERSION = "alpha-context-proof-live-v1"
@@ -244,70 +245,22 @@ def has_placeholders(value: Any) -> bool:
     return isinstance(value, str) and value.startswith("REPLACE_")
 
 
+def aggregate_validator() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "alpha_eval", Path(__file__).with_name("alpha-eval.py")
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def validate_campaign(campaign: dict[str, Any], *, allow_placeholders: bool = False) -> None:
-    expected_budget = {"calibration": 10, "main": 70, "reserve": 20, "total": 100}
-    if campaign.get("schema_version") != FORMAT_VERSION:
-        raise LiveEvalError("campaign schema_version must be 1.0")
-    if campaign.get("budget_usd") != expected_budget:
-        raise LiveEvalError("campaign budget must be exactly 10/70/20 and 100 total")
-    privacy = campaign.get("privacy")
-    if not isinstance(privacy, dict) or any(
-        privacy.get(key) is not False
-        for key in ("contains_secrets", "contains_personal_data", "contains_sensitive_data")
-    ):
-        raise LiveEvalError("campaign privacy flags must all be false")
-    projects = campaign.get("projects")
-    tasks = campaign.get("handoff_tasks")
-    pairs = campaign.get("contradiction_pairs")
-    if not isinstance(projects, list) or len(projects) != 3:
-        raise LiveEvalError("campaign must contain exactly three projects")
-    if not isinstance(tasks, list) or len(tasks) < 12:
-        raise LiveEvalError("campaign must contain at least twelve handoff tasks")
-    if not isinstance(pairs, list) or len(pairs) < 60:
-        raise LiveEvalError("campaign must contain at least sixty contradiction pairs")
-    campaign_id = campaign.get("campaign_id")
-    if not isinstance(campaign_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,63}", campaign_id):
-        raise LiveEvalError("campaign_id must be a stable slug")
-    project_refs: set[str] = set()
-    for project in projects:
-        if not isinstance(project, dict) or not isinstance(project.get("project_ref"), str):
-            raise LiveEvalError("campaign project contract is invalid")
-        project_refs.add(project["project_ref"])
-    if len(project_refs) != 3:
-        raise LiveEvalError("campaign project references must be unique")
-    task_ids: set[str] = set()
-    for task in tasks:
-        if not isinstance(task, dict) or task.get("project_ref") not in project_refs:
-            raise LiveEvalError("campaign handoff contract is invalid")
-        task_id = task.get("task_id")
-        if not isinstance(task_id, str) or not re.fullmatch(r"handoff-[0-9]{2}", task_id):
-            raise LiveEvalError("campaign handoff ID is invalid")
-        task_ids.add(task_id)
-        for field in ("critical_fact_ids", "relevant_item_ids", "irrelevant_item_ids"):
-            values = task.get(field)
-            if not isinstance(values, list) or not values or not all(
-                isinstance(value, str) and value for value in values
-            ):
-                raise LiveEvalError(f"campaign handoff {field} is invalid")
-    if len(task_ids) != len(tasks):
-        raise LiveEvalError("campaign handoff IDs must be unique")
-    pair_ids: set[str] = set()
-    for pair in pairs:
-        if not isinstance(pair, dict) or pair.get("project_ref") not in project_refs:
-            raise LiveEvalError("campaign contradiction contract is invalid")
-        pair_id = pair.get("pair_id")
-        if not isinstance(pair_id, str) or not re.fullmatch(r"pair-[0-9]{3}", pair_id):
-            raise LiveEvalError("campaign contradiction ID is invalid")
-        pair_ids.add(pair_id)
-        if pair.get("expected_label") not in {"contradiction", "compatible", "ambiguous"}:
-            raise LiveEvalError("campaign contradiction label is invalid")
-    if len(pair_ids) != len(pairs):
-        raise LiveEvalError("campaign contradiction IDs must be unique")
-    if not allow_placeholders:
-        if any(project.get("consent_confirmed") is not True for project in projects):
-            raise LiveEvalError("every corpus must have explicit consent")
-        if has_placeholders(campaign):
-            raise LiveEvalError("campaign still contains REPLACE_ placeholders")
+    validator = aggregate_validator()
+    try:
+        validator.validate_manifest(campaign, allow_placeholders=allow_placeholders)
+    except validator.ValidationError as error:
+        raise LiveEvalError(str(error)) from error
 
 
 def model_index(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -346,6 +299,8 @@ def validate_live_config(
         "selected_model",
         "calibration_case_ids",
         "reserve_case_ids",
+        "instability_rules",
+        "reserve_justifications",
         "max_output_tokens",
         "request_overhead_tokens",
         "timeout_seconds",
@@ -391,6 +346,34 @@ def validate_live_config(
             raise LiveEvalError(f"{field} must contain unique case IDs")
         if not all(value in known_case_ids for value in values):
             raise LiveEvalError(f"{field} contains an unknown case ID")
+    if not any(value.startswith("handoff-") for value in calibration_ids) or not any(
+        value.startswith("pair-") for value in calibration_ids
+    ):
+        raise LiveEvalError(
+            "calibration must include a handoff and a contradiction pair"
+        )
+    rules = config["instability_rules"]
+    if (
+        not isinstance(rules, list)
+        or not all(isinstance(rule, str) for rule in rules)
+        or len(rules) != len(set(rules))
+        or not set(rules) <= {"quality_metrics_vary", "predicted_labels_vary"}
+    ):
+        raise LiveEvalError("instability_rules must contain unique supported rules")
+    justifications = config["reserve_justifications"]
+    if not isinstance(justifications, dict) or set(justifications) != set(reserve_ids):
+        raise LiveEvalError("every reserve case requires exactly one justification")
+    for justification in justifications.values():
+        if (
+            not isinstance(justification, dict)
+            or set(justification) != {"rule", "main_runs_hash"}
+            or justification.get("rule") not in rules
+            or not isinstance(justification.get("main_runs_hash"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", justification["main_runs_hash"])
+        ):
+            raise LiveEvalError(
+                "reserve justification requires a registered rule and main runs hash"
+            )
     for field, minimum, maximum in (
         ("max_output_tokens", 64, 20_000),
         ("request_overhead_tokens", 1_024, 20_000),
@@ -407,6 +390,9 @@ def validate_live_config(
             "prompt_version",
             "output_schema_version",
             "calibration_runs_hash",
+            "campaign_hash",
+            "execution_config_hash",
+            "private_cases_hash",
             "frozen_at",
         }
         if not isinstance(frozen, dict) or set(frozen) != expected_fields:
@@ -419,8 +405,28 @@ def validate_live_config(
             raise LiveEvalError("frozen prompt version mismatch")
         if frozen.get("output_schema_version") != OUTPUT_SCHEMA_VERSION:
             raise LiveEvalError("frozen output schema version mismatch")
-        if not re.fullmatch(r"[a-f0-9]{64}", str(frozen.get("calibration_runs_hash"))):
-            raise LiveEvalError("frozen calibration hash is invalid")
+        if config.get("selected_model") is None:
+            raise LiveEvalError("frozen contract requires a selected model")
+        for field in (
+            "calibration_runs_hash",
+            "campaign_hash",
+            "execution_config_hash",
+            "private_cases_hash",
+        ):
+            if not isinstance(frozen.get(field), str) or not re.fullmatch(
+                r"[a-f0-9]{64}", frozen[field]
+            ):
+                raise LiveEvalError(f"frozen {field} is invalid")
+        try:
+            frozen_at = datetime.fromisoformat(
+                frozen["frozen_at"].replace("Z", "+00:00")
+            )
+            if frozen_at.tzinfo is None:
+                raise ValueError("timezone required")
+        except (TypeError, ValueError, AttributeError) as error:
+            raise LiveEvalError(
+                "frozen_at must be a timestamp with timezone"
+            ) from error
 
 
 def validate_private_cases(cases: dict[str, Any], campaign: dict[str, Any]) -> None:
@@ -520,6 +526,8 @@ def config_template(campaign: dict[str, Any]) -> dict[str, Any]:
         "selected_model": None,
         "calibration_case_ids": [first_task, first_pair],
         "reserve_case_ids": [],
+        "instability_rules": ["quality_metrics_vary", "predicted_labels_vary"],
+        "reserve_justifications": {},
         "max_output_tokens": 2_000,
         "request_overhead_tokens": 1_024,
         "timeout_seconds": 90,
@@ -1156,6 +1164,7 @@ def build_run_record(
     record: dict[str, Any] = {
         "schema_version": FORMAT_VERSION,
         "run_id": job["run_id"],
+        "runner_version": RUNNER_VERSION,
         "case_kind": job["case_kind"],
         "case_id": job["case_id"],
         "project_ref": project_for_case(campaign, job["case_id"]),
@@ -1295,6 +1304,210 @@ def calibration_summary(config: dict[str, Any], runs: list[dict[str, Any]]) -> d
     }
 
 
+def execution_config_hash(config: dict[str, Any]) -> str:
+    # Reserve decisions follow the main runs; their rules are frozen beforehand.
+    mutable = {
+        "selected_model",
+        "frozen_contract",
+        "reserve_case_ids",
+        "reserve_justifications",
+    }
+    return sha256_json(
+        {key: value for key, value in config.items() if key not in mutable}
+    )
+
+
+def runs_hash(runs: list[dict[str, Any]]) -> str:
+    return sha256_json(
+        sorted(
+            [
+                {key: value for key, value in record.items() if key != "__line__"}
+                for record in runs
+            ],
+            key=lambda record: record["run_id"],
+        )
+    )
+
+
+def validate_run_contracts(
+    config: dict[str, Any],
+    campaign: dict[str, Any],
+    runs: list[dict[str, Any]],
+    cases: dict[str, Any] | None = None,
+) -> None:
+    validator = aggregate_validator()
+    try:
+        validator.validate_runs([dict(record) for record in runs], campaign)
+    except validator.ValidationError as error:
+        raise LiveEvalError(str(error)) from error
+    for record in runs:
+        for field, expected in (
+            ("runner_version", RUNNER_VERSION),
+            ("prompt_version", PROMPT_VERSION),
+            ("output_schema_version", OUTPUT_SCHEMA_VERSION),
+            ("attempts", 1),
+        ):
+            if record.get(field) != expected:
+                raise LiveEvalError(
+                    f"run {field} differs from the frozen execution contract"
+                )
+        if record["model"] not in model_index(config):
+            raise LiveEvalError("run model was not configured for calibration")
+        if (
+            record["stage"] != "calibration"
+            and record["model"] != config["selected_model"]
+        ):
+            raise LiveEvalError("production run model differs from the selected model")
+        job = plan_job(
+            record["stage"],
+            record["case_kind"],
+            record["case_id"],
+            record["condition"],
+            record["repetition"],
+            record["model"],
+            "single",
+            None,
+        )
+        if record["run_id"] != job["run_id"]:
+            raise LiveEvalError(
+                "run identity differs from the planned execution contract"
+            )
+        if not isinstance(record.get("request_hash"), str) or not re.fullmatch(
+            r"[a-f0-9]{64}", record["request_hash"]
+        ):
+            raise LiveEvalError("run requires its request hash")
+        if cases is not None:
+            body, scoring = request_for_job(job, campaign, config, cases)
+            if (
+                record["request_hash"] != sha256_json(body)
+                or record["context_pack_hash"] != scoring["context_pack_hash"]
+            ):
+                raise LiveEvalError(
+                    "run request or ContextPack differs from the private corpus"
+                )
+
+
+def validate_calibration_evidence(
+    config: dict[str, Any],
+    campaign: dict[str, Any],
+    runs: list[dict[str, Any]],
+    cases: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    calibration = [record for record in runs if record.get("stage") == "calibration"]
+    validate_run_contracts(config, campaign, calibration, cases)
+    expected = {
+        (model, case_id, condition, 1)
+        for model in model_index(config)
+        for case_id in config["calibration_case_ids"]
+        for condition in (
+            CONDITIONS if case_id.startswith("handoff-") else ("context_pack",)
+        )
+    }
+    observed = [
+        (row["model"], row["case_id"], row["condition"], row["repetition"])
+        for row in calibration
+    ]
+    if len(observed) != len(expected) or set(observed) != expected:
+        raise LiveEvalError(
+            "calibration sample must be complete for every configured model"
+        )
+    if (
+        sum(decimal_value(row["cost_usd"], "calibration cost") for row in calibration)
+        > STAGE_LIMITS["calibration"]
+    ):
+        raise LiveEvalError("calibration cost exceeds 10 USD")
+    summary = calibration_summary(config, calibration)
+    if summary["recommended_model"] is None:
+        raise LiveEvalError("no calibrated model reached the frozen quality thresholds")
+    return summary
+
+
+def validate_frozen_evidence(
+    config: dict[str, Any],
+    campaign: dict[str, Any],
+    runs: list[dict[str, Any]],
+    cases: dict[str, Any] | None = None,
+) -> None:
+    validate_live_config(config, campaign)
+    frozen = config["frozen_contract"]
+    if frozen is None:
+        raise LiveEvalError("production requires a frozen calibration contract")
+    if frozen["campaign_hash"] != sha256_json(campaign) or frozen[
+        "execution_config_hash"
+    ] != execution_config_hash(config):
+        raise LiveEvalError(
+            "campaign or execution config changed after calibration freeze"
+        )
+    if cases is not None and frozen["private_cases_hash"] != sha256_json(cases):
+        raise LiveEvalError("private corpus changed after calibration freeze")
+    validate_run_contracts(config, campaign, runs, cases)
+    summary = validate_calibration_evidence(config, campaign, runs, cases)
+    calibration = [row for row in runs if row["stage"] == "calibration"]
+    if frozen["calibration_runs_hash"] != runs_hash(calibration):
+        raise LiveEvalError("calibration runs changed after freeze")
+    if summary["recommended_model"] != config["selected_model"]:
+        raise LiveEvalError(
+            "selected model differs from the calibration recommendation"
+        )
+
+
+def validate_reserve_evidence(
+    config: dict[str, Any], runs: list[dict[str, Any]]
+) -> None:
+    reserved = set(config["reserve_case_ids"])
+    if any(row["case_id"] not in reserved for row in runs if row["stage"] == "reserve"):
+        raise LiveEvalError("reserve run has no recorded instability justification")
+    for case_id, justification in config["reserve_justifications"].items():
+        main_runs = [
+            row for row in runs if row["stage"] == "main" and row["case_id"] == case_id
+        ]
+        conditions = CONDITIONS if case_id.startswith("handoff-") else ("context_pack",)
+        expected = {
+            (condition, repetition)
+            for condition in conditions
+            for repetition in (1, 2, 3)
+        }
+        observed = [(row["condition"], row["repetition"]) for row in main_runs]
+        if len(observed) != len(expected) or set(observed) != expected:
+            raise LiveEvalError(
+                "reserve requires all three main repetitions for each condition"
+            )
+        if justification["main_runs_hash"] != runs_hash(main_runs):
+            raise LiveEvalError("reserve main runs hash mismatch")
+        rule = justification["rule"]
+        if rule == "predicted_labels_vary":
+            unstable = (
+                case_id.startswith("pair-")
+                and len({row["predicted_label"] for row in main_runs}) > 1
+            )
+        elif rule == "quality_metrics_vary":
+            fields = (
+                "structured_output_valid",
+                "source_ids_valid",
+                "critical_facts_present",
+                "relevant_items_present",
+                "selected_items_total",
+                "irrelevant_items_selected",
+            )
+            unstable = case_id.startswith("handoff-") and any(
+                len(
+                    {
+                        tuple(row.get(field) for field in fields)
+                        for row in main_runs
+                        if row["condition"] == condition
+                    }
+                )
+                > 1
+                for condition in conditions
+            )
+        else:
+            raise LiveEvalError("unsupported instability rule")
+        if not unstable:
+            raise LiveEvalError(
+                "reserve rule is not triggered by the recorded main runs"
+            )
+
+
 def command_init(args: argparse.Namespace) -> int:
     private_root = default_private_root()
     manifest_path = ensure_private_path(args.manifest, private_root)
@@ -1321,6 +1534,11 @@ def load_live_inputs(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str
 
 def command_plan(args: argparse.Namespace) -> int:
     campaign, config, cases = load_live_inputs(args)
+    if args.stage != "calibration":
+        runs = read_jsonl(ensure_private_path(args.runs), allow_missing=False)
+        validate_frozen_evidence(config, campaign, runs, cases)
+        if args.stage == "reserve":
+            validate_reserve_evidence(config, runs)
     output = ensure_private_path(args.output)
     seed = args.seed or secrets.token_hex(32)
     plan = build_plan(campaign, config, cases, args.stage, seed)
@@ -1343,10 +1561,17 @@ def command_run(args: argparse.Namespace) -> int:
     if job is None:
         raise LiveEvalError("job_id is not present in the plan")
     runs_path = ensure_private_path(args.runs)
+    runs = read_jsonl(runs_path)
+    if job["stage"] != "calibration":
+        validate_frozen_evidence(config, campaign, runs, cases)
+        if job["stage"] == "reserve":
+            validate_reserve_evidence(config, runs)
+    elif config["frozen_contract"] is not None:
+        raise LiveEvalError("calibration cannot continue after the contract is frozen")
     events_path = ensure_private_path(args.events)
     raw_dir = ensure_private_path(args.raw_dir)
     blind_dir = ensure_private_path(args.blind_dir)
-    if any(record.get("run_id") == job["run_id"] for record in read_jsonl(runs_path)):
+    if any(record.get("run_id") == job["run_id"] for record in runs):
         raise LiveEvalError("run already completed; live retries are forbidden")
     body, scoring = request_for_job(job, campaign, config, cases)
     model = model_index(config)[job["model"]]
@@ -1460,19 +1685,18 @@ def command_freeze(args: argparse.Namespace) -> int:
     campaign = read_json(ensure_private_path(args.manifest, private_root))
     config_path = ensure_private_path(args.config, private_root)
     config = read_json(config_path)
+    cases = read_json(ensure_private_path(args.cases, private_root))
     validate_campaign(campaign)
     validate_live_config(config, campaign)
+    validate_private_cases(cases, campaign)
     if config.get("frozen_contract") is not None:
         raise LiveEvalError("model contract is already frozen")
     runs = read_jsonl(ensure_private_path(args.runs, private_root), allow_missing=False)
-    calibration_cost = sum(
-        decimal_value(record.get("cost_usd", 0), "calibration cost")
-        for record in runs
-        if record.get("stage") == "calibration"
-    )
-    if calibration_cost > STAGE_LIMITS["calibration"]:
-        raise LiveEvalError("calibration cost exceeds 10 USD")
-    summary = calibration_summary(config, runs)
+    if any(record.get("stage") != "calibration" for record in runs):
+        raise LiveEvalError("production runs cannot predate the calibration freeze")
+    if config["reserve_case_ids"]:
+        raise LiveEvalError("reserve decisions must follow the main campaign")
+    summary = validate_calibration_evidence(config, campaign, runs, cases)
     selected = summary["recommended_model"]
     if selected is None:
         raise LiveEvalError("no calibrated model reached the frozen quality thresholds")
@@ -1482,7 +1706,10 @@ def command_freeze(args: argparse.Namespace) -> int:
         "runner_version": RUNNER_VERSION,
         "prompt_version": PROMPT_VERSION,
         "output_schema_version": OUTPUT_SCHEMA_VERSION,
-        "calibration_runs_hash": sha256_json(runs),
+        "calibration_runs_hash": runs_hash(runs),
+        "campaign_hash": sha256_json(campaign),
+        "execution_config_hash": execution_config_hash(config),
+        "private_cases_hash": sha256_json(cases),
         "frozen_at": utc_now(),
     }
     write_json_private(config_path, config, overwrite=True)
@@ -1492,6 +1719,35 @@ def command_freeze(args: argparse.Namespace) -> int:
         model_ref=opaque_ref(selected),
         status="frozen",
         request_hash=sha256_json(summary),
+    )
+    return 0
+
+
+def command_register_reserve(args: argparse.Namespace) -> int:
+    campaign = read_json(ensure_private_path(args.manifest))
+    config_path = ensure_private_path(args.config)
+    config = read_json(config_path)
+    runs = read_jsonl(ensure_private_path(args.runs), allow_missing=False)
+    validate_campaign(campaign)
+    validate_frozen_evidence(config, campaign, runs)
+    if args.case_id in config["reserve_case_ids"]:
+        raise LiveEvalError("reserve justification is already registered")
+    main_runs = [
+        row for row in runs if row["stage"] == "main" and row["case_id"] == args.case_id
+    ]
+    config["reserve_case_ids"].append(args.case_id)
+    config["reserve_justifications"][args.case_id] = {
+        "rule": args.rule,
+        "main_runs_hash": runs_hash(main_runs),
+    }
+    validate_live_config(config, campaign)
+    validate_reserve_evidence(config, runs)
+    write_json_private(config_path, config, overwrite=True)
+    emit_event(
+        event="reserve_registered",
+        stage="reserve",
+        case_id=args.case_id,
+        status="offline",
     )
     return 0
 
@@ -1526,6 +1782,9 @@ def build_parser() -> argparse.ArgumentParser:
     plan = subparsers.add_parser("plan", help="Create a private randomized execution plan.")
     add_live_inputs(plan)
     plan.add_argument("--stage", choices=STAGES, required=True)
+    plan.add_argument(
+        "--runs", type=Path, default=Path(".run/alpha-context-proof/runs.jsonl")
+    )
     plan.add_argument("--output", type=Path, required=True)
     plan.add_argument("--seed", help="Hex seed for reproducible offline tests only.")
     plan.add_argument("--force", action="store_true")
@@ -1549,8 +1808,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     freeze.add_argument("--manifest", type=Path, required=True)
     freeze.add_argument("--config", type=Path, required=True)
+    freeze.add_argument("--cases", type=Path, required=True)
     freeze.add_argument("--runs", type=Path, required=True)
     freeze.set_defaults(handler=command_freeze)
+
+    reserve = subparsers.add_parser(
+        "register-reserve", help="Record a triggered, pre-registered instability rule."
+    )
+    reserve.add_argument("--manifest", type=Path, required=True)
+    reserve.add_argument("--config", type=Path, required=True)
+    reserve.add_argument("--runs", type=Path, required=True)
+    reserve.add_argument("--case-id", required=True)
+    reserve.add_argument(
+        "--rule",
+        choices=("quality_metrics_vary", "predicted_labels_vary"),
+        required=True,
+    )
+    reserve.set_defaults(handler=command_register_reserve)
 
     budget = subparsers.add_parser("budget", help="Show conservative settled + pending charges.")
     budget.add_argument("--ledger", type=Path, required=True)

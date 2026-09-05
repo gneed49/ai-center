@@ -84,16 +84,19 @@
           "critical_fact_ids": {
             "type": "array",
             "minItems": 1,
+            "uniqueItems": true,
             "items": { "type": "string" }
           },
           "relevant_item_ids": {
             "type": "array",
             "minItems": 1,
+            "uniqueItems": true,
             "items": { "type": "string" }
           },
           "irrelevant_item_ids": {
             "type": "array",
             "minItems": 1,
+            "uniqueItems": true,
             "items": { "type": "string" }
           }
         }

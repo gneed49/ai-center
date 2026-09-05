@@ -20,10 +20,12 @@
     "latency_ms",
     "cost_usd",
     "structured_output_valid",
-    "source_ids_valid"
+    "source_ids_valid",
+    "runner_version"
   ],
   "properties": {
     "schema_version": { "const": "1.0" },
+    "runner_version": { "const": "1.1.0" },
     "run_id": { "type": "string", "minLength": 3 },
     "case_kind": { "enum": ["handoff", "contradiction"] },
     "case_id": { "type": "string" },

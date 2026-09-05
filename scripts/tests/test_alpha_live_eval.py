@@ -52,7 +52,9 @@ def campaign(task_count: int = 2, pair_count: int = 1) -> dict:
                 "project_ref": project_ref(((index - 1) % 3) + 1),
                 "left_version_ref": str(uuid.UUID(int=index * 2 - 1)),
                 "right_version_ref": str(uuid.UUID(int=index * 2)),
-                "expected_label": "contradiction",
+                "expected_label": ("contradiction", "compatible", "ambiguous")[
+                    (index - 1) % 3
+                ],
             }
         )
     return {
@@ -87,6 +89,9 @@ def config(selected: bool = True) -> dict:
             "prompt_version": live.PROMPT_VERSION,
             "output_schema_version": live.OUTPUT_SCHEMA_VERSION,
             "calibration_runs_hash": "a" * 64,
+            "campaign_hash": "a" * 64,
+            "execution_config_hash": "a" * 64,
+            "private_cases_hash": "a" * 64,
             "frozen_at": "2026-08-25T00:00:00Z",
         }
         if selected
@@ -111,7 +116,9 @@ def config(selected: bool = True) -> dict:
         ],
         "selected_model": selected_model,
         "calibration_case_ids": ["handoff-01", "pair-001"],
-        "reserve_case_ids": ["handoff-01"],
+        "reserve_case_ids": [],
+        "reserve_justifications": {},
+        "instability_rules": ["quality_metrics_vary", "predicted_labels_vary"],
         "max_output_tokens": 2_000,
         "request_overhead_tokens": 1_024,
         "timeout_seconds": 90,
@@ -209,9 +216,11 @@ class LiveEvalTests(unittest.TestCase):
 
     def test_dry_run_never_reads_a_key_or_opens_the_network(self) -> None:
         source_campaign = campaign(task_count=12, pair_count=60)
-        source_config = config()
+        source_config = config(selected=False)
         cases = private_cases(source_campaign)
-        plan = live.build_plan(source_campaign, source_config, cases, "main", "abcd")
+        plan = live.build_plan(
+            source_campaign, source_config, cases, "calibration", "abcd"
+        )
         job = plan["jobs"][0]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
