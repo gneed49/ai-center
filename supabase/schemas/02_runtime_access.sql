@@ -144,3 +144,8 @@ grant execute on function app.authorize_workspace_member(uuid, uuid)
 grant execute on function app.list_actor_workspaces() to ai_center_runtime;
 grant execute on function app.list_due_steward_workspaces(integer)
   to ai_center_runtime;
+
+-- External tracking describes read-only GitHub observations; no runner.
+grant select, insert on table app.tasks, app.executions, app.execution_events, app.artifacts to ai_center_runtime;
+grant update on table app.tasks, app.executions to ai_center_runtime;
+grant usage on sequence app.tasks_id_seq, app.executions_id_seq, app.execution_events_id_seq, app.artifacts_id_seq to ai_center_runtime;

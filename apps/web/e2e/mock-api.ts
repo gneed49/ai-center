@@ -1,4 +1,5 @@
 import type { Page, Request } from "@playwright/test";
+import type { ExternalTracking } from "../src/api/types";
 
 const now = "2026-08-25T10:00:00.000Z";
 
@@ -36,6 +37,7 @@ export type MockApiOptions = {
   messageResponseLostOnce?: boolean;
   gateFailsOnce?: boolean;
   externalProof?: boolean;
+  externalImportResponseLostOnce?: boolean;
 };
 
 export type MockApiState = {
@@ -47,6 +49,9 @@ export type MockApiState = {
   gateAttempts: number;
   latestHandoff: ReturnType<typeof buildHandoff> | null;
   externalImported: boolean;
+  externalImportAttempts: number;
+  externalTracking: ExternalTracking[];
+  evidenceArtifactId?: string;
   externalReferenceUrl: string;
   externalHeadSha: string;
   evidenceStatus: "candidate" | "valid" | "stale" | "rejected" | null;
@@ -385,10 +390,50 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     latestHandoff:
       options.latestHandoff === false ? null : buildHandoff(initialPack),
     externalImported: false,
+    externalImportAttempts: 0,
+    externalTracking: [],
     externalReferenceUrl: "https://github.com/gneed49/ai-center/pull/42",
     externalHeadSha: "b".repeat(40),
     evidenceStatus: null,
   };
+  const externalView = () => ({
+    ...buildExternalReference(
+      state.externalHeadSha,
+      state.evidenceStatus,
+      state.externalReferenceUrl,
+    ),
+    tracking: state.externalTracking,
+    evidences: buildExternalReference(
+      state.externalHeadSha,
+      state.evidenceStatus,
+      state.externalReferenceUrl,
+    ).evidences.map((evidence) => ({
+      ...evidence,
+      artifact_public_id: state.evidenceArtifactId,
+    })),
+  });
+  const trackingEvent = (eventType: string) => {
+    for (const chain of state.externalTracking) {
+      chain.events.push({
+        public_id: crypto.randomUUID(),
+        sequence_number: chain.events.length + 1,
+        event_type: eventType,
+        payload: { head_sha: state.externalHeadSha, sync_status: "current" },
+        created_at: now,
+      });
+    }
+  };
+  const trackingArtifact = () => ({
+    public_id: crypto.randomUUID(),
+    reference: state.externalReferenceUrl,
+    metadata: {
+      head_sha: state.externalHeadSha,
+      sync_status: "current",
+      observation_id: crypto.randomUUID(),
+      observation_hash: "d".repeat(64),
+    },
+    created_at: now,
+  });
   let insightStatus = "open";
   const messageResults = new Map<string, { body: unknown; status: number }>();
 
@@ -578,50 +623,62 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
 
     if (path === `/api/projects/${ids.project}/external-references`) {
       if (request.method() === "GET")
-        return json(
-          state.externalImported
-            ? [
-                buildExternalReference(
-                  state.externalHeadSha,
-                  state.evidenceStatus,
-                  state.externalReferenceUrl,
-                ),
-              ]
-            : [],
-        );
+        return json(state.externalImported ? [externalView()] : []);
+      state.externalImportAttempts++;
       state.externalImported = true;
-      state.externalReferenceUrl = (
-        request.postDataJSON() as { url: string }
-      ).url;
-      return json(
-        buildExternalReference(
-          state.externalHeadSha,
-          state.evidenceStatus,
-          state.externalReferenceUrl,
-        ),
-      );
+      const body = request.postDataJSON() as {
+        url: string;
+        tracking?: { context_pack_id: string; transmission_confirmed: boolean };
+      };
+      state.externalReferenceUrl = body.url;
+      if (
+        body.tracking?.transmission_confirmed &&
+        !state.externalTracking.length
+      ) {
+        state.externalTracking.push({
+          task_public_id: crypto.randomUUID(),
+          execution_public_id: crypto.randomUUID(),
+          context_pack_public_id: body.tracking.context_pack_id,
+          context_pack_version: initialPack.version,
+          context_pack_hash: initialPack.content_hash,
+          context_pack_current:
+            initialPack.status === "current" &&
+            initialPack.source_graph_version === graphVersion,
+          status: "running",
+          observed_result: {
+            mode: "external_observation",
+            observed_state: "open",
+            evidence_validation: "human_required",
+          },
+          artifacts: [trackingArtifact()],
+          events: [],
+        });
+        trackingEvent("github.imported");
+      }
+      if (
+        options.externalImportResponseLostOnce &&
+        state.externalImportAttempts === 1
+      )
+        return json(
+          {
+            code: "connector_unavailable",
+            message: "Réponse interrompue après enregistrement",
+            retryable: true,
+          },
+          503,
+        );
+      return json(externalView());
     }
-
     if (path === `/api/external-references/${ids.reference}`)
-      return json(
-        buildExternalReference(
-          state.externalHeadSha,
-          state.evidenceStatus,
-          state.externalReferenceUrl,
-        ),
-      );
-
+      return json(externalView());
     if (path === `/api/external-references/${ids.reference}/evidence`) {
       state.evidenceStatus = "candidate";
-      return json(
-        buildExternalReference(
-          state.externalHeadSha,
-          state.evidenceStatus,
-          state.externalReferenceUrl,
-        ).evidences[0],
-      );
+      state.evidenceArtifactId = (
+        request.postDataJSON() as { artifact_id?: string }
+      ).artifact_id;
+      trackingEvent("evidence.candidate_created");
+      return json(externalView().evidences[0]);
     }
-
     if (
       path ===
       `/api/external-references/${ids.reference}/evidence/${ids.evidence}/review`
@@ -631,25 +688,20 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       };
       state.evidenceStatus =
         body.decision === "validate" ? "valid" : "rejected";
-      return json(
-        buildExternalReference(
-          state.externalHeadSha,
-          state.evidenceStatus,
-          state.externalReferenceUrl,
-        ).evidences[0],
+      trackingEvent(
+        body.decision === "validate"
+          ? "evidence.validated"
+          : "evidence.rejected",
       );
+      return json(externalView().evidences[0]);
     }
-
     if (path === `/api/external-references/${ids.reference}/refresh`) {
       state.externalHeadSha = "c".repeat(40);
       if (state.evidenceStatus === "valid") state.evidenceStatus = "stale";
-      return json(
-        buildExternalReference(
-          state.externalHeadSha,
-          state.evidenceStatus,
-          state.externalReferenceUrl,
-        ),
-      );
+      for (const chain of state.externalTracking)
+        chain.artifacts.push(trackingArtifact());
+      trackingEvent("github.refreshed");
+      return json(externalView());
     }
 
     if (path === "/api/insights") return json([buildInsight(graphVersion)]);

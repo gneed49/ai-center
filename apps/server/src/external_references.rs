@@ -28,6 +28,9 @@ use crate::{
     service::AppState,
 };
 
+mod tracking;
+pub use tracking::{ExternalTrackingInput, ExternalTrackingView};
+
 const CREATE_OPERATION: &str = "external_reference.github_pr.create";
 const REFRESH_OPERATION: &str = "external_reference.github_pr.refresh";
 const EVIDENCE_CREATE_OPERATION: &str = "external_reference.evidence.create";
@@ -42,6 +45,8 @@ pub struct CreatePullRequestReference {
     /// connection matching the configured GitHub App installation is used.
     #[serde(default)]
     pub tool_connection_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracking: Option<ExternalTrackingInput>,
 }
 
 /// A project-scoped external reference suitable for collection views.
@@ -90,6 +95,8 @@ pub struct ExternalEvidenceView {
     pub requirement_version_public_id: Uuid,
     pub deliverable_public_id: Uuid,
     pub deliverable_section_public_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_public_id: Option<Uuid>,
     pub evidence_type: String,
     pub title: String,
     pub description: String,
@@ -106,11 +113,15 @@ pub struct ExternalReferenceView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latest_observation: Option<ExternalReferenceObservationView>,
     pub evidences: Vec<ExternalEvidenceView>,
+    #[serde(default)]
+    pub tracking: Vec<ExternalTrackingView>,
 }
 
 /// Creates only a candidate. Human review is deliberately a separate command.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CreateExternalEvidence {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_id: Option<Uuid>,
     pub requirement_id: Uuid,
     pub deliverable_id: Uuid,
     pub deliverable_section_id: Uuid,
@@ -216,6 +227,7 @@ impl ObservationRecord {
 
 #[derive(Debug, sqlx::FromRow)]
 struct EvidenceRecord {
+    artifact_public_id: Option<Uuid>,
     public_id: Uuid,
     requirement_public_id: Uuid,
     requirement_version_public_id: Uuid,
@@ -237,6 +249,7 @@ impl EvidenceRecord {
             requirement_version_public_id: self.requirement_version_public_id,
             deliverable_public_id: self.deliverable_public_id,
             deliverable_section_public_id: self.deliverable_section_public_id,
+            artifact_public_id: self.artifact_public_id,
             evidence_type: self.evidence_type,
             title: self.title,
             description: self.description,
@@ -249,6 +262,7 @@ impl EvidenceRecord {
 
 #[derive(Debug, sqlx::FromRow)]
 struct EvidenceIdentifiers {
+    artifact_id: Option<i64>,
     id: i64,
     workspace_id: i64,
     project_id: i64,
@@ -309,6 +323,7 @@ pub async fn create_pull_request(
     let normalized_input = CreatePullRequestReference {
         url: identity.canonical_url(),
         tool_connection_id: input.tool_connection_id,
+        tracking: input.tracking,
     };
     let request_hash = idempotency::hash_request(&normalized_input)?;
 
@@ -345,6 +360,9 @@ pub async fn create_pull_request(
             return replay(response);
         }
     };
+    if let Some(tracking) = &normalized_input.tracking {
+        tracking::validate_pack(&mut claim_tx, &scope, tracking).await?;
+    }
     claim_tx.commit().await?;
 
     let provider_result = github
@@ -381,6 +399,22 @@ pub async fn create_pull_request(
         etag,
     )
     .await?;
+    let reference = load_reference_for_update(&mut tx, state, view.reference.public_id).await?;
+    if let Some(tracking) = &normalized_input.tracking
+        && let Err(error) = tracking::ensure_tracking(&mut tx, state, &reference, tracking).await
+    {
+        tx.rollback().await?;
+        record_provider_failure(state, context, &lease, &error).await?;
+        return Err(error);
+    }
+    tracking::observe(
+        &mut tx,
+        &reference,
+        lease.record_public_id,
+        "github.imported",
+    )
+    .await?;
+    let view = load_view(&mut tx, reference).await?;
     complete(&mut tx, &lease, &view).await?;
     tx.commit().await?;
     Ok(view)
@@ -500,6 +534,13 @@ pub async fn refresh(
                 reference.project_id,
             )
             .await?;
+            tracking::observe(
+                &mut tx,
+                &current,
+                lease.record_public_id,
+                "github.refreshed",
+            )
+            .await?;
             let view = load_view(&mut tx, current).await?;
             complete(&mut tx, &lease, &view).await?;
             tx.commit().await?;
@@ -516,7 +557,7 @@ pub async fn refresh(
                 project_id: reference.project_id,
                 workspace_id: reference.workspace_id,
             };
-            let view = persist_observed_reference(
+            persist_observed_reference(
                 &mut tx,
                 state,
                 scope,
@@ -526,6 +567,15 @@ pub async fn refresh(
                 etag,
             )
             .await?;
+            let current = load_reference_for_update(&mut tx, state, reference_public_id).await?;
+            tracking::observe(
+                &mut tx,
+                &current,
+                lease.record_public_id,
+                "github.refreshed",
+            )
+            .await?;
+            let view = load_view(&mut tx, current).await?;
             complete(&mut tx, &lease, &view).await?;
             tx.commit().await?;
             Ok(view)
@@ -533,6 +583,16 @@ pub async fn refresh(
         Err(error @ AppError::ConnectorRateLimited { .. }) => {
             // A rate limit says nothing about source availability. Preserve the
             // last observation, reference state, evidence, and coverage.
+            let mut tx = begin_scoped_transaction(state, context).await?;
+            let current = load_reference_for_update(&mut tx, state, reference_public_id).await?;
+            tracking::observe(
+                &mut tx,
+                &current,
+                lease.record_public_id,
+                "github.rate_limited",
+            )
+            .await?;
+            tx.commit().await?;
             record_provider_failure(state, context, &lease, &error).await?;
             Err(error)
         }
@@ -544,6 +604,13 @@ pub async fn refresh(
                 reference.id,
                 reference.workspace_id,
                 reference.project_id,
+            )
+            .await?;
+            tracking::observe(
+                &mut tx,
+                &current,
+                lease.record_public_id,
+                "github.refreshed",
             )
             .await?;
             let view = load_view(&mut tx, current).await?;
@@ -564,6 +631,14 @@ pub async fn refresh(
             .bind(reference.project_id)
             .bind(reference.workspace_id)
             .execute(&mut *tx)
+            .await?;
+            let current = load_reference_for_update(&mut tx, state, reference_public_id).await?;
+            tracking::observe(
+                &mut tx,
+                &current,
+                lease.record_public_id,
+                "github.connector_error",
+            )
             .await?;
             idempotency::fail(
                 &mut tx,
@@ -639,6 +714,14 @@ pub async fn create_evidence(
     let head_sha = observation_head_sha(&latest.observed_state)
         .ok_or_else(|| AppError::Conflict("the current observation has no head SHA".into()))?;
     let source_reference = evidence_source_reference(&reference.canonical_url, head_sha);
+    let artifact_id = tracking::validate_artifact(
+        &mut tx,
+        &reference,
+        input.artifact_id,
+        input.deliverable_id,
+        head_sha,
+    )
+    .await?;
 
     let identifiers: Option<(i64, i64, i64, i64)> = sqlx::query_as(
         "select requirement.id, version.id, deliverable.id, section.id
@@ -679,9 +762,10 @@ pub async fn create_evidence(
         "insert into app.evidences (
            workspace_id, project_id, requirement_entry_id, requirement_version_id,
            deliverable_id, deliverable_section_id, external_reference_id,
-           evidence_type, title, description, source_reference, status
-         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'candidate')
+           evidence_type, title, description, source_reference, status, artifact_id
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'candidate',$12)
          returning public_id,
+           (select public_id from app.artifacts where id = artifact_id) as artifact_public_id,
            (select public_id from app.knowledge_entries where id = requirement_entry_id)
              as requirement_public_id,
            (select public_id from app.knowledge_entry_versions where id = requirement_version_id)
@@ -703,6 +787,7 @@ pub async fn create_evidence(
     .bind(input.title.trim())
     .bind(input.description.trim())
     .bind(source_reference)
+    .bind(artifact_id)
     .fetch_one(&mut *tx)
     .await?
     .view();
@@ -719,6 +804,15 @@ pub async fn create_evidence(
             "external_reference_id": reference.public_id,
             "source_reference": &evidence.source_reference,
         }),
+    )
+    .await?;
+    tracking::evidence_event(
+        &mut tx,
+        &reference,
+        artifact_id,
+        evidence.public_id,
+        lease.record_public_id,
+        "evidence.candidate_created",
     )
     .await?;
     complete(&mut tx, &lease, &evidence).await?;
@@ -773,7 +867,7 @@ pub async fn review_evidence(
     };
 
     let evidence = sqlx::query_as::<_, EvidenceIdentifiers>(
-        "select id, workspace_id, project_id, requirement_entry_id,
+        "select id, workspace_id, project_id, requirement_entry_id, artifact_id,
                 requirement_version_id, deliverable_id, deliverable_section_id,
                 source_reference, status
          from app.evidences
@@ -812,6 +906,18 @@ pub async fn review_evidence(
         .ok_or_else(|| AppError::Conflict("a current observation is required".into()))?;
         let head_sha = observation_head_sha(&latest.observed_state)
             .ok_or_else(|| AppError::Conflict("the current observation has no head SHA".into()))?;
+        if let Some(artifact_id) = evidence.artifact_id {
+            let (artifact_public_id, deliverable_public_id): (Uuid, Uuid) = sqlx::query_as("select artifact.public_id, deliverable.public_id from app.artifacts artifact join app.deliverables deliverable on deliverable.id=$2 and deliverable.project_id=artifact.project_id and deliverable.workspace_id=artifact.workspace_id where artifact.id=$1 and artifact.project_id=$3 and artifact.workspace_id=$4")
+                .bind(artifact_id).bind(evidence.deliverable_id).bind(reference.project_id).bind(reference.workspace_id).fetch_one(&mut *tx).await?;
+            tracking::validate_artifact(
+                &mut tx,
+                &reference,
+                Some(artifact_public_id),
+                deliverable_public_id,
+                head_sha,
+            )
+            .await?;
+        }
         let expected = evidence_source_reference(&reference.canonical_url, head_sha);
         if evidence.source_reference != expected {
             return Err(AppError::Conflict(
@@ -899,6 +1005,19 @@ pub async fn review_evidence(
         reviewed.public_id,
         Some(json!({ "status": evidence.status })),
         json!({ "status": target_status }),
+    )
+    .await?;
+    tracking::evidence_event(
+        &mut tx,
+        &reference,
+        evidence.artifact_id,
+        reviewed.public_id,
+        lease.record_public_id,
+        if target_status == "valid" {
+            "evidence.validated"
+        } else {
+            "evidence.rejected"
+        },
     )
     .await?;
     complete(&mut tx, &lease, &reviewed).await?;
@@ -1440,7 +1559,9 @@ async fn load_view(
         .into_iter()
         .map(EvidenceRecord::view)
         .collect();
+    let tracking = tracking::load(tx, &reference).await?;
     Ok(ExternalReferenceView {
+        tracking,
         reference: reference.summary(),
         latest_observation,
         evidences,
@@ -1455,6 +1576,7 @@ async fn load_evidence(
 ) -> AppResult<ExternalEvidenceView> {
     sqlx::query_as::<_, EvidenceRecord>(
         "select evidence.public_id,
+                (select public_id from app.artifacts where id = evidence.artifact_id) as artifact_public_id,
                 requirement.public_id as requirement_public_id,
                 version.public_id as requirement_version_public_id,
                 deliverable.public_id as deliverable_public_id,
@@ -1876,6 +1998,7 @@ const REFERENCE_SELECT_BY_INTERNAL_ID: &str =
        and reference.project_id = $3";
 
 const EVIDENCE_SELECT: &str = "select evidence.public_id,
+                (select public_id from app.artifacts where id = evidence.artifact_id) as artifact_public_id,
             requirement.public_id as requirement_public_id,
             version.public_id as requirement_version_public_id,
             deliverable.public_id as deliverable_public_id,
@@ -2058,6 +2181,7 @@ mod tests {
     #[test]
     fn evidence_creation_hash_includes_its_reference_target() {
         let input = CreateExternalEvidence {
+            artifact_id: None,
             requirement_id: Uuid::new_v4(),
             deliverable_id: Uuid::new_v4(),
             deliverable_section_id: Uuid::new_v4(),
