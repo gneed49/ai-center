@@ -48,7 +48,7 @@ quality() {
   npm run test -w @ai-center/web
   cargo test --workspace --lib
   python3 -m py_compile scripts/alpha-eval.py scripts/alpha-live-eval.py
-  python3 -m unittest scripts/tests/test_alpha_live_eval.py
+  python3 -m unittest discover -s scripts/tests -p 'test_alpha*.py'
   python3 -m unittest discover -s scripts/tests -p 'test_integration_target.py'
   npm run build:web
   cargo build -p ai-center-server

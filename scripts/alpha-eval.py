@@ -9,6 +9,7 @@ tracked repository and outside the aggregate report.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -286,6 +287,20 @@ def validate_manifest(manifest: dict[str, Any], *, allow_placeholders: bool) -> 
             values = task.get(field)
             if not isinstance(values, list) or not values or not all(isinstance(item, str) and item for item in values):
                 errors.append(f"handoff_tasks[{index}].{field} doit être une liste non vide")
+            elif len(values) != len(set(values)):
+                errors.append(
+                    f"handoff_tasks[{index}].{field} contient des annotations dupliquées"
+                )
+        relevant = task.get("relevant_item_ids")
+        irrelevant = task.get("irrelevant_item_ids")
+        if (
+            isinstance(relevant, list)
+            and isinstance(irrelevant, list)
+            and any(item in irrelevant for item in relevant)
+        ):
+            errors.append(
+                f"handoff_tasks[{index}]: annotations pertinentes et hors sujet doivent être disjointes"
+            )
 
     pairs = manifest.get("contradiction_pairs")
     pair_ids: set[str] = set()
@@ -323,6 +338,10 @@ def validate_manifest(manifest: dict[str, Any], *, allow_placeholders: bool) -> 
         for field in ("left_version_ref", "right_version_ref"):
             if not isinstance(pair.get(field), str) or not pair[field]:
                 errors.append(f"contradiction_pairs[{index}].{field} requis")
+        if pair.get("left_version_ref") == pair.get("right_version_ref"):
+            errors.append(
+                f"contradiction_pairs[{index}]: deux versions distinctes sont requises"
+            )
 
     for label in LABELS:
         if label_counts[label] < 20:
@@ -362,11 +381,21 @@ def validate_runs(
         "structured_output_valid", "source_ids_valid",
     }
     allowed = required | {
-        "context_pack_hash", "critical_facts_expected", "critical_facts_present",
-        "relevant_items_expected", "relevant_items_present", "selected_items_total",
-        "irrelevant_items_selected", "expected_label", "predicted_label",
-        "output_tokens", "attempts", "provider_status", "provider_response_ref",
+        "context_pack_hash",
+        "critical_facts_expected",
+        "critical_facts_present",
+        "relevant_items_expected",
+        "relevant_items_present",
+        "selected_items_total",
+        "irrelevant_items_selected",
+        "expected_label",
+        "predicted_label",
+        "output_tokens",
+        "attempts",
+        "provider_status",
+        "provider_response_ref",
         "request_hash",
+        "runner_version",
     }
     for record in runs:
         line = record.pop("__line__", "?")
@@ -394,6 +423,12 @@ def validate_runs(
             errors.append(f"{location}: condition invalide")
         if not isinstance(record["repetition"], int) or isinstance(record["repetition"], bool) or not 1 <= record["repetition"] <= 5:
             errors.append(f"{location}: repetition doit être comprise entre 1 et 5")
+        elif record["repetition"] not in {
+            "calibration": (1,),
+            "main": (1, 2, 3),
+            "reserve": (4, 5),
+        }.get(record["stage"], ()):
+            errors.append(f"{location}: répétition incompatible avec le stage")
         for field in ("model", "prompt_version", "output_schema_version"):
             if not isinstance(record[field], str) or not record[field]:
                 errors.append(f"{location}: {field} requis")
@@ -526,6 +561,9 @@ def validate_evaluations(
     evaluation_ids: set[str] = set()
     role_per_comparison: set[tuple[str, str]] = set()
     role_per_case: set[tuple[str, int, str]] = set()
+    comparison_pairs: dict[str, tuple[str, str]] = {}
+    pair_comparisons: dict[tuple[str, str], str] = {}
+    evaluators: dict[str, set[str]] = {"owner": set(), "secondary": set()}
     required = {
         "schema_version", "evaluation_id", "comparison_id", "task_id",
         "repetition", "context_pack_run_id", "full_dump_run_id",
@@ -544,6 +582,25 @@ def validate_evaluations(
         if missing:
             errors.append(f"{location}: champs absents: {', '.join(sorted(missing))}")
             continue
+        if record["schema_version"] != SCHEMA_VERSION:
+            errors.append(f"{location}: schema_version invalide")
+        identifiers = (
+            "evaluation_id",
+            "comparison_id",
+            "task_id",
+            "context_pack_run_id",
+            "full_dump_run_id",
+            "evaluator_ref",
+        )
+        if any(
+            not isinstance(record[key], str) or len(record[key].strip()) < 3
+            for key in identifiers
+        ):
+            errors.append(f"{location}: identifiant ou référence évaluateur invalide")
+            continue
+        if type(record["repetition"]) is not int or not 1 <= record["repetition"] <= 5:
+            errors.append(f"{location}: répétition invalide")
+            continue
         evaluation_id = record["evaluation_id"]
         if not isinstance(evaluation_id, str) or not evaluation_id:
             errors.append(f"{location}: evaluation_id invalide")
@@ -554,6 +611,14 @@ def validate_evaluations(
         role = record["evaluator_role"]
         if role not in ("owner", "secondary"):
             errors.append(f"{location}: evaluator_role invalide")
+            continue
+        evaluators[role].add(record["evaluator_ref"].strip().casefold())
+        pair = (record["context_pack_run_id"], record["full_dump_run_id"])
+        comparison_id = record["comparison_id"]
+        if comparison_pairs.setdefault(comparison_id, pair) != pair:
+            errors.append(f"{location}: comparison_id associé à des runs différents")
+        if pair_comparisons.setdefault(pair, comparison_id) != comparison_id:
+            errors.append(f"{location}: runs associés à plusieurs comparison_id")
         key = (record["comparison_id"], role)
         if key in role_per_comparison:
             errors.append(f"{location}: rôle dupliqué pour cette comparaison")
@@ -575,10 +640,24 @@ def validate_evaluations(
         if pack_run.get("condition") != "context_pack" or dump_run.get("condition") != "full_dump":
             errors.append(f"{location}: conditions des runs inversées")
         for run in (pack_run, dump_run):
+            if run.get("stage") not in ("main", "reserve"):
+                errors.append(
+                    f"{location}: une évaluation finale ne peut noter la calibration"
+                )
             if run.get("case_kind") != "handoff":
                 errors.append(f"{location}: seuls les handoffs sont comparés")
             if run.get("case_id") != record["task_id"] or run.get("repetition") != record["repetition"]:
                 errors.append(f"{location}: tâche ou répétition incohérente")
+        for field in ("stage", "model", "prompt_version", "output_schema_version"):
+            if pack_run.get(field) != dump_run.get(field):
+                errors.append(
+                    f"{location}: contrat des conditions incohérent ({field})"
+                )
+
+    if evaluators["owner"] & evaluators["secondary"]:
+        errors.append(
+            "évaluations: le second évaluateur doit être une personne distincte du propriétaire"
+        )
 
     if errors:
         raise ValidationError("évaluations invalides:\n- " + "\n- ".join(errors))
@@ -613,7 +692,11 @@ def build_report(
     manifest: dict[str, Any],
     runs: list[dict[str, Any]],
     evaluations: list[dict[str, Any]],
+    reserve_case_ids: set[str] | None = None,
 ) -> dict[str, Any]:
+    reserve_case_ids = set(reserve_case_ids or ()) | {
+        record["case_id"] for record in runs if record["stage"] == "reserve"
+    }
     production_runs = [record for record in runs if record["stage"] != "calibration"]
     pack_runs = [record for record in production_runs if record["condition"] == "context_pack"]
     handoff_pack = [record for record in pack_runs if record["case_kind"] == "handoff"]
@@ -742,28 +825,39 @@ def build_report(
         for record in production_runs
     )
     for task in manifest["handoff_tasks"]:
+        expected_repetitions = set(
+            range(1, 6 if task["task_id"] in reserve_case_ids else 4)
+        )
         for condition in CONDITIONS:
             repetitions = {
                 repetition
                 for repetition in range(1, 6)
                 if production_index[(task["task_id"], condition, repetition)]
             }
-            if len(repetitions) < 3:
-                missing.append(f"{task['task_id']}:{condition}:3 répétitions")
+            if repetitions != expected_repetitions:
+                missing.append(
+                    f"{task['task_id']}:{condition}:{len(expected_repetitions)} répétitions"
+                )
     for pair in manifest["contradiction_pairs"]:
+        expected_repetitions = set(
+            range(1, 6 if pair["pair_id"] in reserve_case_ids else 4)
+        )
         repetitions = {
             repetition
             for repetition in range(1, 6)
             if production_index[(pair["pair_id"], "context_pack", repetition)]
         }
-        if len(repetitions) < 3:
-            missing.append(f"{pair['pair_id']}:3 répétitions")
-    expected_comparisons = len(manifest["handoff_tasks"]) * 3
+        if repetitions != expected_repetitions:
+            missing.append(f"{pair['pair_id']}:{len(expected_repetitions)} répétitions")
+    expected_comparisons = sum(
+        5 if task["task_id"] in reserve_case_ids else 3
+        for task in manifest["handoff_tasks"]
+    )
     owner_case_keys = {
         (record["task_id"], record["repetition"]) for record in owner_evaluations
     }
     for task in manifest["handoff_tasks"]:
-        for repetition in range(1, 4):
+        for repetition in range(1, 6 if task["task_id"] in reserve_case_ids else 4):
             if (task["task_id"], repetition) not in owner_case_keys:
                 missing.append(f"évaluation owner:{task['task_id']}:répétition {repetition}")
     if len(owner_comparisons) != expected_comparisons:
@@ -868,7 +962,26 @@ def command_summarize(args: argparse.Namespace) -> int:
     evaluations = read_jsonl(args.evaluations)
     run_by_id = validate_runs(runs, manifest)
     validate_evaluations(evaluations, run_by_id)
-    report = build_report(manifest, runs, evaluations)
+    spec = importlib.util.spec_from_file_location(
+        "alpha_live_eval", Path(__file__).with_name("alpha-live-eval.py")
+    )
+    assert spec is not None and spec.loader is not None
+    protocol = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(protocol)
+    config = read_json(args.config)
+    try:
+        protocol.validate_frozen_evidence(config, manifest, runs)
+        protocol.validate_reserve_evidence(config, runs)
+    except protocol.LiveEvalError as error:
+        raise ValidationError(str(error)) from error
+    for evaluation in evaluations:
+        run = run_by_id[evaluation["context_pack_run_id"]]
+        expected_comparison = f"cmp-{run['case_id']}-{run['repetition']}-{protocol.opaque_ref(run['model'])}"
+        if evaluation["comparison_id"] != expected_comparison:
+            raise ValidationError(
+                "comparison_id ne correspond pas au comparatif aveugle planifié"
+            )
+    report = build_report(manifest, runs, evaluations, set(config["reserve_case_ids"]))
     write_json_atomic(args.output, report, overwrite=args.force)
     print(
         json.dumps(
@@ -908,6 +1021,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     summary_parser = subparsers.add_parser("summarize", help="Produire le rapport agrégé.")
     summary_parser.add_argument("--manifest", type=Path, required=True)
+    summary_parser.add_argument("--config", type=Path, required=True)
     summary_parser.add_argument("--runs", type=Path, required=True)
     summary_parser.add_argument("--evaluations", type=Path, required=True)
     summary_parser.add_argument("--output", type=Path, required=True)

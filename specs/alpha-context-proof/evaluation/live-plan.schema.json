@@ -21,7 +21,7 @@
   ],
   "properties": {
     "schema_version": { "const": "1.0" },
-    "runner_version": { "const": "1.0.0" },
+    "runner_version": { "const": "1.1.0" },
     "prompt_version": { "const": "alpha-context-proof-live-v1" },
     "output_schema_version": { "const": "alpha-context-proof-live-v1" },
     "campaign_id": { "type": "string" },
