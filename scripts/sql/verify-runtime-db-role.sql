@@ -17,7 +17,7 @@ declare
     'model_runs', 'messages', 'idempotency_records', 'mutation_proposals',
     'gates', 'handoffs', 'deliverables', 'deliverable_sections',
     'deliverable_sources', 'tool_connections', 'external_references',
-    'external_reference_observations', 'artifacts', 'evidences',
+    'external_reference_observations', 'tasks', 'executions', 'execution_events', 'artifacts', 'evidences',
     'requirement_coverage', 'steward_assessments',
     'steward_assessment_sources', 'insights', 'insight_sources',
     'insight_resolutions', 'domain_events', 'audit_events'
@@ -29,7 +29,7 @@ declare
     'model_runs', 'messages', 'idempotency_records', 'mutation_proposals',
     'gates', 'handoffs', 'deliverables', 'deliverable_sections',
     'deliverable_sources', 'external_references',
-    'external_reference_observations', 'evidences', 'requirement_coverage',
+    'external_reference_observations', 'tasks', 'executions', 'execution_events', 'artifacts', 'evidences', 'requirement_coverage',
     'steward_assessments', 'steward_assessment_sources', 'insights',
     'insight_sources', 'insight_resolutions', 'domain_events', 'audit_events'
   ];
@@ -37,7 +37,7 @@ declare
     'workspace_members', 'projects', 'sessions', 'idempotency_records', 'mutation_proposals',
     'context_packs', 'gates', 'model_runs', 'deliverables',
     'external_references', 'evidences', 'requirement_coverage', 'insights',
-    'knowledge_entries', 'domain_events'
+    'knowledge_entries', 'domain_events', 'tasks', 'executions'
   ];
   allowed_function_oids constant oid[] := array[
     'app.current_actor_id()'::regprocedure::oid,

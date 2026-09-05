@@ -23,6 +23,8 @@ use axum::{
     response::IntoResponse,
 };
 
+mod tracking_tests;
+
 const HEAD_SHA: &str = "2222222222222222222222222222222222222222";
 
 async fn provider(
@@ -46,19 +48,24 @@ async fn provider(
     if status == 404 {
         return StatusCode::NOT_FOUND.into_response();
     }
+    let head_sha = if status == 201 {
+        "3333333333333333333333333333333333333333"
+    } else {
+        HEAD_SHA
+    };
     let path = request.uri().path();
     let value = if path.ends_with("/check-runs") {
         json!({"check_runs":[{"name":"ci","status":"completed","conclusion":"success"}]})
     } else if path.ends_with("/status") {
-        json!({"sha":HEAD_SHA,"statuses":[]})
+        json!({"sha":head_sha,"statuses":[]})
     } else if path.ends_with("/files") {
         json!([{"filename":"src/main.rs"}])
     } else if path.ends_with("/commits") {
-        json!([{"sha":HEAD_SHA}])
+        json!([{"sha":head_sha}])
     } else if path.contains("/pulls/") {
-        json!({"title":"Observed delivery","state":"open","draft":false,"merged":false,"base":{"sha":"1111111111111111111111111111111111111111"},"head":{"sha":HEAD_SHA}})
+        json!({"title":"Observed delivery","state":"open","draft":false,"merged":false,"base":{"sha":"1111111111111111111111111111111111111111"},"head":{"sha":head_sha}})
     } else if path.contains("/commits/") {
-        json!({"sha":HEAD_SHA,"files":[{"filename":"src/main.rs"}]})
+        json!({"sha":head_sha,"files":[{"filename":"src/main.rs"}]})
     } else {
         json!({"full_name":"acme/context","archived":false})
     };
@@ -209,6 +216,7 @@ async fn github_persistence_preserves_proofs_under_rate_limits_and_binds_idempot
         let input = CreatePullRequestReference {
             url: format!("https://github.com/acme/context{suffix}"),
             tool_connection_id: Some(connection),
+            tracking: None,
         };
         let key = Uuid::new_v4();
         let reference = create_pull_request(
@@ -234,6 +242,7 @@ async fn github_persistence_preserves_proofs_under_rate_limits_and_binds_idempot
         ["repository", "pull_request", "pull_request", "commit"]
     );
     let input = CreateExternalEvidence {
+        artifact_id: None,
         requirement_id,
         deliverable_id: plan.public_id,
         deliverable_section_id: section_id,
@@ -281,7 +290,7 @@ async fn github_persistence_preserves_proofs_under_rate_limits_and_binds_idempot
         &context,
         imported[3].reference.public_id,
         Uuid::new_v4(),
-        input,
+        input.clone(),
     )
     .await?;
     assert_eq!(commit_evidence.evidence_type, "github_commit");
@@ -327,6 +336,19 @@ async fn github_persistence_preserves_proofs_under_rate_limits_and_binds_idempot
         coverage_status(&state, &context, evidence.public_id).await?,
         "missing"
     );
+    mode.store(200, Ordering::Relaxed);
+    tracking_tests::exercise_tracking(
+        &state,
+        &context,
+        &github,
+        &mode,
+        &admin_pool,
+        project.public_id,
+        pack.public_id,
+        connection,
+        input,
+    )
+    .await?;
     server.abort();
     Ok(())
 }

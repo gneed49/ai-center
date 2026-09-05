@@ -21,11 +21,12 @@ import type {
   ExternalEvidence,
   ExternalReferenceView,
   UUID,
+  ExternalTracking,
 } from "@/api/types";
 import { ErrorState } from "@/components/app/page";
 import { StatusPill } from "@/components/app/status-pill";
 import { Button } from "@/components/ui/button";
-import { shortId } from "@/lib/format";
+import { formatDate, shortId } from "@/lib/format";
 
 interface ExternalProofPanelProps {
   projectId: UUID;
@@ -34,6 +35,7 @@ interface ExternalProofPanelProps {
 }
 
 interface ImportCommand {
+  contextPackId?: UUID;
   url: string;
   idempotencyKey: string;
 }
@@ -44,6 +46,7 @@ interface ReferenceCommand {
 }
 
 interface EvidenceCommand extends ReferenceCommand {
+  artifactId?: UUID;
   coverage: CoverageItem;
 }
 
@@ -59,6 +62,19 @@ export function ExternalProofPanel({
 }: ExternalProofPanelProps) {
   const queryClient = useQueryClient();
   const [url, setUrl] = useState("");
+  const [transmittedPackId, setTransmittedPackId] = useState("");
+  const handoff = useQuery({
+    queryKey: ["external-proof-handoff", projectId],
+    queryFn: () => api.latestHandoff(projectId),
+  });
+  const availablePack = handoff.data?.context_pack;
+  const snapshot = useQuery({
+    queryKey: ["snapshot", projectId],
+    queryFn: () => api.snapshot(projectId),
+  });
+  const packCurrent =
+    availablePack?.status === "current" &&
+    availablePack.source_graph_version === snapshot.data?.project.graph_version;
   const references = useQuery({
     queryKey: ["external-references", projectId],
     queryFn: () => api.externalReferences(projectId),
@@ -95,6 +111,7 @@ export function ExternalProofPanel({
         projectId,
         command.url,
         command.idempotencyKey,
+        command.contextPackId,
       ),
     onSuccess: async (reference) => {
       setUrl("");
@@ -115,6 +132,7 @@ export function ExternalProofPanel({
       return api.createExternalEvidence(
         command.referenceId,
         {
+          artifact_id: command.artifactId,
           requirement_id: command.coverage.requirement_public_id,
           deliverable_id: deliverableId,
           deliverable_section_id: command.coverage.section_public_id,
@@ -144,6 +162,7 @@ export function ExternalProofPanel({
     if (!canonicalUrl || importReference.isPending) return;
     importReference.mutate({
       url: canonicalUrl,
+      contextPackId: transmittedPackId || undefined,
       idempotencyKey: createIdempotencyKey(),
     });
   }
@@ -164,6 +183,45 @@ export function ExternalProofPanel({
           Observez un dépôt, une pull request ou un commit GitHub. Les preuves
           portent sur un SHA précis et attendent votre validation humaine.
         </p>
+        <div className="mt-4 flex flex-col gap-2">
+          <label
+            className="text-sm font-medium"
+            htmlFor="transmitted-context-pack"
+          >
+            ContextPack que j’ai transmis à l’outil externe
+          </label>
+          <select
+            id="transmitted-context-pack"
+            className="min-h-11 border border-slate-300 px-3 text-sm"
+            value={transmittedPackId}
+            onChange={(event) => setTransmittedPackId(event.target.value)}
+          >
+            <option value="">Sans ContextPack déclaré</option>
+            {availablePack ? (
+              <option value={availablePack.public_id} disabled={!packCurrent}>
+                ContextPack v{availablePack.version} ·{" "}
+                {shortId(availablePack.public_id)} ·{" "}
+                {packCurrent ? "courant" : "obsolète"}
+              </option>
+            ) : null}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            Sélectionner un pack confirme que vous l’avez transmis. Pour relier
+            une référence déjà importée, observez à nouveau son URL avec ce pack
+            sélectionné.
+          </p>
+          {transmittedPackId && availablePack ? (
+            <p className="break-all font-mono text-xs text-muted-foreground">
+              Empreinte du pack transmis : {availablePack.content_hash}
+            </p>
+          ) : null}
+          {handoff.error ? (
+            <p role="alert" className="text-sm text-destructive">
+              Le ContextPack disponible n’a pas pu être chargé. Les références
+              existantes restent consultables.
+            </p>
+          ) : null}
+        </div>
         <form
           className="mt-5 flex flex-col gap-3 sm:flex-row"
           onSubmit={submit}
@@ -246,9 +304,10 @@ export function ExternalProofPanel({
                     idempotencyKey: createIdempotencyKey(),
                   })
                 }
-                onCreateEvidence={(coverage) =>
+                onCreateEvidence={(coverage, artifactId) =>
                   createEvidence.mutate({
                     referenceId: summary.public_id,
+                    artifactId,
                     coverage,
                     idempotencyKey: createIdempotencyKey(),
                   })
@@ -326,9 +385,11 @@ function ReferenceCard({
   evidencePending: boolean;
   reviewPending: boolean;
   onRefresh: () => void;
-  onCreateEvidence: (coverage: CoverageItem) => void;
+  onCreateEvidence: (coverage: CoverageItem, artifactId?: UUID) => void;
   onReview: (evidenceId: UUID, decision: "validate" | "reject") => void;
 }) {
+  const [artifactId, setArtifactId] = useState("");
+  const tracking = reference?.tracking ?? [];
   const evidences = reference?.evidences ?? [];
   const headSha = reference?.latest_observation?.observed_state.head_sha;
   return (
@@ -365,6 +426,14 @@ function ReferenceCard({
           Rafraîchir
         </Button>
       </div>
+      {reference ? (
+        <TrackingHistory
+          tracking={tracking}
+          selectedArtifact={artifactId}
+          onSelect={setArtifactId}
+          headSha={headSha}
+        />
+      ) : null}
       {loading ? (
         <p className="mt-4 text-xs text-slate-500" role="status">
           Chargement de l’observation et des preuves…
@@ -394,8 +463,23 @@ function ReferenceCard({
                   coverage={coverage}
                   evidence={evidence}
                   createPending={evidencePending}
+                  artifactRequired={
+                    tracking.length > 0 &&
+                    !tracking.some(
+                      (chain) =>
+                        chain.context_pack_current &&
+                        chain.artifacts.some(
+                          (artifact) =>
+                            artifact.public_id === artifactId &&
+                            artifact.metadata.head_sha === headSha &&
+                            artifact.metadata.sync_status === "current",
+                        ),
+                    )
+                  }
                   reviewPending={reviewPending}
-                  onCreate={() => onCreateEvidence(coverage)}
+                  onCreate={() =>
+                    onCreateEvidence(coverage, artifactId || undefined)
+                  }
                   onReview={(decision) =>
                     evidence && onReview(evidence.public_id, decision)
                   }
@@ -418,6 +502,7 @@ function EvidenceRow({
   coverage,
   evidence,
   createPending,
+  artifactRequired,
   reviewPending,
   onCreate,
   onReview,
@@ -425,6 +510,7 @@ function EvidenceRow({
   coverage: CoverageItem;
   evidence?: ExternalEvidence;
   createPending: boolean;
+  artifactRequired?: boolean;
   reviewPending: boolean;
   onCreate: () => void;
   onReview: (decision: "validate" | "reject") => void;
@@ -440,13 +526,22 @@ function EvidenceRow({
         </div>
         {evidence ? <StatusPill status={evidence.status} /> : null}
       </div>
+      {evidence ? (
+        <p className="mt-2 text-xs text-slate-500">
+          {evidence.artifact_public_id
+            ? `Artefact lié : ${shortId(evidence.artifact_public_id)}`
+            : "Preuve historique sans artefact lié au pack transmis."}
+        </p>
+      ) : null}
       {!evidence ? (
         <Button
           type="button"
           size="sm"
           variant="outline"
           className="mt-3"
-          disabled={!coverage.section_public_id || createPending}
+          disabled={
+            !coverage.section_public_id || createPending || artifactRequired
+          }
           onClick={onCreate}
         >
           <GitPullRequest aria-hidden />
@@ -502,5 +597,123 @@ function PersistentMutationError({
         </Button>
       ) : null}
     </div>
+  );
+}
+
+function TrackingHistory({
+  tracking,
+  selectedArtifact,
+  onSelect,
+  headSha,
+}: {
+  tracking: ExternalTracking[];
+  selectedArtifact: string;
+  onSelect: (id: string) => void;
+  headSha?: string;
+}) {
+  if (!tracking.length)
+    return (
+      <p className="mt-4 text-xs text-muted-foreground">
+        Sans ContextPack déclaré : aucune transmission à un outil externe n’est
+        attestée par cet import.
+      </p>
+    );
+  return (
+    <div className="mt-4 flex flex-col gap-3 border-t pt-4">
+      <h3 className="text-sm font-semibold">Chaîne du travail externe</h3>
+      {tracking.map((chain) => (
+        <div
+          key={chain.execution_public_id}
+          className="flex flex-col gap-2 text-xs"
+        >
+          <p>
+            ContextPack transmis v{chain.context_pack_version} ·{" "}
+            {shortId(chain.context_pack_public_id)} ·{" "}
+            {chain.context_pack_current
+              ? "courant"
+              : "obsolète, historique conservé"}
+          </p>
+          <p className="break-all font-mono text-muted-foreground">
+            Empreinte : {chain.context_pack_hash}
+          </p>
+          <p>
+            Suivi {shortId(chain.task_public_id)} → observation{" "}
+            {shortId(chain.execution_public_id)} · état externe :{" "}
+            {String(
+              chain.observed_result.observed_state ??
+                chain.observed_result.sync_status ??
+                "observé",
+            )}
+          </p>
+          <p>
+            Les états GitHub et résultats CI décrivent le travail observé. La
+            validation de la preuve reste humaine.
+          </p>
+          <details>
+            <summary className="cursor-pointer">
+              Historique des observations ({chain.events.length})
+            </summary>
+            <ol className="mt-2 flex list-decimal flex-col gap-1 pl-5">
+              {chain.events.map((event) => (
+                <li key={event.public_id}>
+                  <span>{trackingEventLabel(event.event_type)}</span>
+                  <span className="ml-2 text-muted-foreground">
+                    {formatDate(event.created_at, true)}
+                    {typeof event.payload.head_sha === "string"
+                      ? ` · SHA ${event.payload.head_sha.slice(0, 12)}`
+                      : ""}
+                    {typeof event.payload.sync_status === "string"
+                      ? ` · ${event.payload.sync_status}`
+                      : ""}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </details>
+        </div>
+      ))}
+      <label className="flex flex-col gap-2 text-xs">
+        Artefact observé pour la preuve
+        <select
+          className="min-h-11 border px-3 text-sm"
+          value={selectedArtifact}
+          onChange={(event) => onSelect(event.target.value)}
+        >
+          <option value="">Choisir explicitement un artefact</option>
+          {tracking.flatMap((chain) =>
+            chain.artifacts.map((artifact) => (
+              <option
+                key={artifact.public_id}
+                value={artifact.public_id}
+                disabled={
+                  !chain.context_pack_current ||
+                  artifact.metadata.sync_status !== "current" ||
+                  artifact.metadata.head_sha !== headSha
+                }
+              >
+                Pack v{chain.context_pack_version} · SHA{" "}
+                {artifact.metadata.head_sha?.slice(0, 12) ?? "absent"} ·{" "}
+                {shortId(artifact.public_id)}
+              </option>
+            )),
+          )}
+        </select>
+      </label>
+    </div>
+  );
+}
+function trackingEventLabel(type: string): string {
+  return (
+    (
+      {
+        "github.imported": "Référence observée et liée au pack transmis",
+        "github.refreshed": "État GitHub rafraîchi",
+        "github.rate_limited": "Limite GitHub temporaire, preuves conservées",
+        "github.connector_error": "Erreur de lecture GitHub",
+        "evidence.candidate_created": "Preuve candidate créée",
+        "evidence.validated": "Preuve validée humainement",
+        "evidence.rejected": "Preuve rejetée humainement",
+      } as Record<string, string>
+    )[type] ?? "Événement de suivi externe"
   );
 }

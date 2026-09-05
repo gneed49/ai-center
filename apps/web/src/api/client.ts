@@ -286,13 +286,24 @@ export const api = {
     projectId: UUID,
     url: string,
     idempotencyKey: string = createIdempotencyKey(),
+    contextPackId?: UUID,
   ) =>
     request<ExternalReferenceView>(
       `/api/projects/${projectId}/external-references`,
       {
         method: "POST",
         headers: mutationHeaders(idempotencyKey),
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({
+          url,
+          ...(contextPackId
+            ? {
+                tracking: {
+                  context_pack_id: contextPackId,
+                  transmission_confirmed: true,
+                },
+              }
+            : {}),
+        }),
       },
     ),
   externalReference: (referenceId: UUID) =>
@@ -308,6 +319,7 @@ export const api = {
   createExternalEvidence: (
     referenceId: UUID,
     input: {
+      artifact_id?: UUID;
       requirement_id: UUID;
       deliverable_id: UUID;
       deliverable_section_id: UUID;

@@ -260,6 +260,7 @@ export interface ExternalReferenceObservation {
 }
 
 export interface ExternalEvidence {
+  artifact_public_id?: UUID;
   public_id: UUID;
   requirement_public_id: UUID;
   requirement_version_public_id: UUID;
@@ -291,7 +292,36 @@ export interface ExternalReferenceSummary {
   updated_at: string;
 }
 
+export interface ExternalTracking {
+  task_public_id: UUID;
+  execution_public_id: UUID;
+  context_pack_public_id: UUID;
+  context_pack_version: number;
+  context_pack_hash: string;
+  context_pack_current: boolean;
+  status: string;
+  observed_result: Record<string, unknown>;
+  artifacts: Array<{
+    public_id: UUID;
+    reference: string;
+    metadata: {
+      head_sha?: string;
+      sync_status?: string;
+      [key: string]: unknown;
+    };
+    created_at: string;
+  }>;
+  events: Array<{
+    public_id: UUID;
+    event_type: string;
+    sequence_number: number;
+    payload: Record<string, unknown>;
+    created_at: string;
+  }>;
+}
+
 export interface ExternalReferenceView extends ExternalReferenceSummary {
+  tracking?: ExternalTracking[];
   latest_observation?: ExternalReferenceObservation;
   evidences: ExternalEvidence[];
 }

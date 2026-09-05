@@ -571,6 +571,21 @@ Cette slice produit le premier moment de valeur complet et doit être testée av
 - preuves `tracked_by`, `implemented_by` ou `evidenced_by` ;
 - test end-to-end démontrant que l’objet reste canonique dans l’outil externe.
 
+### Contrat du suivi externe Alpha Context Proof
+
+Le suivi GitHub observe un dépôt, un commit ou une pull request en lecture seule.
+L’utilisateur peut déclarer explicitement le ContextPack qu’il a transmis à son
+outil. AI Center conserve alors une chaîne pack versionné → tâche → exécution
+observée → artefacts → preuves. Il ne déclenche pas ce travail dans l’outil et ne
+confond pas un résultat CI avec une validation humaine.
+
+Une preuve de cette chaîne cible explicitement un artefact et un livrable issu
+du même ContextPack courant. Un ancien SHA, un pack obsolète ou une référence
+inaccessible empêche une nouvelle validation. Les états et artefacts antérieurs
+restent consultables ; le rechargement et la reprise d’une commande ne dupliquent
+pas la chaîne. Les imports historiques sans pack déclaré restent identifiés
+comme tels, sans leur attribuer rétroactivement une transmission.
+
 ## Critères de sortie fonctionnels
 
 Le MVP est considéré complet lorsque :
