@@ -43,6 +43,9 @@ est le défaut. `./dev doctor` peut diagnostiquer un prérequis manquant.
 
 1. Si Claude est disponible, créer son profil et cliquer sur **Connecter mon
    abonnement**. Terminer dans le flux officiel avec son compte personnel.
+   Dans Tauri, le lien doit ouvrir le navigateur système grâce à l'opener
+   officiel, limité aux destinations OAuth autorisées. Cette ouverture native
+   est à vérifier manuellement ; les tests de l'agent simulent cet appel.
 2. Vérifier l'annulation et l'expiration d'une tentative. Après connexion,
    sélectionner le profil et tester une demande structurée sur un petit
    contexte autorisé, en vérifiant les limites et la facturation fournisseur.
