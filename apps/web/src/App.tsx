@@ -2,6 +2,7 @@ import { Route, Routes, useLocation } from "react-router";
 
 import { AppShell } from "@/components/app/app-shell";
 import { CenterPage } from "@/pages/center-page";
+import { AiSettingsPage } from "@/pages/ai-settings-page";
 import { DeliverableDetailPage } from "@/pages/deliverable-detail-page";
 import { DeliverablesPage } from "@/pages/deliverables-page";
 import { HandoffPage } from "@/pages/handoff-page";
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="projects/:projectId/handoff" element={<HandoffPage />} />
         <Route path="projects/:projectId/history" element={<HistoryPage />} />
         <Route path="insights" element={<InsightsPage />} />
+        <Route path="settings/ai" element={<AiSettingsPage />} />
         <Route
           path="projects/:projectId/insights/:insightId"
           element={<InsightDetailPage />}
