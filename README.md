@@ -14,14 +14,37 @@ restent canoniques pour ce qu’ils produisent. AI Center conserve et transmet l
 contexte partagé, puis rattache les résultats externes à des références et à des
 preuves contrôlables.
 
-## État réel au 5 septembre 2026
+## Démarrer et configurer ses fournisseurs
+
+Sous Linux, depuis le dossier de ce dépôt :
+
+```bash
+./dev
+```
+
+Le lanceur démarre la base, le serveur et l'application. Ouvrir **Réglages IA**
+pour ajouter plusieurs connexions OpenAI, Anthropic, Kimi, DeepSeek ou
+OpenRouter, puis choisir **Connexion utilisée**. Les clés personnelles sont
+saisies dans l'application et chiffrées côté serveur. Les abonnements locaux
+compatibles et leurs limites sont présentés au même endroit.
+
+Voir le [guide de démarrage](docs/development.md), le
+[parcours des connexions](docs/product/06-personal-ai-connections.md) et la
+[recette manuelle](specs/provider-connections/manual-verification.md).
+Cette évolution du 7 septembre est livrée localement : sa validation repose
+sur les tests unitaires et d'intégration. Le propriétaire réalise les E2E et
+les essais avec ses comptes fournisseurs ; aucun résultat réel n'est présumé.
+
+## Socle Alpha Context Proof — état documenté au 5 septembre 2026
 
 Le socle logiciel **Alpha Context Proof est consolidé** sur
 `feat/alpha-context-proof`, [PR #1](https://github.com/gneed49/ai-center/pull/1),
 avec suivi dans l'[issue #2](https://github.com/gneed49/ai-center/issues/2).
-Les commits de reprise restent locaux : le push a été refusé par la revue
-automatique, en attente d’autorisation de publication sur le dépôt public. La
-PR distante reste à `8a6e0da`. Le point de contrôle fonctionnel est `a9b3140`. Les constats Standards/Spec et
+Les 31 commits de reprise ont été publiés le 5 septembre jusqu'à `91dc76b`,
+après autorisation du propriétaire ; la PR a été marquée prête pour revue.
+Le complément documentaire `8861eca` et l'évolution de connexions personnelles
+du 7 septembre restent locaux. Ces états ne constituent ni une fusion, ni une
+release, ni un déploiement. Les constats Standards/Spec et
 le dernier écart de calibration sont corrigés et revus. Les gates réels restent
 ouverts ; aucune release ou alpha équipe n'est annoncée.
 
@@ -233,6 +256,11 @@ npm run build:web
 
 cargo test -p ai-center-server --lib --offline
 
+```
+
+Les commandes E2E ci-dessous sont laissées au propriétaire pour sa recette :
+
+```bash
 npm run test:e2e -w @ai-center/web -- --project=chromium-desktop
 npm run test:e2e -w @ai-center/web -- --project=chromium-compact
 npm run test:e2e -w @ai-center/web -- --project=firefox-desktop
