@@ -1223,6 +1223,7 @@ create index insight_resolutions_knowledge_version_id_idx
   where knowledge_entry_version_id is not null;
 
 create table app.domain_events (
+  requested_by_actor_id uuid default nullif(current_setting('app.current_actor_id', true), '')::uuid,
   id bigint generated always as identity primary key,
   public_id uuid not null default gen_random_uuid() unique,
   workspace_id bigint not null references app.workspaces(id) on delete cascade,
@@ -2197,3 +2198,42 @@ begin
   end loop;
 end;
 $$;
+
+-- Credentials stay in the private schema and are invisible even to other
+-- members of this workspace. Only the server runtime has table privileges.
+create table app.provider_connections (
+  public_id uuid primary key,
+  workspace_id bigint not null references app.workspaces(id) on delete cascade,
+  actor_id uuid not null,
+  provider text not null check (provider in ('openai','anthropic','kimi','deepseek','openrouter','claude_subscription')),
+  name text not null check (length(name) between 1 and 120),
+  model text not null check (length(model) between 1 and 200),
+  key_ciphertext bytea,
+  key_hint text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (workspace_id,actor_id,public_id),
+  check ((provider='claude_subscription' and key_ciphertext is null and key_hint is null)
+    or (provider<>'claude_subscription' and octet_length(key_ciphertext)>=30 and key_ciphertext is not null and key_hint is not null))
+);
+create table app.provider_selections (
+  workspace_id bigint not null references app.workspaces(id) on delete cascade,
+  actor_id uuid not null,
+  mode text not null check (mode in ('server_default','deterministic','connection')),
+  connection_id uuid,
+  updated_at timestamptz not null default now(),
+  primary key (workspace_id,actor_id),
+  foreign key (workspace_id,actor_id,connection_id) references app.provider_connections(workspace_id,actor_id,public_id),
+  check ((mode='connection')=(connection_id is not null))
+);
+alter table app.provider_connections enable row level security;
+alter table app.provider_connections force row level security;
+alter table app.provider_selections enable row level security;
+alter table app.provider_selections force row level security;
+create policy provider_connections_private on app.provider_connections for all
+using (workspace_id=(select app.current_workspace_id()) and actor_id=(select app.current_actor_id()) and app.has_workspace_role(workspace_id,array['owner','editor']::text[]))
+with check (workspace_id=(select app.current_workspace_id()) and actor_id=(select app.current_actor_id()) and app.has_workspace_role(workspace_id,array['owner','editor']::text[]));
+create policy provider_selections_private on app.provider_selections for all
+using (workspace_id=(select app.current_workspace_id()) and actor_id=(select app.current_actor_id()) and app.has_workspace_role(workspace_id,array['owner','editor']::text[]))
+with check (workspace_id=(select app.current_workspace_id()) and actor_id=(select app.current_actor_id()) and app.has_workspace_role(workspace_id,array['owner','editor']::text[]));
+revoke all on app.provider_connections,app.provider_selections from public,anon,authenticated,service_role;

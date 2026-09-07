@@ -1,3 +1,5 @@
+mod providers;
+
 use std::sync::Arc;
 
 use axum::{
@@ -67,6 +69,7 @@ pub fn router(
         .expose_headers([request_id_header.clone()]);
 
     let protected = Router::new()
+        .merge(providers::router())
         .route("/api/workspaces", get(list_workspaces))
         .route("/api/projects", get(list_projects).post(create_project))
         .route("/api/projects/{project_id}/snapshot", get(project_snapshot))
@@ -137,12 +140,27 @@ pub fn router(
     Router::new()
         .route("/api/health", get(get_health))
         .merge(protected)
+        .layer(middleware::from_fn(no_store_private_provider_responses))
         .layer(DefaultBodyLimit::max(1024 * 1024))
         .layer(PropagateRequestIdLayer::new(request_id_header.clone()))
         .layer(TraceLayer::new_for_http())
         .layer(SetRequestIdLayer::new(request_id_header, MakeRequestUuid))
         .layer(cors)
         .with_state(state)
+}
+
+async fn no_store_private_provider_responses(request: Request, next: Next) -> Response {
+    let private = request.uri().path().starts_with("/api/ai/");
+    let mut response = next.run(request).await;
+    if private {
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        response
+            .headers_mut()
+            .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    }
+    response
 }
 
 fn external_reference_routes() -> Router<ApiState> {

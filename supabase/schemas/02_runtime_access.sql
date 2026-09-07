@@ -1,6 +1,6 @@
 -- Runtime database privileges are part of the declarative schema state.
 -- The application role receives only the operations used by the Axum API and
--- outbox worker. In particular it receives no DELETE, TRUNCATE, REFERENCES,
+-- outbox worker. DELETE is restricted to personal provider settings. No TRUNCATE, REFERENCES,
 -- TRIGGER, MAINTAIN, schema CREATE, or DDL privilege.
 
 revoke all privileges on schema app from ai_center_runtime;
@@ -149,3 +149,4 @@ grant execute on function app.list_due_steward_workspaces(integer)
 grant select, insert on table app.tasks, app.executions, app.execution_events, app.artifacts to ai_center_runtime;
 grant update on table app.tasks, app.executions to ai_center_runtime;
 grant usage on sequence app.tasks_id_seq, app.executions_id_seq, app.execution_events_id_seq, app.artifacts_id_seq to ai_center_runtime;
+grant select, insert, update, delete on table app.provider_connections, app.provider_selections to ai_center_runtime;

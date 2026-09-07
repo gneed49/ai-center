@@ -117,6 +117,11 @@ integration() {
     AI_CENTER_AGENT_MODE=deterministic \
     cargo test -p ai-center-server --test targeted_invalidation -- --test-threads=1
   DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
+    AI_CENTER_ADMIN_DATABASE_URL="${AI_CENTER_ADMIN_DATABASE_URL}" \
+    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
+    AI_CENTER_AGENT_MODE=deterministic \
+    cargo test -p ai-center-server --test provider_connections -- --test-threads=1
+  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
     AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
     AI_CENTER_AGENT_MODE=deterministic \
     cargo test -p ai-center-server --lib \

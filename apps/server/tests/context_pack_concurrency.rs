@@ -316,6 +316,7 @@ async fn prepare_context_fixture() -> Result<ContextFixture> {
         actor_id,
         agent_mode: "deterministic",
         steward_trigger: None,
+        providers: None,
     };
     let project = service::create_project(
         &state,

@@ -26,6 +26,7 @@ async fn active_provider_renews_lease_and_lost_ownership_cancels_with_terminal_r
         workspace_role: workspace_role.clone(),
         agent_mode: "deterministic",
         steward_trigger: None,
+        providers: None,
     };
     let project = service::create_project(
         &state,

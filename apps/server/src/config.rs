@@ -11,6 +11,9 @@ pub struct Config {
     pub database_url: SecretString,
     pub openai_api_key: Option<SecretString>,
     pub openai_model: String,
+    pub credential_encryption_key: Option<SecretString>,
+    pub credential_directory: Option<PathBuf>,
+    pub subscription_runtime: Option<(PathBuf, PathBuf, bool)>,
     pub agent_mode: AgentMode,
     pub auth_mode: AuthMode,
     pub supabase_url: Option<String>,
@@ -143,6 +146,25 @@ impl Config {
             database_url: SecretString::from(database_url),
             openai_api_key,
             openai_model,
+            credential_encryption_key: env::var("AI_CENTER_CREDENTIAL_ENCRYPTION_KEY")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .map(SecretString::from),
+            credential_directory: if auth_mode == AuthMode::Local && bind.ip().is_loopback() {
+                Some(env::current_dir()?.join(".run/provider-credentials"))
+            } else {
+                None
+            },
+            subscription_runtime: Some((
+                env::var_os("AI_CENTER_SUBSCRIPTIONS_DIRECTORY")
+                    .filter(|value| !value.is_empty())
+                    .map(PathBuf::from)
+                    .unwrap_or(env::current_dir()?.join(".run/provider-subscriptions")),
+                local_claude_executable(),
+                auth_mode == AuthMode::Local
+                    && bind.ip().is_loopback()
+                    && env::var("AI_CENTER_SUBSCRIPTIONS_ENABLED").ok().as_deref() != Some("false"),
+            )),
             agent_mode,
             auth_mode,
             supabase_url,
@@ -164,4 +186,27 @@ fn parse_uuid(name: &str, default: &str) -> Result<Uuid> {
         .unwrap_or_else(|_| default.into())
         .parse()
         .with_context(|| format!("{name} must be a UUID"))
+}
+
+// Resolve once to an absolute file. No shell, relative PATH entry or project
+// directory is searched, and the subscription runtime verifies capabilities.
+fn local_claude_executable() -> PathBuf {
+    if let Some(value) =
+        env::var_os("AI_CENTER_CLAUDE_EXECUTABLE").filter(|value| !value.is_empty())
+    {
+        return PathBuf::from(value);
+    }
+    let path = env::var_os("PATH").unwrap_or_default();
+    let current = env::current_dir().ok();
+    env::split_paths(&path)
+        .filter(|directory| {
+            directory.is_absolute()
+                && !current
+                    .as_ref()
+                    .is_some_and(|current| directory.starts_with(current))
+        })
+        .map(|directory| directory.join("claude"))
+        .filter(|candidate| candidate.is_file())
+        .find_map(|candidate| candidate.canonicalize().ok())
+        .unwrap_or_default()
 }
