@@ -106,6 +106,7 @@ async fn github_persistence_preserves_proofs_under_rate_limits_and_binds_idempot
         actor_id,
         agent_mode: "deterministic",
         steward_trigger: None,
+        providers: None,
     };
     let context = RequestContext {
         actor_id,

@@ -179,6 +179,7 @@ async fn provider_failure_and_success_leave_terminal_model_runs() -> Result<()> 
         actor_id,
         agent_mode: "deterministic",
         steward_trigger: None,
+        providers: None,
     };
     let project = service::create_project(
         &bootstrap,
@@ -493,6 +494,7 @@ async fn independent_coverage_run_is_atomic_scoped_and_never_validates_evidence(
         actor_id,
         agent_mode: "deterministic",
         steward_trigger: None,
+        providers: None,
     };
     let project = service::create_project(
         &base,

@@ -63,6 +63,7 @@ struct ModelRunStart<'a> {
 pub struct AppState {
     pub pool: PgPool,
     pub engine: Arc<dyn AgentEngine>,
+    pub providers: Option<Arc<crate::providers::ProviderRuntime>>,
     pub workspace_id: Uuid,
     pub workspace_internal_id: Option<i64>,
     pub workspace_role: String,
@@ -82,6 +83,7 @@ impl AppState {
         Self {
             pool: self.pool.clone(),
             engine: Arc::clone(&self.engine),
+            providers: self.providers.clone(),
             workspace_id: context.workspace_id,
             workspace_internal_id: context.workspace_internal_id,
             workspace_role: context.workspace_role.clone(),
@@ -583,6 +585,7 @@ async fn send_message_command(
     input: SendMessage,
     lease: Option<&IdempotencyLease>,
 ) -> AppResult<SessionView> {
+    let engine = crate::providers::resolve_engine(state).await?;
     let content = input.content.trim();
     if content.is_empty() {
         return Err(AppError::Invalid("message content is required".into()));
@@ -674,8 +677,8 @@ async fn send_message_command(
     let input_hash = sha256_json(&run_fingerprint)?;
     let model_run = start_model_run(
         &mut initial_tx,
-        state.engine.provider_name(),
-        state.engine.requested_model(),
+        engine.provider_name(),
+        engine.requested_model(),
         ModelRunStart {
             workspace_id: session.workspace_id,
             project_id: session.project_id,
@@ -694,7 +697,7 @@ async fn send_message_command(
     let engine_result = match idempotency::with_optional_lease(
         state,
         lease,
-        state.engine.respond(AgentInput {
+        engine.respond(AgentInput {
             scope_kind: session.scope_kind.clone(),
             instructions: session.instructions,
             user_message: content.into(),
@@ -1508,6 +1511,7 @@ async fn compile_context_pack_command(
     input: CompileContextPack,
     lease: Option<&IdempotencyLease>,
 ) -> AppResult<ContextPackSummary> {
+    let engine = crate::providers::resolve_engine(state).await?;
     if input.task_kind != "technical-delivery-plan" {
         return Err(AppError::Invalid(
             "only technical-delivery-plan ContextPacks are supported in the alpha".into(),
@@ -1570,8 +1574,8 @@ async fn compile_context_pack_command(
         .collect::<Vec<_>>();
     let model_run = start_model_run(
         &mut read_tx,
-        state.engine.provider_name(),
-        state.engine.requested_model(),
+        engine.provider_name(),
+        engine.requested_model(),
         ModelRunStart {
             workspace_id: project.workspace_id,
             project_id: project.id,
@@ -1589,19 +1593,16 @@ async fn compile_context_pack_command(
     read_tx.commit().await?;
 
     // Provider work happens only after the durable running run was committed.
-    let selection = match idempotency::with_optional_lease(
-        state,
-        lease,
-        state.engine.select_context(selector_input),
-    )
-    .await
-    {
-        Ok(result) => result,
-        Err(error) => {
-            record_failed_model_run(state, model_run.id, &error).await?;
-            return Err(error);
-        }
-    };
+    let selection =
+        match idempotency::with_optional_lease(state, lease, engine.select_context(selector_input))
+            .await
+        {
+            Ok(result) => result,
+            Err(error) => {
+                record_failed_model_run(state, model_run.id, &error).await?;
+                return Err(error);
+            }
+        };
     let selection_output = match serde_json::to_value(&selection.output) {
         Ok(output) => output,
         Err(error) => {
@@ -1625,10 +1626,10 @@ async fn compile_context_pack_command(
         &candidates,
         &selection.output.selected_version_ids,
         input.token_budget.unwrap_or(DEFAULT_CONTEXT_BUDGET_TOKENS),
-        if state.agent_mode == "openai" {
-            "hybrid"
-        } else {
+        if engine.provider_name() == "deterministic" {
             "deterministic"
+        } else {
+            "hybrid"
         },
     ) {
         Ok(compiled) => compiled,
@@ -2077,6 +2078,7 @@ async fn generate_technical_plan_command(
     input: GenerateTechnicalPlan,
     lease: Option<&IdempotencyLease>,
 ) -> AppResult<DeliverableSummary> {
+    let engine = crate::providers::resolve_engine(state).await?;
     let mut read_tx = state.begin_request().await?;
     let project = project_by_public(&mut read_tx, state.workspace_id, project_public_id).await?;
     let session = session_by_public(&mut read_tx, state.workspace_id, input.session_id).await?;
@@ -2132,8 +2134,8 @@ async fn generate_technical_plan_command(
     let input_hash = sha256_json(&plan_input)?;
     let model_run = start_model_run(
         &mut read_tx,
-        state.engine.provider_name(),
-        state.engine.requested_model(),
+        engine.provider_name(),
+        engine.requested_model(),
         ModelRunStart {
             workspace_id: project.workspace_id,
             project_id: project.id,
@@ -2153,7 +2155,7 @@ async fn generate_technical_plan_command(
     let generated = match idempotency::with_optional_lease(
         state,
         lease,
-        state.engine.generate_technical_plan(plan_input),
+        engine.generate_technical_plan(plan_input),
     )
     .await
     {
@@ -2228,8 +2230,8 @@ async fn generate_technical_plan_command(
     .await?;
     let coverage_run = start_model_run(
         &mut coverage_tx,
-        state.engine.provider_name(),
-        state.engine.requested_model(),
+        engine.provider_name(),
+        engine.requested_model(),
         ModelRunStart {
             workspace_id: project.workspace_id,
             project_id: project.id,
@@ -2248,7 +2250,7 @@ async fn generate_technical_plan_command(
     let assessed = match idempotency::with_optional_lease(
         state,
         lease,
-        state.engine.evaluate_coverage(coverage_input),
+        engine.evaluate_coverage(coverage_input),
     )
     .await
     {
@@ -3421,7 +3423,7 @@ async fn invalidate_dependent_projections(
 }
 
 async fn dispatch_steward_after_commit(state: &AppState) -> Vec<Uuid> {
-    if state.agent_mode == "deterministic" {
+    if state.agent_mode == "deterministic" && state.providers.is_none() {
         return match crate::steward::drain_steward_outbox(state).await {
             Ok(summary) => summary.insight_public_ids,
             Err(error) => {
@@ -4197,6 +4199,7 @@ mod tests {
             actor_id: uuid::Uuid::nil(),
             agent_mode: "deterministic",
             steward_trigger: None,
+            providers: None,
         }
     }
 

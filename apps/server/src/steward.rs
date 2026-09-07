@@ -299,6 +299,9 @@ pub async fn analyze_project(
     project_public_id: Uuid,
     config: StewardConfig,
 ) -> AppResult<StewardRunResult> {
+    let mut selected_state = state.clone();
+    selected_state.engine = crate::providers::resolve_engine(state).await?;
+    let state = &selected_state;
     let config = config.validate()?;
     ensure_mutating_role(state)?;
 
@@ -407,7 +410,31 @@ pub async fn process_claimed_event(
         }
     });
 
-    let result = analyze_project(state, project_public_id, config).await;
+    let result = async {
+        let origin = event.requested_by_actor_id.ok_or_else(|| {
+            AppError::Invalid(
+                "Steward event has no originating actor; a new context mutation is required".into(),
+            )
+        })?;
+        let (internal_id, role): (i64, String) =
+            sqlx::query_as("select workspace_id, role from app.authorize_workspace_member($1,$2)")
+                .bind(state.workspace_id)
+                .bind(origin)
+                .fetch_optional(&state.pool)
+                .await?
+                .ok_or(AppError::Forbidden)?;
+        if internal_id != workspace_id || !matches!(role.as_str(), "owner" | "editor") {
+            return Err(AppError::Forbidden);
+        }
+        let origin_state = state.scoped(&crate::auth::RequestContext {
+            actor_id: origin,
+            workspace_id: state.workspace_id,
+            workspace_internal_id: Some(internal_id),
+            workspace_role: role,
+        });
+        analyze_project(&origin_state, project_public_id, config).await
+    }
+    .await;
     heartbeat.abort();
 
     match result {
@@ -491,12 +518,12 @@ async fn drain_steward_outbox_with(
         let latest_by_project = events
             .iter()
             .filter_map(|event| {
-                event
-                    .project_id
-                    .map(|project_id| (project_id, event.sequence_id))
+                event.project_id.map(|project_id| {
+                    ((project_id, event.requested_by_actor_id), event.sequence_id)
+                })
             })
             .fold(
-                HashMap::<i64, i64>::new(),
+                HashMap::<(i64, Option<Uuid>), i64>::new(),
                 |mut latest, (project_id, sequence_id)| {
                     latest
                         .entry(project_id)
@@ -509,7 +536,7 @@ async fn drain_steward_outbox_with(
         for event in events {
             let coalesced = event.project_id.is_some_and(|project_id| {
                 latest_by_project
-                    .get(&project_id)
+                    .get(&(project_id, event.requested_by_actor_id))
                     .is_some_and(|latest| event.sequence_id < *latest)
             });
             if coalesced {
@@ -1477,6 +1504,7 @@ mod tests {
             actor_id: Uuid::nil(),
             agent_mode: "openai",
             steward_trigger: None,
+            providers: None,
         }
     }
 

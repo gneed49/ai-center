@@ -51,6 +51,8 @@ pub mod idempotency;
 pub mod integrations;
 pub mod models;
 pub mod outbox;
+pub mod provider_subscriptions;
+pub mod providers;
 pub mod routes;
 pub mod service;
 pub mod steward;
@@ -274,6 +276,24 @@ pub async fn build(
     if config.auth_mode == config::AuthMode::Supabase {
         verify_supabase_runtime_role(&pool).await?;
     }
+    let cipher = if let Some(key) = &config.credential_encryption_key {
+        providers::encryption::CredentialCipher::from_hex(key).ok()
+    } else if let Some(directory) = &config.credential_directory {
+        providers::encryption::CredentialCipher::local(directory).ok()
+    } else {
+        None
+    };
+    let subscriptions = config
+        .subscription_runtime
+        .map(|(root, executable, enabled)| {
+            Arc::new(provider_subscriptions::SubscriptionRuntime::new(
+                root, executable, enabled,
+            ))
+        });
+    let providers = Some(Arc::new(providers::ProviderRuntime {
+        cipher,
+        subscriptions,
+    }));
     let (engine, agent_mode): (Arc<dyn AgentEngine>, &'static str) = match config.agent_mode {
         AgentMode::Deterministic => (Arc::new(DeterministicEngine), "deterministic"),
         AgentMode::OpenAi => (
@@ -319,6 +339,7 @@ pub async fn build(
     let mut application_state = AppState {
         pool,
         engine,
+        providers,
         workspace_id: config.workspace_id,
         workspace_internal_id: None,
         workspace_role: "owner".into(),
@@ -326,14 +347,15 @@ pub async fn build(
         agent_mode,
         steward_trigger: None,
     };
-    let steward_supervisor = if config.agent_mode == AgentMode::OpenAi {
-        let (trigger, supervisor) = StewardDrainSupervisor::start(application_state.clone())
-            .context("failed to initialize the Steward outbox supervisor")?;
-        application_state.steward_trigger = Some(trigger);
-        Some(supervisor)
-    } else {
-        None
-    };
+    let steward_supervisor =
+        if application_state.providers.is_some() || config.agent_mode == AgentMode::OpenAi {
+            let (trigger, supervisor) = StewardDrainSupervisor::start(application_state.clone())
+                .context("failed to initialize the Steward outbox supervisor")?;
+            application_state.steward_trigger = Some(trigger);
+            Some(supervisor)
+        } else {
+            None
+        };
     let state = Arc::new(application_state);
     Ok((
         bind,

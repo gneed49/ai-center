@@ -50,6 +50,7 @@ async fn arbitrary_project_crosses_the_full_context_control_plane() -> Result<()
         actor_id,
         agent_mode: "deterministic",
         steward_trigger: None,
+        providers: None,
     };
     let project = service::create_project(
         &state,
@@ -342,6 +343,7 @@ async fn arbitrary_project_crosses_the_full_context_control_plane() -> Result<()
         actor_id,
         agent_mode: "openai",
         steward_trigger: None,
+        providers: None,
     };
     let (trigger, supervisor) = StewardDrainSupervisor::start(async_state.clone())?;
     async_state.steward_trigger = Some(trigger);
@@ -444,6 +446,7 @@ async fn arbitrary_project_crosses_the_full_context_control_plane() -> Result<()
         actor_id,
         agent_mode: "openai",
         steward_trigger: None,
+        providers: None,
     };
     let recovery_project = service::create_project(
         &recovery_state,

@@ -10,6 +10,7 @@ declare
   unexpected_sequence text;
   unexpected_function text;
   expected_select_tables constant text[] := array[
+    'provider_connections', 'provider_selections',
     'workspaces', 'workspace_members', 'project_templates', 'agent_profiles',
     'deliverable_contracts', 'projects', 'context_nodes',
     'knowledge_entries', 'knowledge_entry_versions', 'edges', 'context_packs',
@@ -23,6 +24,7 @@ declare
     'insight_resolutions', 'domain_events', 'audit_events'
   ];
   expected_insert_tables constant text[] := array[
+    'provider_connections', 'provider_selections',
     'workspace_members', 'projects', 'context_nodes', 'knowledge_entries',
     'knowledge_entry_versions', 'edges', 'context_packs',
     'context_pack_sources', 'context_pack_selection_items', 'sessions',
@@ -34,6 +36,7 @@ declare
     'insight_sources', 'insight_resolutions', 'domain_events', 'audit_events'
   ];
   expected_update_tables constant text[] := array[
+    'provider_connections', 'provider_selections',
     'workspace_members', 'projects', 'sessions', 'idempotency_records', 'mutation_proposals',
     'context_packs', 'gates', 'model_runs', 'deliverables',
     'external_references', 'evidences', 'requirement_coverage', 'insights',
@@ -124,9 +127,9 @@ begin
   where namespace.nspname = 'app'
     and relation.relkind in ('r', 'p')
     and (
-      pg_catalog.has_table_privilege(
+      (pg_catalog.has_table_privilege(
         'ai_center_runtime', relation.oid, 'DELETE'
-      )
+      ) and relation.relname not in ('provider_connections', 'provider_selections'))
       or pg_catalog.has_table_privilege(
         'ai_center_runtime', relation.oid, 'TRUNCATE'
       )
@@ -212,11 +215,12 @@ begin
   select table_name
   into missing_privilege
   from unnest(expected_insert_tables) as expected(table_name)
-  where not pg_catalog.has_sequence_privilege(
-    'ai_center_runtime',
-    pg_catalog.format('app.%I', table_name || '_id_seq'),
-    'USAGE'
-  )
+  where case when table_name in ('provider_connections','provider_selections') then false
+    else not pg_catalog.has_sequence_privilege(
+      'ai_center_runtime',
+      pg_catalog.format('app.%I', table_name || '_id_seq'),
+      'USAGE'
+    ) end
   limit 1;
 
   if missing_privilege is not null then

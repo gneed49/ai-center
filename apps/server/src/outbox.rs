@@ -48,6 +48,7 @@ pub struct ClaimedDomainEvent {
     pub sequence_id: i64,
     pub public_id: Uuid,
     pub workspace_id: i64,
+    pub requested_by_actor_id: Option<Uuid>,
     pub project_id: Option<i64>,
     pub event_type: String,
     pub aggregate_kind: String,
@@ -163,7 +164,7 @@ impl Outbox {
                from candidates
                where event.id = candidates.id
                returning event.id as sequence_id, event.public_id,
-                         event.workspace_id, event.project_id, event.event_type,
+                         event.workspace_id, event.requested_by_actor_id, event.project_id, event.event_type,
                          event.aggregate_kind, event.aggregate_public_id,
                          event.payload, event.occurred_at,
                          event.attempt_count as lease_attempt, event.locked_until

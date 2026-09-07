@@ -52,6 +52,7 @@ async fn command_result_is_atomic_with_every_representative_domain_mutation() ->
         actor_id,
         agent_mode: "deterministic",
         steward_trigger: None,
+        providers: None,
     };
 
     // Crash injection: claim is durable, but both the provisional project and
@@ -480,6 +481,7 @@ async fn provider_failure_classification_survives_durable_replay_and_resume() ->
         actor_id,
         agent_mode: "deterministic",
         steward_trigger: None,
+        providers: None,
     };
 
     let permanent_key = Uuid::new_v4();
