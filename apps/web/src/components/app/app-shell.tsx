@@ -6,6 +6,7 @@ import {
   LogOut,
   Menu,
   Plus,
+  Settings2,
   WifiOff,
   X,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import { useAuth } from "@/auth/auth-context";
 const rootLinks = [
   { to: "/", label: "Center", icon: Boxes, end: true },
   { to: "/insights", label: "Decision Inbox", icon: Inbox },
+  { to: "/settings/ai", label: "Réglages IA", icon: Settings2 },
 ];
 
 export function AppShell() {
