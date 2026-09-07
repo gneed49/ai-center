@@ -240,6 +240,8 @@ async fn official_protocols_preserve_context_schema_model_and_usage_without_tool
             }
             Protocol::ChatJson => {
                 assert_eq!(body["response_format"], json!({"type":"json_object"}));
+                assert_eq!(body["max_completion_tokens"], 8192);
+                assert!(body.get("max_tokens").is_none());
                 assert!(
                     body["messages"][0]["content"]
                         .as_str()
@@ -677,4 +679,94 @@ async fn anthropic_wire_schema_adapts_limits_but_server_enforces_original_contra
     assert!(sent["properties"]["ids"].get("uniqueItems").is_none());
     assert!(schema["properties"]["ids"].get("uniqueItems").is_some());
     assert_eq!(sent["properties"]["ids"]["items"]["format"], "uuid");
+}
+
+#[tokio::test]
+async fn catalogue_rejects_bad_contracts_and_has_one_total_deadline() {
+    for provider in PROVIDERS {
+        let fixture = Fixture::start(vec![Reply::json(json!({"data":[{"id":"bad model"}]}))]).await;
+        assert_error(
+            &fixture
+                .client(provider, Duration::from_secs(1))
+                .list_models()
+                .await
+                .unwrap_err(),
+            ProviderErrorClass::ResponseContract,
+            1,
+        );
+        let fixture = Fixture::start(vec![Reply {
+            delay: Duration::from_millis(200),
+            ..Reply::json(json!({"data":[],"has_more":false}))
+        }])
+        .await;
+        assert_error(
+            &fixture
+                .client(provider, Duration::from_millis(20))
+                .list_models()
+                .await
+                .unwrap_err(),
+            ProviderErrorClass::Timeout,
+            1,
+        );
+        assert_eq!(fixture.state.hits.load(Ordering::SeqCst), 1);
+    }
+}
+
+struct UnvalidatedTransport {
+    output: Value,
+}
+#[async_trait::async_trait]
+impl StructuredTransport for UnvalidatedTransport {
+    fn provider_name(&self) -> &'static str {
+        "fixture-subscription"
+    }
+    async fn generate(
+        &self,
+        _model: &str,
+        _operation: &str,
+        _instructions: &str,
+        _input: &Value,
+        _schema: &Value,
+    ) -> crate::error::AppResult<super::StructuredResponse> {
+        Ok(super::StructuredResponse {
+            output: self.output.clone(),
+            metadata: crate::agent::AgentRunMetadata {
+                provider: "different-provider".into(),
+                requested_model: "different-model".into(),
+                ..Default::default()
+            },
+        })
+    }
+    async fn list_models(&self) -> crate::error::AppResult<Vec<super::ProviderModel>> {
+        Ok(Vec::new())
+    }
+}
+
+#[tokio::test]
+async fn engine_validates_non_http_transports_and_pins_selected_identity() {
+    let input = || ContextSelectionInput {
+        objective: "Objective".into(),
+        task_kind: "implementation".into(),
+        candidates: json!([]),
+    };
+    let bad = StructuredEngine::with_transport(
+        Arc::new(UnvalidatedTransport {
+            output: json!({"selected_version_ids":[],"extra":true}),
+        }),
+        "selected-model".into(),
+    );
+    assert_error(
+        &bad.select_context(input()).await.unwrap_err(),
+        ProviderErrorClass::ResponseContract,
+        1,
+    );
+    let valid = StructuredEngine::with_transport(
+        Arc::new(UnvalidatedTransport {
+            output: json!({"selected_version_ids":[]}),
+        }),
+        "selected-model".into(),
+    );
+    let output = valid.select_context(input()).await.unwrap();
+    assert_eq!(output.metadata.provider, "fixture-subscription");
+    assert_eq!(output.metadata.requested_model, "selected-model");
 }

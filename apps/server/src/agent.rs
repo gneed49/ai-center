@@ -229,10 +229,10 @@ impl StructuredEngine {
                 None,
             )
         })?;
-        Ok(EngineOutput {
-            output,
-            metadata: response.metadata,
-        })
+        let mut metadata = response.metadata;
+        metadata.provider = self.provider_name().into();
+        metadata.requested_model.clone_from(&self.model);
+        Ok(EngineOutput { output, metadata })
     }
 }
 

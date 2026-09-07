@@ -126,6 +126,7 @@ pub struct ApiTransport {
     preset: Preset,
     origin: Url,
     retry_delay: Duration,
+    catalogue_timeout: Duration,
 }
 
 impl ApiTransport {
@@ -206,6 +207,7 @@ impl ApiTransport {
             preset,
             origin,
             retry_delay,
+            catalogue_timeout: timeout.min(Duration::from_secs(30)),
         })
     }
 
@@ -341,6 +343,62 @@ impl ApiTransport {
         tokio::time::sleep(self.retry_delay.saturating_mul(attempt)).await;
     }
 
+    async fn fetch_models(&self) -> AppResult<Vec<ProviderModel>> {
+        let mut url = self.url(self.preset.models_path);
+        if self.preset.protocol == Protocol::Anthropic {
+            url.query_pairs_mut().append_pair("limit", "1000");
+        }
+        let mut models = Vec::new();
+        let mut previous_cursor = None;
+        for _ in 0..MAX_MODEL_PAGES {
+            let (value, _, attempts) = self.send(Method::GET, url.clone(), None).await?;
+            let data = value
+                .get("data")
+                .and_then(Value::as_array)
+                .ok_or_else(|| self.error(ProviderErrorClass::ResponseContract, attempts, None))?;
+            for model in data {
+                let id = model
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .and_then(safe_identifier)
+                    .filter(|id| id.len() <= 256)
+                    .ok_or_else(|| {
+                        self.error(ProviderErrorClass::ResponseContract, attempts, None)
+                    })?;
+                let name = model
+                    .get("display_name")
+                    .or_else(|| model.get("name"))
+                    .and_then(Value::as_str)
+                    .filter(|name| name.len() <= 512 && !name.chars().any(char::is_control))
+                    .unwrap_or(&id)
+                    .to_owned();
+                models.push(ProviderModel { id, name });
+            }
+            if self.preset.protocol != Protocol::Anthropic
+                || value.get("has_more") == Some(&json!(false))
+            {
+                models.sort_by(|left, right| left.id.cmp(&right.id));
+                models.dedup_by(|left, right| left.id == right.id);
+                return Ok(models);
+            }
+            if value.get("has_more") != Some(&json!(true)) {
+                return Err(self.error(ProviderErrorClass::ResponseContract, attempts, None));
+            }
+            let cursor = value
+                .get("last_id")
+                .and_then(Value::as_str)
+                .and_then(safe_identifier)
+                .filter(|cursor| Some(cursor) != previous_cursor.as_ref())
+                .ok_or_else(|| self.error(ProviderErrorClass::ResponseContract, attempts, None))?;
+            previous_cursor = Some(cursor.clone());
+            url.set_query(None);
+            url.query_pairs_mut()
+                .append_pair("limit", "1000")
+                .append_pair("after_id", &cursor);
+        }
+        Err(self.error(ProviderErrorClass::ResponseContract, 1, None))
+    }
+
     fn request_body(
         &self,
         model: &str,
@@ -372,6 +430,10 @@ impl ApiTransport {
                 let mut body = json!({"model": model, "messages": [{"role": "system", "content": instructions}, {"role": "user", "content": input.to_string()}], "max_tokens": MAX_OUTPUT_TOKENS, "stream": false});
                 if self.preset.protocol == Protocol::ChatJson {
                     body["response_format"] = json!({"type": "json_object"});
+                    body.as_object_mut()
+                        .expect("request body is an object")
+                        .remove("max_tokens");
+                    body["max_completion_tokens"] = json!(MAX_OUTPUT_TOKENS);
                 } else {
                     body["response_format"] = json!({"type": "json_schema", "json_schema": {"name": name, "strict": true, "schema": schema}});
                     body["provider"] =
@@ -453,59 +515,9 @@ impl StructuredTransport for ApiTransport {
     }
 
     async fn list_models(&self) -> AppResult<Vec<ProviderModel>> {
-        let mut url = self.url(self.preset.models_path);
-        if self.preset.protocol == Protocol::Anthropic {
-            url.query_pairs_mut().append_pair("limit", "1000");
-        }
-        let mut models = Vec::new();
-        let mut previous_cursor = None;
-        for _ in 0..MAX_MODEL_PAGES {
-            let (value, _, attempts) = self.send(Method::GET, url.clone(), None).await?;
-            let data = value
-                .get("data")
-                .and_then(Value::as_array)
-                .ok_or_else(|| self.error(ProviderErrorClass::ResponseContract, attempts, None))?;
-            for model in data {
-                let id = model
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .and_then(safe_identifier)
-                    .filter(|id| id.len() <= 256)
-                    .ok_or_else(|| {
-                        self.error(ProviderErrorClass::ResponseContract, attempts, None)
-                    })?;
-                let name = model
-                    .get("display_name")
-                    .or_else(|| model.get("name"))
-                    .and_then(Value::as_str)
-                    .filter(|name| name.len() <= 512 && !name.chars().any(char::is_control))
-                    .unwrap_or(&id)
-                    .to_owned();
-                models.push(ProviderModel { id, name });
-            }
-            if self.preset.protocol != Protocol::Anthropic
-                || value.get("has_more") == Some(&json!(false))
-            {
-                models.sort_by(|left, right| left.id.cmp(&right.id));
-                models.dedup_by(|left, right| left.id == right.id);
-                return Ok(models);
-            }
-            if value.get("has_more") != Some(&json!(true)) {
-                return Err(self.error(ProviderErrorClass::ResponseContract, attempts, None));
-            }
-            let cursor = value
-                .get("last_id")
-                .and_then(Value::as_str)
-                .and_then(safe_identifier)
-                .filter(|cursor| Some(cursor) != previous_cursor.as_ref())
-                .ok_or_else(|| self.error(ProviderErrorClass::ResponseContract, attempts, None))?;
-            previous_cursor = Some(cursor.clone());
-            url.set_query(None);
-            url.query_pairs_mut()
-                .append_pair("limit", "1000")
-                .append_pair("after_id", &cursor);
-        }
-        Err(self.error(ProviderErrorClass::ResponseContract, 1, None))
+        tokio::time::timeout(self.catalogue_timeout, self.fetch_models())
+            .await
+            .map_err(|_| self.error(ProviderErrorClass::Timeout, 1, None))?
     }
 }
 
