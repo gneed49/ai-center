@@ -15,3 +15,4 @@ Chaque décision doit préciser le contexte, les options considérées, la déci
 3. [`0003-server-side-agent-engine.md`](0003-server-side-agent-engine.md) — moteur agentique côté serveur ;
 4. [`0004-android-client.md`](0004-android-client.md) — architecture Android conservée mais mise en sommeil ;
 5. [`0005-context-control-not-tool-replacement.md`](0005-context-control-not-tool-replacement.md) — pilotage du contexte et doctrine d’intégration avant remplacement.
+6. [`0006-personal-provider-connections.md`](0006-personal-provider-connections.md) — profils IA personnels, sélection stable et abonnements officiels limités aux opérations de contexte.

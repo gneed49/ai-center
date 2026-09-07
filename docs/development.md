@@ -13,7 +13,22 @@ Tauri, qui démarre elle-même le frontend Vite.
 `./dev` et `./dev linux` sont équivalents. Le moteur agentique déterministe est
 utilisé par défaut afin que le démarrage fonctionne sans clé ni coût API.
 
-Pour utiliser OpenAI avec la clé conservée dans `.env.local` :
+Pour utiliser vos clés personnelles, ouvrez **Réglages IA** dans l'application,
+ajoutez une connexion et choisissez-la dans **Connexion utilisée**. Cela
+fonctionne avec le démarrage `./dev` ; le mode par défaut du serveur ne remplace
+pas votre choix personnel. Les connexions OpenAI, Anthropic, Kimi, DeepSeek et
+OpenRouter sont configurées dans ce formulaire.
+
+Les abonnements locaux compatibles apparaissent également dans les réglages.
+Le client officiel Claude doit être installé séparément ; AI Center explique
+une capacité absente ou incompatible. Voir la
+[configuration du serveur et du stockage sécurisé](../specs/provider-connections/backend.md)
+et le [contrat des abonnements](../specs/provider-connections/subscriptions.md).
+Conservez le secret de chiffrement local avec vos sauvegardes, séparément de
+la base : supprimer son répertoire empêche de relire les clés enregistrées.
+
+Pour conserver plutôt une configuration OpenAI par défaut du serveur avec la
+clé dans `.env.local` :
 
 ```bash
 ./dev linux --agent openai
