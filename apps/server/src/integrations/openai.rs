@@ -1,18 +1,15 @@
-use std::time::{Duration, Instant};
-
-use reqwest::{Client, StatusCode, redirect::Policy};
-use secrecy::{ExposeSecret, SecretString};
-use serde::{Deserialize, de::DeserializeOwned};
-use serde_json::{Value, json};
-use tokio::time::sleep;
+//! Compatibility wrapper around the shared official Responses transport.
 #[cfg(debug_assertions)]
-use url::Host;
-use url::Url;
+use std::time::Duration;
 
-use crate::error::{AppError, AppResult, ProviderError, ProviderErrorClass};
+use secrecy::SecretString;
+use serde::de::DeserializeOwned;
+use serde_json::Value;
 
-const RESPONSES_ENDPOINT: &str = "https://api.openai.com/v1/responses";
-const MAX_ATTEMPTS: u32 = 3;
+use crate::{
+    error::{AppResult, ProviderError, ProviderErrorClass},
+    integrations::providers::{ApiTransport, StructuredTransport},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenAiResponseMetadata {
@@ -32,54 +29,21 @@ pub struct OpenAiStructuredResponse<T> {
     pub metadata: OpenAiResponseMetadata,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct RetryPolicy {
-    max_attempts: u32,
-    base_delay: Duration,
-}
-
-/// Minimal Responses API client with a fixed production origin.
-///
-/// Production construction never reads an endpoint from configuration. The
-/// only endpoint override is a loopback-only constructor that is unavailable
-/// in release builds, so an attacker-controlled URL cannot turn provider calls
-/// into SSRF.
 pub struct OpenAiResponsesClient {
-    client: Client,
-    api_key: SecretString,
-    endpoint: Url,
-    retry: RetryPolicy,
+    transport: ApiTransport,
 }
 
 impl OpenAiResponsesClient {
-    /// Build a production client pinned to the official Responses API.
-    ///
     /// # Errors
-    ///
-    /// Returns an internal configuration error if the hardened HTTP client
-    /// cannot be constructed.
+    /// Fails if the fixed, bounded official client cannot be constructed.
     pub fn new(api_key: SecretString) -> AppResult<Self> {
-        let endpoint = Url::parse(RESPONSES_ENDPOINT)
-            .map_err(|_| AppError::Internal("invalid built-in OpenAI endpoint".into()))?;
-        Self::build(
-            api_key,
-            endpoint,
-            Duration::from_secs(10),
-            Duration::from_secs(60),
-            RetryPolicy {
-                max_attempts: MAX_ATTEMPTS,
-                base_delay: Duration::from_millis(250),
-            },
-        )
+        Ok(Self {
+            transport: ApiTransport::new("openai", api_key)?,
+        })
     }
 
-    /// Build a loopback-only client for explicit local development and HTTP
-    /// contract tests. This entry point does not exist in release builds.
-    ///
     /// # Errors
-    ///
-    /// Rejects non-loopback hosts, credentials, query strings, fragments, and
-    /// any path other than the Responses API path.
+    /// Rejects non-loopback URLs and paths outside the official Responses route.
     #[cfg(debug_assertions)]
     pub fn new_for_local_development(
         api_key: SecretString,
@@ -87,52 +51,19 @@ impl OpenAiResponsesClient {
         timeout: Duration,
         retry_delay: Duration,
     ) -> AppResult<Self> {
-        let endpoint = validate_loopback_endpoint(endpoint)?;
-        Self::build(
-            api_key,
-            endpoint,
-            timeout,
-            timeout,
-            RetryPolicy {
-                max_attempts: MAX_ATTEMPTS,
-                base_delay: retry_delay,
-            },
-        )
-    }
-
-    fn build(
-        api_key: SecretString,
-        endpoint: Url,
-        connect_timeout: Duration,
-        timeout: Duration,
-        retry: RetryPolicy,
-    ) -> AppResult<Self> {
-        let client = Client::builder()
-            .connect_timeout(connect_timeout)
-            .timeout(timeout)
-            .redirect(Policy::none())
-            .build()
-            .map_err(|_| AppError::Internal("failed to build OpenAI HTTP client".into()))?;
         Ok(Self {
-            client,
-            api_key,
-            endpoint,
-            retry,
+            transport: ApiTransport::new_for_local_development(
+                "openai",
+                api_key,
+                endpoint,
+                timeout,
+                retry_delay,
+            )?,
         })
     }
 
-    /// Send one Structured Outputs request and deserialize its `output_text`.
-    ///
-    /// Transport timeouts, connection failures, HTTP 429, and 5xx responses
-    /// are retried at most twice. Authentication, authorization, and contract
-    /// errors are returned immediately. Provider bodies are never copied into
-    /// errors, avoiding accidental disclosure of submitted context.
-    ///
     /// # Errors
-    ///
-    /// Returns [`AppError::Provider`] after classifying an exhausted transport
-    /// or status failure, an unreadable API response, missing output, or output
-    /// that does not match the expected Rust type.
+    /// Returns only sanitized transport, schema or response-contract errors.
     pub async fn request_structured<T: DeserializeOwned>(
         &self,
         model: &str,
@@ -141,236 +72,34 @@ impl OpenAiResponsesClient {
         input: &Value,
         schema: &Value,
     ) -> AppResult<OpenAiStructuredResponse<T>> {
-        let body = structured_request_body(model, operation_name, instructions, input, schema)?;
-        let started = Instant::now();
-        let mut attempts = 0_u32;
-
-        loop {
-            attempts += 1;
-            let response = self
-                .client
-                .post(self.endpoint.clone())
-                .bearer_auth(self.api_key.expose_secret())
-                .json(&body)
-                .send()
-                .await;
-
-            let response = match response {
-                Ok(response) => response,
-                Err(error)
-                    if attempts < self.retry.max_attempts
-                        && (error.is_timeout() || error.is_connect()) =>
-                {
-                    self.wait_before_retry(attempts).await;
-                    continue;
-                }
-                Err(error) => {
-                    let class = if error.is_timeout() {
-                        ProviderErrorClass::Timeout
-                    } else if error.is_connect() {
-                        ProviderErrorClass::Connection
-                    } else {
-                        ProviderErrorClass::Transport
-                    };
-                    return Err(provider_error(class, attempts, None));
-                }
-            };
-
-            let status = response.status();
-            let request_id = response
-                .headers()
-                .get("x-request-id")
-                .and_then(|value| value.to_str().ok())
-                .map(str::to_owned);
-            if status == StatusCode::TOO_MANY_REQUESTS {
-                let class = classify_rate_limit_response(response).await;
-                if class.is_retryable() && attempts < self.retry.max_attempts {
-                    self.wait_before_retry(attempts).await;
-                    continue;
-                }
-                return Err(provider_error(class, attempts, Some(status.as_u16())));
-            }
-            if attempts < self.retry.max_attempts && should_retry_status(status) {
-                self.wait_before_retry(attempts).await;
-                continue;
-            }
-            if !status.is_success() {
-                return Err(provider_error(
-                    classify_status(status),
-                    attempts,
-                    Some(status.as_u16()),
-                ));
-            }
-
-            let value: Value = response.json().await.map_err(|_| {
-                provider_error(ProviderErrorClass::ResponseContract, attempts, None)
-            })?;
-            return parse_structured_response(&value, request_id, attempts, started.elapsed());
-        }
-    }
-
-    async fn wait_before_retry(&self, attempt: u32) {
-        sleep(self.retry.base_delay.saturating_mul(attempt)).await;
-    }
-}
-
-fn should_retry_status(status: StatusCode) -> bool {
-    status.is_server_error()
-}
-
-#[derive(Deserialize)]
-struct OpenAiErrorEnvelope {
-    error: Option<OpenAiErrorDescriptor>,
-}
-
-#[derive(Deserialize)]
-struct OpenAiErrorDescriptor {
-    code: Option<String>,
-    #[serde(rename = "type")]
-    error_type: Option<String>,
-}
-
-async fn classify_rate_limit_response(response: reqwest::Response) -> ProviderErrorClass {
-    let descriptor = response
-        .json::<OpenAiErrorEnvelope>()
-        .await
-        .ok()
-        .and_then(|envelope| envelope.error);
-    if descriptor.as_ref().is_some_and(|error| {
-        error.code.as_deref() == Some("insufficient_quota")
-            || error.error_type.as_deref() == Some("insufficient_quota")
-    }) {
-        ProviderErrorClass::Quota
-    } else {
-        ProviderErrorClass::RateLimit
-    }
-}
-
-fn classify_status(status: StatusCode) -> ProviderErrorClass {
-    match status {
-        StatusCode::UNAUTHORIZED => ProviderErrorClass::Authentication,
-        StatusCode::FORBIDDEN => ProviderErrorClass::Permission,
-        StatusCode::NOT_FOUND => ProviderErrorClass::NotFound,
-        StatusCode::TOO_MANY_REQUESTS => ProviderErrorClass::RateLimit,
-        status if status.is_server_error() => ProviderErrorClass::Server,
-        _ => ProviderErrorClass::Request,
-    }
-}
-
-fn provider_error(
-    class: ProviderErrorClass,
-    attempts: u32,
-    upstream_status: Option<u16>,
-) -> AppError {
-    ProviderError::new("OpenAI", class, attempts, upstream_status).into()
-}
-
-fn structured_request_body(
-    model: &str,
-    operation_name: &str,
-    instructions: &str,
-    input: &Value,
-    schema: &Value,
-) -> AppResult<Value> {
-    Ok(json!({
-        "model": model,
-        "store": false,
-        "instructions": instructions,
-        "input": [{
-            "role": "user",
-            "content": [{
-                "type": "input_text",
-                "text": serde_json::to_string(input)
-                    .map_err(|error| AppError::Internal(error.to_string()))?
-            }]
-        }],
-        "text": {
-            "format": {
-                "type": "json_schema",
-                "name": operation_name,
-                "strict": true,
-                "schema": schema
-            }
-        }
-    }))
-}
-
-fn parse_structured_response<T: DeserializeOwned>(
-    value: &Value,
-    provider_request_id: Option<String>,
-    attempts: u32,
-    elapsed: Duration,
-) -> AppResult<OpenAiStructuredResponse<T>> {
-    let output_text = structured_output_text(value)
-        .ok_or_else(|| provider_error(ProviderErrorClass::ResponseContract, attempts, None))?;
-    let output = serde_json::from_str(output_text)
-        .map_err(|_| provider_error(ProviderErrorClass::ResponseContract, attempts, None))?;
-    Ok(OpenAiStructuredResponse {
-        output,
-        metadata: OpenAiResponseMetadata {
-            served_model: value
-                .get("model")
-                .and_then(Value::as_str)
-                .map(str::to_owned),
-            provider_response_id: value.get("id").and_then(Value::as_str).map(str::to_owned),
-            provider_request_id,
-            status: value
-                .get("status")
-                .and_then(Value::as_str)
-                .map(str::to_owned),
-            input_tokens: value.pointer("/usage/input_tokens").and_then(Value::as_i64),
-            output_tokens: value
-                .pointer("/usage/output_tokens")
-                .and_then(Value::as_i64),
-            latency_ms: i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
-            attempts,
-        },
-    })
-}
-
-fn structured_output_text(value: &Value) -> Option<&str> {
-    value
-        .get("output")
-        .and_then(Value::as_array)
-        .and_then(|items| {
-            items
-                .iter()
-                .find(|item| item.get("type").and_then(Value::as_str) == Some("message"))
+        let response = self
+            .transport
+            .generate(model, operation_name, instructions, input, schema)
+            .await?;
+        let metadata = response.metadata;
+        let attempts = u32::try_from(metadata.attempts).unwrap_or(u32::MAX);
+        let output = serde_json::from_value(response.output).map_err(|_| {
+            ProviderError::new(
+                "openai",
+                ProviderErrorClass::ResponseContract,
+                attempts,
+                None,
+            )
+        })?;
+        Ok(OpenAiStructuredResponse {
+            output,
+            metadata: OpenAiResponseMetadata {
+                served_model: metadata.served_model,
+                provider_response_id: metadata.provider_response_id,
+                provider_request_id: metadata.provider_request_id,
+                status: metadata.status,
+                input_tokens: metadata.input_tokens,
+                output_tokens: metadata.output_tokens,
+                latency_ms: metadata.latency_ms,
+                attempts,
+            },
         })
-        .and_then(|item| item.get("content"))
-        .and_then(Value::as_array)
-        .and_then(|items| {
-            items
-                .iter()
-                .find(|item| item.get("type").and_then(Value::as_str) == Some("output_text"))
-        })
-        .and_then(|item| item.get("text"))
-        .and_then(Value::as_str)
-}
-
-#[cfg(debug_assertions)]
-fn validate_loopback_endpoint(endpoint: &str) -> AppResult<Url> {
-    let url = Url::parse(endpoint)
-        .map_err(|_| AppError::Invalid("invalid local OpenAI endpoint".into()))?;
-    let loopback = match url.host() {
-        Some(Host::Ipv4(address)) => address.is_loopback(),
-        Some(Host::Ipv6(address)) => address.is_loopback(),
-        Some(Host::Domain(domain)) => domain == "localhost",
-        None => false,
-    };
-    let valid = matches!(url.scheme(), "http" | "https")
-        && loopback
-        && url.username().is_empty()
-        && url.password().is_none()
-        && url.query().is_none()
-        && url.fragment().is_none()
-        && url.path() == "/v1/responses";
-    if !valid {
-        return Err(AppError::Invalid(
-            "local OpenAI endpoint must be an exact loopback Responses API URL".into(),
-        ));
     }
-    Ok(url)
 }
 
 #[cfg(test)]
@@ -398,6 +127,7 @@ mod tests {
 
     use super::OpenAiResponsesClient;
     use crate::error::{AppError, ProviderErrorClass};
+    use crate::integrations::providers::StructuredTransport;
 
     #[derive(Clone, Copy)]
     enum FixtureMode {
@@ -969,6 +699,6 @@ mod tests {
     fn production_constructor_is_pinned_to_the_official_responses_endpoint() {
         let client = OpenAiResponsesClient::new(SecretString::from("contract-fixture-only"))
             .expect("production client should initialize");
-        assert_eq!(client.endpoint.as_str(), super::RESPONSES_ENDPOINT);
+        assert_eq!(client.transport.provider_name(), "openai");
     }
 }

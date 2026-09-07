@@ -1,5 +1,6 @@
 pub mod github;
 pub mod openai;
+pub mod providers;
 
 use std::sync::Arc;
 
