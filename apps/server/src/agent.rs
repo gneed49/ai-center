@@ -1,5 +1,9 @@
 #[cfg(test)]
+use crate::integrations::providers::ApiTransport;
+#[cfg(test)]
 use std::time::Duration;
+
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use secrecy::SecretString;
@@ -9,7 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     error::{AppError, AppResult},
-    integrations::openai::OpenAiResponsesClient,
+    integrations::providers::{StructuredTransport, api_transport, validate_output},
     models::{AgentTurn, ProposalDraft},
 };
 
@@ -157,12 +161,21 @@ pub trait AgentEngine: Send + Sync {
     ) -> AppResult<EngineOutput<StewardOutput>>;
 }
 
-pub struct OpenAiEngine {
-    client: OpenAiResponsesClient,
+pub struct StructuredEngine {
+    transport: Arc<dyn StructuredTransport>,
     model: String,
 }
 
-impl OpenAiEngine {
+/// Compatibility name for the server-default `OpenAI` engine.
+pub type OpenAiEngine = StructuredEngine;
+
+impl StructuredEngine {
+    /// Compose the same business prompts and validation with a selected transport.
+    #[must_use]
+    pub fn with_transport(transport: Arc<dyn StructuredTransport>, model: String) -> Self {
+        Self { transport, model }
+    }
+
     /// Builds the hardened HTTP client used for provider calls.
     ///
     /// # Errors
@@ -171,7 +184,7 @@ impl OpenAiEngine {
     /// back to a client without the declared timeout policy.
     pub fn new(api_key: SecretString, model: String) -> AppResult<Self> {
         Ok(Self {
-            client: OpenAiResponsesClient::new(api_key)?,
+            transport: api_transport("openai", api_key)?,
             model,
         })
     }
@@ -185,12 +198,13 @@ impl OpenAiEngine {
         retry_delay: Duration,
     ) -> AppResult<Self> {
         Ok(Self {
-            client: OpenAiResponsesClient::new_for_local_development(
+            transport: Arc::new(ApiTransport::new_for_local_development(
+                "openai",
                 api_key,
                 endpoint,
                 timeout,
                 retry_delay,
-            )?,
+            )?),
             model,
         })
     }
@@ -203,32 +217,29 @@ impl OpenAiEngine {
         schema: Value,
     ) -> AppResult<EngineOutput<T>> {
         let response = self
-            .client
-            .request_structured(&self.model, operation_name, &instructions, &input, &schema)
+            .transport
+            .generate(&self.model, operation_name, &instructions, &input, &schema)
             .await?;
-        Ok(EngineOutput {
-            output: response.output,
-            metadata: AgentRunMetadata {
-                provider: "openai".into(),
-                requested_model: self.model.clone(),
-                served_model: response.metadata.served_model,
-                provider_response_id: response.metadata.provider_response_id,
-                provider_request_id: response.metadata.provider_request_id,
-                status: response.metadata.status,
-                input_tokens: response.metadata.input_tokens,
-                output_tokens: response.metadata.output_tokens,
-                estimated_cost: None,
-                latency_ms: response.metadata.latency_ms,
-                attempts: i32::try_from(response.metadata.attempts).unwrap_or(i32::MAX),
-            },
-        })
+        validate_output(self.provider_name(), &schema, &response.output)?;
+        let output = serde_json::from_value(response.output).map_err(|_| {
+            crate::error::ProviderError::new(
+                self.provider_name(),
+                crate::error::ProviderErrorClass::ResponseContract,
+                1,
+                None,
+            )
+        })?;
+        let mut metadata = response.metadata;
+        metadata.provider = self.provider_name().into();
+        metadata.requested_model.clone_from(&self.model);
+        Ok(EngineOutput { output, metadata })
     }
 }
 
 #[async_trait]
-impl AgentEngine for OpenAiEngine {
+impl AgentEngine for StructuredEngine {
     fn provider_name(&self) -> &'static str {
-        "openai"
+        self.transport.provider_name()
     }
 
     fn requested_model(&self) -> &str {
