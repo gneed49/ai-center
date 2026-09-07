@@ -21,11 +21,13 @@ vi.mock("@/api/providers", () => ({
 }));
 const disconnected = {
   available: true,
+  authenticated: false,
   connected: false,
   status: "disconnected" as const,
 };
 const connected = {
   available: true,
+  authenticated: true,
   connected: true,
   status: "connected" as const,
 };
@@ -166,5 +168,106 @@ describe("subscription component with a simulated API", () => {
         name: "Connecter mon abonnement",
       }).disabled,
     ).toBe(true);
+  });
+  it.each(["API", "Team"])(
+    "keeps recovery controls for an authenticated %s account after login",
+    async (account) => {
+      const unsupported = {
+        authenticated: true,
+        connected: false,
+        available: false,
+        status: "unavailable" as const,
+        message: `Compte ${account} non admissible.`,
+      };
+      vi.mocked(providersApi.subscriptionStatus)
+        .mockResolvedValueOnce(disconnected)
+        .mockResolvedValue(unsupported);
+      vi.mocked(providersApi.loginStatus).mockResolvedValue({
+        ...pending,
+        status: "failed",
+      });
+      vi.mocked(providersApi.logout).mockResolvedValue(disconnected);
+      await mount();
+      await start();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(screen.getByRole("status").textContent).toBe(unsupported.message);
+      const change = screen.getByRole<HTMLButtonElement>("button", {
+        name: "Changer de compte",
+      });
+      expect(change.disabled).toBe(false);
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Déconnecter l’abonnement" }),
+        );
+      });
+      expect(providersApi.logout).toHaveBeenCalledWith("fixture-connection");
+      expect(
+        screen.queryByRole("button", { name: "Déconnecter l’abonnement" }),
+      ).toBeNull();
+      vi.mocked(providersApi.subscriptionStatus).mockResolvedValue(connected);
+      vi.mocked(providersApi.loginStatus).mockResolvedValue({
+        ...pending,
+        status: "connected",
+      });
+      await start();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(screen.getByRole("status").textContent).toBe(
+        "Abonnement connecté.",
+      );
+    },
+  );
+  it("starts account replacement while an unsupported account remains authenticated", async () => {
+    vi.mocked(providersApi.subscriptionStatus).mockResolvedValue({
+      authenticated: true,
+      connected: false,
+      available: false,
+      status: "unavailable",
+      message: "Compte non admissible.",
+    });
+    await mount();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Changer de compte" }),
+      );
+    });
+    expect(providersApi.startLogin).toHaveBeenCalledWith("fixture-connection");
+    expect(
+      screen.getByRole("button", { name: "Annuler la connexion" }),
+    ).toBeDefined();
+  });
+  it("keeps recovery available when logout cannot verify disconnection", async () => {
+    vi.mocked(providersApi.subscriptionStatus).mockResolvedValue({
+      authenticated: true,
+      connected: false,
+      available: false,
+      status: "unavailable",
+      message: "Compte non admissible.",
+    });
+    vi.mocked(providersApi.logout).mockRejectedValue(
+      new Error("fixture failure"),
+    );
+    await mount();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Déconnecter l’abonnement" }),
+      );
+    });
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "Déconnecter l’abonnement",
+      }).disabled,
+    ).toBe(false);
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "Changer de compte",
+      }).disabled,
+    ).toBe(false);
+    expect(screen.getByRole("status").textContent).toBe(
+      "Compte non admissible.",
+    );
   });
 });

@@ -41,7 +41,10 @@ paiement ni abonnement commercial AI Center n'est ajouté.
 Après création du profil, « Connecter mon abonnement » propose le lien officiel
 de connexion. Le compte est authentifié par Claude Code. Une tentative peut
 être annulée ; son lien disparaît à la fin ou au changement de contexte.
-La déconnexion est disponible sur la fiche.
+La déconnexion est disponible sur la fiche, y compris si le compte authentifié
+est un compte API ou d’organisation non admissible. Le motif reste affiché et
+**Changer de compte** permet de reprendre le flux officiel sans recréer le profil.
+La fin de l’authentification est vérifiée avant d’annoncer la déconnexion.
 
 Le support local est limité aux capacités effectivement vérifiées par le
 serveur : Linux, client compatible, abonnement personnel pris en charge et

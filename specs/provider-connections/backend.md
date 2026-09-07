@@ -2,7 +2,7 @@
 
 ## Configuration
 
-Les clés API des utilisateurs sont saisies dans la page **Connexions IA**. La
+Les clés API des utilisateurs sont saisies dans la page **Réglages IA**. La
 configuration `OPENAI_API_KEY` existante reste réservée au moteur serveur par
 défaut ; elle n’est jamais copiée dans une connexion personnelle.
 
@@ -65,6 +65,14 @@ sélection du contexte, plan, couverture et Steward. Plan et couverture gardent 
 même moteur. Le `selection_mode` du ContextPack reflète ce moteur effectif. Aucune
 transaction SQL ne reste ouverte pendant une génération IA.
 
+Pour un message validé, la résolution locale de la connexion et le début du
+`model_run` partagent la transaction du message. Une clé illisible ou une clé
+maîtresse absente conserve le message et un run terminal en échec, identifié par
+le fournisseur et le modèle choisis. L'erreur reste expurgée. Le même identifiant
+de commande rejoue cet échec sans ajouter de run ; un changement explicite de
+configuration et une nouvelle commande permettent de reprendre le même message
+client sans doublon. Aucun autre moteur n'est utilisé implicitement.
+
 Chaque événement métier mémorise `requested_by_actor_id`, issu du contexte
 serveur. Le worker peut découvrir un workspace sous un autre membre autorisé,
 mais il réauthentifie l’acteur originel avant de charger son choix personnel.
@@ -88,15 +96,21 @@ Validation au 7 septembre 2026 :
   plusieurs clés OpenAI, réponses masquées, idempotence/rejeu/changement de clé,
   viewer 403, séparation acteur/workspace et protection RLS directe, conservation
   et remplacement de clé, moteur figé, corruption sans fallback, suppression
-  atomique et utilisation réelle du moteur sélectionné.
+  atomique et utilisation réelle du moteur sélectionné. Les corrections PC-T05
+  ajoutent les messages conservés avec clé maîtresse absente et ciphertext
+  corrompu, leur run en échec, le replay sans doublon et la reprise explicite.
 - Le même test couvre un scanner avec une clé inutilisable traitant correctement
   l’événement d’un autre acteur, puis refuse le remplacement inverse d’un acteur
   à clé inutilisable par le moteur du propriétaire.
-- Posture exacte `ai_center_runtime` : PASS ; **32 pgTAP** : PASS.
+- Posture exacte `ai_center_runtime` : PASS ; **32 pgTAP** : PASS. Rejoués
+  intégralement après les corrections PC-T05, avant les fixtures Rust.
 - **11 tests d’intégration PostgreSQL** dans six binaires Rust : PASS (concurrence
   du contexte, idempotence, cycle de vie modèle, parcours métier API, connexions
-  personnelles et invalidation ciblée). **1 test supplémentaire** de persistance
-  GitHub simulée sur cette base : PASS.
+  personnelles et invalidation ciblée), rejoués intégralement après PC-T05.
+  Preuve antérieure PC-T02, non rejouée après ces corrections : **1 test lib**
+  de persistance GitHub simulée sur cette base : PASS. Il reste explicitement
+  ignoré lors de la commande d’unités Rust sans base ; il ne fait pas partie des
+  11 intégrations PostgreSQL ci-dessus.
 - Réponses HTTP privées et erreurs : `Cache-Control: no-store` vérifié.
 - `cargo clippy -p ai-center-server --all-targets --offline -- -D warnings` : PASS.
   `cargo fmt --all` et `git diff --check` : PASS.

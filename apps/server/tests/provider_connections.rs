@@ -122,6 +122,138 @@ async fn server(state: AppState) -> Result<(String, tokio::task::JoinHandle<()>)
     Ok((url, task))
 }
 
+// A request with a validated message must survive even a local credential
+// initialization failure. All HTTP here targets a loopback application fixture.
+#[allow(clippy::too_many_lines)]
+async fn assert_failed_message_retained(state: &AppState, admin: &PgPool) -> Result<()> {
+    let selection = providers::settings(state).await?.selection;
+    let project = ai_center_server::service::create_project(
+        state,
+        ai_center_server::models::CreateProject {
+            name: "Unreadable credential".into(),
+            objective: "Retain validated intent".into(),
+        },
+    )
+    .await?;
+    let session = ai_center_server::service::create_session(
+        state,
+        project.public_id,
+        ai_center_server::models::CreateSession {
+            node_key: "product".into(),
+            title: None,
+        },
+    )
+    .await?;
+    let session_id = session.session.public_id;
+    let client_message_id = Uuid::new_v4();
+    let command = Uuid::new_v4();
+    let input = json!({"client_message_id":client_message_id,"content":"Nous devons conserver les décisions confirmées."});
+    let (url, task) = server(state.clone()).await?;
+    let endpoint = format!(
+        "{url}/api/projects/{}/sessions/{session_id}/messages",
+        project.public_id
+    );
+    let client = reqwest::Client::new();
+    let mut response = None;
+    for _ in 0..2 {
+        let result = client
+            .post(&endpoint)
+            .header("Idempotency-Key", command.to_string())
+            .json(&input)
+            .send()
+            .await?;
+        ensure!(
+            !result.status().is_success(),
+            "unreadable key must fail without fallback"
+        );
+        let status = result.status();
+        let body: Value = result.json().await?;
+        ensure!(
+            body["retryable"] == false,
+            "local configuration failure needs explicit recovery"
+        );
+        if let Some((previous_status, previous_body)) = &response {
+            ensure!(
+                status == *previous_status && body == *previous_body,
+                "same command must replay its failure"
+            );
+        }
+        response = Some((status, body));
+    }
+    let (user_count, assistant_count): (i64, i64) = sqlx::query_as(
+        "select count(*) filter (where role='user'),count(*) filter (where role='assistant') from app.messages where client_message_id=$1"
+    ).bind(client_message_id).fetch_one(admin).await?;
+    ensure!(
+        user_count == 1 && assistant_count == 0,
+        "validated intent was lost, duplicated or silently answered"
+    );
+    let runs: Vec<(String, String, String, Option<String>, bool)> = sqlx::query_as(
+        "select run.provider,run.model,run.status,run.error_class,run.completed_at is not null from app.model_runs run join app.sessions session on session.id=run.session_id where session.public_id=$1"
+    ).bind(session_id).fetch_all(admin).await?;
+    ensure!(
+        runs.len() == 1,
+        "replayed failure must not create another model run"
+    );
+    ensure!(
+        runs[0].0 == "openai"
+            && runs[0].1 == "test-model-updated"
+            && runs[0].2 == "failed"
+            && runs[0].3.is_some()
+            && runs[0].4,
+        "failed run lost the selected provider/model or terminal trace"
+    );
+    let record: (String, Value) = sqlx::query_as("select status,response_body from app.idempotency_records where actor_id=$1 and idempotency_key=$2")
+        .bind(state.actor_id).bind(command.to_string()).fetch_one(admin).await?;
+    ensure!(record.0 == "failed" && record.1["retryable"] == false);
+
+    // Only an explicit settings change and a new command may resume this intent.
+    providers::select(
+        state,
+        Selection {
+            mode: "deterministic".into(),
+            connection_id: None,
+        },
+        None,
+    )
+    .await?;
+    let replay = client
+        .post(&endpoint)
+        .header("Idempotency-Key", command.to_string())
+        .json(&input)
+        .send()
+        .await?;
+    ensure!(replay.status() == response.as_ref().unwrap().0);
+    ensure!(replay.json::<Value>().await? == response.unwrap().1);
+    let recovered = client
+        .post(&endpoint)
+        .header("Idempotency-Key", Uuid::new_v4().to_string())
+        .json(&input)
+        .send()
+        .await?;
+    ensure!(
+        recovered.status().is_success(),
+        "explicit deterministic recovery failed"
+    );
+    let counts: (i64, i64) = sqlx::query_as("select count(*) filter (where role='user'),count(*) filter (where role='assistant') from app.messages where client_message_id=$1")
+        .bind(client_message_id).fetch_one(admin).await?;
+    ensure!(
+        counts == (1, 1),
+        "recovery must reuse the retained intent exactly once"
+    );
+    let runs: Vec<(String, String)> = sqlx::query_as("select run.provider,run.status from app.model_runs run join app.sessions session on session.id=run.session_id where session.public_id=$1 order by run.id")
+        .bind(session_id).fetch_all(admin).await?;
+    ensure!(
+        runs == vec![
+            ("openai".into(), "failed".into()),
+            ("deterministic".into(), "completed".into())
+        ],
+        "recovery must retain both attempts with their explicit identities"
+    );
+    providers::select(state, selection, None).await?;
+    task.abort();
+    Ok(())
+}
+
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn private_credentials_http_idempotency_selection_and_rls() -> Result<()> {
@@ -406,11 +538,13 @@ async fn private_credentials_http_idempotency_selection_and_rls() -> Result<()> 
         providers::resolve_engine(&unavailable).await.is_err(),
         "selected unavailable key silently fell back"
     );
+    assert_failed_message_retained(&unavailable, &admin).await?;
     sqlx::query("update app.provider_connections set key_ciphertext=decode(repeat('00',40),'hex') where public_id=$1").bind(id).execute(&admin).await?;
     ensure!(
         providers::resolve_engine(&owner_state).await.is_err(),
         "corrupt credentials silently fell back"
     );
+    assert_failed_message_retained(&owner_state, &admin).await?;
     let record:String=sqlx::query_scalar("select row_to_json(record)::text from app.idempotency_records record where idempotency_key=$1 and actor_id=$2").bind(command.to_string()).bind(owner).fetch_one(&admin).await?;
     ensure!(
         !record.contains(&key) && !record.contains("key_ciphertext") && !record.contains("api_key"),

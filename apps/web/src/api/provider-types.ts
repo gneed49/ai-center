@@ -44,9 +44,10 @@ export interface ProviderModel {
 
 export interface SubscriptionStatus {
   status: "disconnected" | "connected" | "unavailable" | "unknown";
+  authenticated: boolean | null;
   connected: boolean;
   available: boolean;
-  message?: string;
+  message?: string | null;
 }
 
 export interface SubscriptionLogin {

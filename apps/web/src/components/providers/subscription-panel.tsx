@@ -36,6 +36,8 @@ export function SubscriptionPanel({
   const [revision, setRevision] = useState(0);
   const action = useProviderAction();
   const pending = login?.status === "pending";
+  const unsupportedAccount =
+    status?.authenticated === true && !status.connected;
   const loginId = pending ? login.login_id : undefined;
 
   useEffect(() => {
@@ -109,12 +111,14 @@ export function SubscriptionPanel({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground" role="status">
-        {login
-          ? loginLabels[login.status]
-          : status?.connected
-            ? "Abonnement connecté."
-            : (status?.message ??
-              "Connectez votre abonnement personnel avec le client officiel.")}
+        {unsupportedAccount && !pending
+          ? status.message
+          : login
+            ? loginLabels[login.status]
+            : status?.connected
+              ? "Abonnement connecté."
+              : (status?.message ??
+                "Connectez votre abonnement personnel avec le client officiel.")}
       </p>
       {url && (
         <Button asChild variant="outline">
@@ -156,15 +160,21 @@ export function SubscriptionPanel({
           <Button
             type="button"
             variant="outline"
-            disabled={!available || status?.available === false || action.busy}
+            disabled={
+              !available ||
+              (status?.available === false && !unsupportedAccount) ||
+              action.busy
+            }
             onClick={start}
           >
-            {status?.connected
-              ? "Reconnecter l’abonnement"
-              : "Connecter mon abonnement"}
+            {unsupportedAccount
+              ? "Changer de compte"
+              : status?.connected
+                ? "Reconnecter l’abonnement"
+                : "Connecter mon abonnement"}
           </Button>
         )}
-        {status?.connected && !pending && (
+        {status?.authenticated === true && !pending && (
           <Button
             type="button"
             variant="outline"

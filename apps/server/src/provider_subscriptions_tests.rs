@@ -65,11 +65,14 @@ if '--help' in args:
 if 'auth' in args:
     state=config/'fake-state'
     if 'status' in args:
-        connected=state.read_text()!='disconnected' if state.exists() else CONFIG['mode'] not in ['disconnected','login','login_wait']
-        print(json.dumps({'loggedIn':connected,'authMethod':'api_key' if CONFIG['mode']=='api' else 'claude.ai','apiProvider':'firstParty','subscriptionType':'team' if CONFIG['mode']=='team' else 'pro','email':'private-test@example.invalid','orgId':'private-test-org'}))
+        state_value=state.read_text() if state.exists() else None
+        connected=state_value!='disconnected' if state.exists() else CONFIG['mode'] not in ['disconnected','login','login_wait','login_api','login_team']
+        api=CONFIG['mode'] in ['api','stuck_api'] or (CONFIG['mode']=='login_api' and state_value=='unsupported')
+        team=CONFIG['mode'] in ['team','stuck_team'] or (CONFIG['mode']=='login_team' and state_value=='unsupported')
+        print(json.dumps({'loggedIn':connected,'authMethod':'api_key' if api else 'claude.ai','apiProvider':'firstParty','subscriptionType':'team' if team else 'pro','email':'private-test@example.invalid','orgId':'private-test-org'}))
         sys.exit(0 if connected else 1)
     if 'logout' in args:
-        state.write_text('disconnected')
+        if CONFIG['mode'] not in ['stuck_api','stuck_team']: state.write_text('disconnected')
         print('private logout message that must not be exposed')
         sys.exit(0)
     if 'login' in args:
@@ -80,7 +83,9 @@ if 'auth' in args:
             time.sleep(30)
         else:
             time.sleep(0.06)
-            state.write_text('connected')
+            previous_login=config/'previous-login'
+            state.write_text('unsupported' if CONFIG['mode'] in ['login_api','login_team'] and not previous_login.exists() else 'connected')
+            previous_login.touch()
         sys.exit(0)
 data=json.loads(sys.stdin.read())
 with open(CONFIG['events'],'a') as log: log.write(json.dumps({'stdin':data})+'\n')
@@ -222,12 +227,15 @@ async fn status_never_exposes_account_fields_and_refuses_api_or_managed_accounts
     let fixture = Fixture::new("success");
     let status = fixture.runtime.status(scope()).await.unwrap();
     assert!(status.connected);
+    assert_eq!(status.authenticated, Some(true));
     let public = serde_json::to_string(&status).unwrap();
     assert!(!public.contains("email"));
     assert!(!public.contains("private-test"));
     for mode in ["api", "team", "disconnected"] {
         let fixture = Fixture::new(mode);
-        assert!(!fixture.runtime.status(scope()).await.unwrap().connected);
+        let status = fixture.runtime.status(scope()).await.unwrap();
+        assert!(!status.connected);
+        assert_eq!(status.authenticated, Some(mode != "disconnected"));
         assert!(generate(&fixture.runtime, scope()).await.is_err());
         assert!(
             !fixture
@@ -508,4 +516,62 @@ async fn forgetting_stops_login_and_blocks_late_attempts() {
     ));
     tokio::time::sleep(Duration::from_millis(850)).await;
     assert!(!fixture.directory.0.join("child-survived").exists());
+}
+
+async fn complete_login(fixture: &Fixture, owner: SubscriptionScope) -> SubscriptionLogin {
+    let login = fixture.runtime.start_login(owner).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let status = fixture
+                .runtime
+                .login_status(owner, login.login_id)
+                .await
+                .unwrap();
+            if status.status != "pending" {
+                break status;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn unsupported_authenticated_accounts_can_logout_and_change_to_personal_subscription() {
+    for mode in ["login_api", "login_team"] {
+        let fixture = Fixture::new(mode);
+        let owner = scope();
+        assert_eq!(complete_login(&fixture, owner).await.status, "failed");
+        let status = fixture.runtime.status(owner).await.unwrap();
+        assert_eq!(status.authenticated, Some(true));
+        assert!(!status.connected && !status.available);
+        assert!(generate(&fixture.runtime, owner).await.is_err());
+        assert!(
+            !fixture
+                .calls()
+                .iter()
+                .any(|event| event.get("stdin").is_some())
+        );
+        let disconnected = fixture.runtime.logout(owner).await.unwrap();
+        assert_eq!(disconnected.authenticated, Some(false));
+        assert_eq!(disconnected.status, "disconnected");
+        assert_eq!(complete_login(&fixture, owner).await.status, "connected");
+        assert!(fixture.runtime.status(owner).await.unwrap().connected);
+        assert!(generate(&fixture.runtime, owner).await.is_ok());
+    }
+}
+
+#[tokio::test]
+async fn logout_rejects_a_client_that_keeps_an_unsupported_account_authenticated() {
+    for mode in ["stuck_api", "stuck_team"] {
+        let fixture = Fixture::new(mode);
+        let owner = scope();
+        let error = fixture.runtime.logout(owner).await.unwrap_err();
+        assert_eq!(error.model_run_error_class(), "provider_response_contract");
+        assert_eq!(
+            fixture.runtime.status(owner).await.unwrap().authenticated,
+            Some(true)
+        );
+    }
 }

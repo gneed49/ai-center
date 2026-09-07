@@ -17,6 +17,20 @@ Les prérequis et commandes d'arrêt sont dans le
 [guide de développement](../../docs/development.md). Le mode sans fournisseur
 est le défaut. `./dev doctor` peut diagnostiquer un prérequis manquant.
 
+Pour une base locale déjà utilisée avec une version précédente, appliquer les
+migrations en attente avant la recette. `./dev` ne met pas à jour une base déjà
+active. Depuis ce dépôt, après sauvegarde de la base et de la clé de chiffrement :
+
+```bash
+./dev stop
+npm run supabase -- start
+npm run supabase -- migration up --local
+./dev
+```
+
+La commande de migration conserve les données ; le serveur et le schéma doivent
+être livrés ensemble. Aucun reset automatique n'est nécessaire.
+
 ## Clés API et sélection
 
 1. Ouvrir **Réglages IA** et ajouter une connexion avec une clé personnelle et
@@ -52,7 +66,11 @@ est le défaut. `./dev doctor` peut diagnostiquer un prérequis manquant.
 3. Déconnecter le profil. Une nouvelle demande ne doit pas réutiliser une clé
    API de substitution. Tester aussi le message d'indisponibilité lorsque le
    client compatible manque.
-4. ChatGPT/Codex ne propose pas de connexion active dans cette livraison :
+4. Avec un compte API ou Team déjà authentifié, vérifier que la génération reste
+   indisponible, que sa raison est affichée, et que **Changer de compte** et
+   **Déconnecter l’abonnement** restent accessibles. Une déconnexion ne doit être
+   annoncée que lorsque le client officiel confirme la fin de l'authentification.
+5. ChatGPT/Codex ne propose pas de connexion active dans cette livraison :
    l'absence de tous les outils d'action doit d'abord être démontrée. Cette
    limitation est attendue ; elle ne constitue pas une connexion réussie.
 
