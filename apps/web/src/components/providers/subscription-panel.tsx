@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field";
 import { officialLoginUrl, providerError } from "@/lib/provider-settings";
 import { useProviderAction } from "./use-provider-action";
+import {
+  openSubscriptionLink,
+  usesSystemBrowser,
+} from "@/lib/subscription-link";
 
 const loginLabels = {
   pending: "Connexion en attente…",
@@ -114,7 +118,20 @@ export function SubscriptionPanel({
       </p>
       {url && (
         <Button asChild variant="outline">
-          <a href={url} target="_blank" rel="noopener noreferrer">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(event) => {
+              if (usesSystemBrowser()) {
+                event.preventDefault();
+                void action.run(
+                  () => openSubscriptionLink(url),
+                  () => {},
+                );
+              }
+            }}
+          >
             Continuer chez le fournisseur
             <ExternalLink data-icon="inline-end" />
           </a>
