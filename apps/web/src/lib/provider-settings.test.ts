@@ -32,6 +32,10 @@ describe("personal connection helpers", () => {
     "http://claude.com/oauth/authorize",
     "https://claude.com:444/oauth/authorize",
     "not-a-url",
+    "https://claude.com/cai/oauth/authorize#private",
+    "https://claude.com/cai/oauth/authorize?access_token=fixture",
+    "https://claude.com/cai/oauth/authorize?code=fixture",
+    "https://claude.com/redirect?target=https://evil.example",
   ])("rejects an unofficial login URL: %s", (url) =>
     expect(officialLoginUrl(url)).toBeUndefined(),
   );
