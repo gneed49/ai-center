@@ -31,6 +31,9 @@ compatibles et leurs limites sont présentés au même endroit.
 Voir le [guide de démarrage](docs/development.md), le
 [parcours des connexions](docs/product/06-personal-ai-connections.md) et la
 [recette manuelle](specs/provider-connections/manual-verification.md).
+Le [rapport de validation du 7 septembre](specs/provider-connections/validation-2026-09-07.md)
+présente les tests unitaires, les intégrations PostgreSQL et la clôture des
+revues Standards/Spec.
 Cette évolution du 7 septembre est livrée localement : sa validation repose
 sur les tests unitaires et d'intégration. Le propriétaire réalise les E2E et
 les essais avec ses comptes fournisseurs ; aucun résultat réel n'est présumé.
