@@ -76,3 +76,17 @@ propriétaire et des essais avec des comptes/crédits réels. Aucun abonnement
 n'est présenté comme finançant automatiquement une clé API. Le plan d'origine
 reste la référence produit pour le contexte, la provenance, les preuves et la
 couverture.
+
+## Corrections de revue PC-T05
+
+- Une lecture de corps HTTP interrompue ou expirée conserve sa classe transitoire
+  et la limite de trois tentatives ; un JSON complet invalide reste permanent.
+- L'échec local d'une connexion choisie conserve le message validé et son run en
+  échec avec l'identité choisie. Le replay reste idempotent, sans repli implicite.
+- L'état d'authentification d'un abonnement est distinct de son admissibilité ;
+  un compte API ou Team reste récupérable par déconnexion/changement de compte.
+- Le catalogue des fournisseurs API et leurs protocoles fixes ont une liste
+  commune, limitée aux cinq fournisseurs actuellement pris en charge.
+
+Preuves attendues : faux HTTP, faux processus, composants et PostgreSQL dédiés.
+La recette manuelle et les comptes réels restent à la charge du propriétaire.

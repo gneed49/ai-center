@@ -56,60 +56,71 @@ enum Protocol {
 }
 
 #[derive(Clone, Copy)]
-struct Preset {
-    id: &'static str,
+pub(crate) struct Preset {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub help_url: &'static str,
     origin: &'static str,
     generate_path: &'static str,
     models_path: &'static str,
     protocol: Protocol,
 }
 
+// The supported API providers share one catalogue with their fixed protocols.
+pub(crate) const API_PROVIDERS: &[Preset] = &[
+    Preset {
+        id: "openai",
+        name: "OpenAI",
+        help_url: "https://platform.openai.com/api-keys",
+        origin: "https://api.openai.com",
+        generate_path: "/v1/responses",
+        models_path: "/v1/models",
+        protocol: Protocol::Responses,
+    },
+    Preset {
+        id: "anthropic",
+        name: "Anthropic",
+        help_url: "https://console.anthropic.com/settings/keys",
+        origin: "https://api.anthropic.com",
+        generate_path: "/v1/messages",
+        models_path: "/v1/models",
+        protocol: Protocol::Anthropic,
+    },
+    Preset {
+        id: "kimi",
+        name: "Kimi / Moonshot",
+        help_url: "https://platform.moonshot.ai/console/api-keys",
+        origin: "https://api.moonshot.ai",
+        generate_path: "/v1/chat/completions",
+        models_path: "/v1/models",
+        protocol: Protocol::ChatJson,
+    },
+    Preset {
+        id: "deepseek",
+        name: "DeepSeek",
+        help_url: "https://platform.deepseek.com/api_keys",
+        origin: "https://api.deepseek.com",
+        generate_path: "/responses",
+        models_path: "/models",
+        protocol: Protocol::Responses,
+    },
+    Preset {
+        id: "openrouter",
+        name: "OpenRouter",
+        help_url: "https://openrouter.ai/settings/keys",
+        origin: "https://openrouter.ai",
+        generate_path: "/api/v1/chat/completions",
+        models_path: "/api/v1/models/user",
+        protocol: Protocol::ChatSchema,
+    },
+];
+
 fn preset(provider: &str) -> AppResult<Preset> {
-    let (id, origin, generate_path, models_path, protocol) = match provider {
-        "openai" => (
-            "openai",
-            "https://api.openai.com",
-            "/v1/responses",
-            "/v1/models",
-            Protocol::Responses,
-        ),
-        "anthropic" => (
-            "anthropic",
-            "https://api.anthropic.com",
-            "/v1/messages",
-            "/v1/models",
-            Protocol::Anthropic,
-        ),
-        "kimi" => (
-            "kimi",
-            "https://api.moonshot.ai",
-            "/v1/chat/completions",
-            "/v1/models",
-            Protocol::ChatJson,
-        ),
-        "deepseek" => (
-            "deepseek",
-            "https://api.deepseek.com",
-            "/responses",
-            "/models",
-            Protocol::Responses,
-        ),
-        "openrouter" => (
-            "openrouter",
-            "https://openrouter.ai",
-            "/api/v1/chat/completions",
-            "/api/v1/models/user",
-            Protocol::ChatSchema,
-        ),
-        _ => return Err(AppError::Invalid("unsupported AI provider".into())),
-    };
-    Ok(Preset {
-        id,
-        origin,
-        generate_path,
-        models_path,
-        protocol,
-    })
+    API_PROVIDERS
+        .iter()
+        .find(|preset| preset.id == provider)
+        .copied()
+        .ok_or_else(|| AppError::Invalid("unsupported AI provider".into()))
 }
 
 /// Construct a fixed official endpoint. No endpoint supplied by the user is accepted.
@@ -286,7 +297,16 @@ impl ApiTransport {
                         .and_then(|value| value.to_str().ok())
                 })
                 .and_then(safe_identifier);
-            let bytes = self.read_response(&mut response, attempt).await?;
+            let bytes = match Self::read_response(&mut response).await {
+                Ok(bytes) => bytes,
+                Err(class) => {
+                    if class.is_retryable() && attempt < MAX_ATTEMPTS {
+                        self.wait(attempt).await;
+                        continue;
+                    }
+                    return Err(self.error(class, attempt, Some(status.as_u16())));
+                }
+            };
             if status == StatusCode::TOO_MANY_REQUESTS {
                 let quota = serde_json::from_slice::<Value>(&bytes)
                     .ok()
@@ -315,24 +335,26 @@ impl ApiTransport {
     }
 
     async fn read_response(
-        &self,
         response: &mut reqwest::Response,
-        attempt: u32,
-    ) -> AppResult<Vec<u8>> {
+    ) -> Result<Vec<u8>, ProviderErrorClass> {
         if response
             .content_length()
             .is_some_and(|len| len > MAX_BODY_BYTES as u64)
         {
-            return Err(self.error(ProviderErrorClass::ResponseContract, attempt, None));
+            return Err(ProviderErrorClass::ResponseContract);
         }
         let mut bytes = Vec::new();
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|_| self.error(ProviderErrorClass::ResponseContract, attempt, None))?
-        {
+        while let Some(chunk) = response.chunk().await.map_err(|error| {
+            // Headers may succeed while the body times out or the peer disconnects.
+            // JSON decoding and size validation remain permanent contract failures.
+            if error.is_timeout() {
+                ProviderErrorClass::Timeout
+            } else {
+                ProviderErrorClass::Connection
+            }
+        })? {
             if bytes.len() + chunk.len() > MAX_BODY_BYTES {
-                return Err(self.error(ProviderErrorClass::ResponseContract, attempt, None));
+                return Err(ProviderErrorClass::ResponseContract);
             }
             bytes.extend_from_slice(&chunk);
         }

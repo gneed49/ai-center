@@ -19,7 +19,11 @@ use axum::{
 };
 use secrecy::SecretString;
 use serde_json::{Value, json};
-use tokio::{net::TcpListener, task::JoinHandle};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpListener,
+    task::{JoinHandle, JoinSet},
+};
 
 use super::{ApiTransport, Protocol, StructuredTransport, compile_schema, preset, validate_output};
 use crate::{
@@ -769,4 +773,84 @@ async fn engine_validates_non_http_transports_and_pins_selected_identity() {
     let output = valid.select_context(input()).await.unwrap();
     assert_eq!(output.metadata.provider, "fixture-subscription");
     assert_eq!(output.metadata.requested_model, "selected-model");
+}
+
+// Send valid headers and only part of the announced body before stalling or
+// closing. Unlike a delayed handler, this exercises response.chunk() failures.
+async fn body_failure_fixture(stall: bool, recover: bool) -> Fixture {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let state = FixtureState {
+        replies: Arc::new(Mutex::new(VecDeque::new())),
+        requests: Arc::new(Mutex::new(Vec::new())),
+        hits: Arc::new(AtomicUsize::new(0)),
+    };
+    let hits = Arc::clone(&state.hits);
+    let task = tokio::spawn(async move {
+        let mut connections = JoinSet::new();
+        loop {
+            tokio::select! {
+                accepted = listener.accept() => {
+                    let (mut stream, _) = accepted.unwrap();
+                    let hits = Arc::clone(&hits);
+                    connections.spawn(async move {
+                        let mut request = Vec::new();
+                        let mut buffer = [0_u8; 4096];
+                        loop {
+                            let read = stream.read(&mut buffer).await.unwrap();
+                            if read == 0 { return; }
+                            request.extend_from_slice(&buffer[..read]);
+                            if let Some(end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                                let headers = String::from_utf8_lossy(&request[..end]);
+                                let length = headers.lines().find_map(|line| {
+                                    let (key, value) = line.split_once(':')?;
+                                    key.eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().unwrap())
+                                }).unwrap_or(0);
+                                if request.len() >= end + 4 + length { break; }
+                            }
+                        }
+                        let attempt = hits.fetch_add(1, Ordering::SeqCst) + 1;
+                        if recover && attempt > 1 {
+                            let body = response("openai", json!({"ok":true})).to_string();
+                            let response = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+                            stream.write_all(response.as_bytes()).await.unwrap();
+                        } else {
+                            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 200\r\nConnection: close\r\n\r\n{").await.unwrap();
+                            if stall { tokio::time::sleep(Duration::from_secs(2)).await; }
+                        }
+                    });
+                }
+                _ = connections.join_next(), if !connections.is_empty() => {}
+            }
+        }
+    });
+    Fixture {
+        origin,
+        state,
+        task,
+    }
+}
+
+#[tokio::test]
+async fn body_timeouts_and_disconnections_retry_without_becoming_contract_errors() {
+    for (stall, class) in [
+        (true, ProviderErrorClass::Timeout),
+        (false, ProviderErrorClass::Connection),
+    ] {
+        let fixture = body_failure_fixture(stall, false).await;
+        let error = generate(&fixture.client("openai", Duration::from_millis(100)))
+            .await
+            .unwrap_err();
+        assert_error(&error, class, 3);
+        assert!(error.is_retryable_provider_failure());
+        assert_eq!(fixture.state.hits.load(Ordering::SeqCst), 3);
+
+        let fixture = body_failure_fixture(stall, true).await;
+        let result = generate(&fixture.client("openai", Duration::from_millis(100)))
+            .await
+            .unwrap();
+        assert_eq!(result.metadata.attempts, 2);
+        assert_eq!(result.output, json!({"ok":true}));
+        assert_eq!(fixture.state.hits.load(Ordering::SeqCst), 2);
+    }
 }

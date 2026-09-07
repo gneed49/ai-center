@@ -42,6 +42,24 @@ Si Docker est installé mais arrêté, le lanceur tente `systemctl start docker`
 sans interaction lorsque les droits `sudo` le permettent. Sinon, il indique la
 commande exacte à exécuter manuellement.
 
+## Mettre à jour une base locale existante
+
+Le lanceur réutilise une base déjà active. Il n'applique pas les migrations en
+attente. Après avoir récupéré cette version du dépôt, arrêter l'ancien serveur
+et appliquer les migrations locales avant de redémarrer :
+
+```bash
+./dev stop
+npm run supabase -- start
+npm run supabase -- migration up --local
+./dev
+```
+
+Cette séquence conserve les données et applique les migrations en attente, sans
+réinitialiser la base. Le serveur et le schéma doivent être mis à jour ensemble :
+les réglages IA nécessitent les tables de connexions personnelles. Conserver une
+sauvegarde de la base et de la clé de chiffrement avant une mise à jour.
+
 ## Commandes
 
 | Commande | Effet |

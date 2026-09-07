@@ -72,6 +72,9 @@ pub struct SubscriptionCapability {
 #[derive(Clone, Debug, Serialize)]
 pub struct SubscriptionStatus {
     pub status: &'static str,
+    /// Official authentication state; unknown when the client cannot be inspected.
+    pub authenticated: Option<bool>,
+    /// Authenticated and eligible for generation through this integration.
     pub connected: bool,
     pub available: bool,
     pub message: Option<String>,
@@ -358,6 +361,7 @@ impl SubscriptionRuntime {
         if !capability.available {
             return Ok(SubscriptionStatus {
                 status: "unavailable",
+                authenticated: None,
                 connected: false,
                 available: false,
                 message: capability.reason,
@@ -546,7 +550,7 @@ impl SubscriptionRuntime {
             return Err(failure(ProviderErrorClass::Authentication));
         }
         let state = read_status(&self.inner.executable, &paths).await?;
-        if state.connected {
+        if state.authenticated != Some(false) {
             return Err(failure(ProviderErrorClass::ResponseContract));
         }
         Ok(state)
@@ -883,6 +887,7 @@ fn parse_status(result: &ProcessOutput) -> AppResult<SubscriptionStatus> {
     if !logged_in && result.status.code() == Some(1) {
         return Ok(SubscriptionStatus {
             status: "disconnected",
+            authenticated: Some(false),
             connected: false,
             available: true,
             message: None,
@@ -892,7 +897,7 @@ fn parse_status(result: &ProcessOutput) -> AppResult<SubscriptionStatus> {
         return Err(failure(ProviderErrorClass::ResponseContract));
     }
     if value.get("authMethod").and_then(Value::as_str) != Some("claude.ai") {
-        return Ok(SubscriptionStatus { status: "unavailable", connected: false, available: false, message: Some("Cette connexion utilise une facturation API. Choisir une clé API ou un abonnement personnel dans le client officiel.".into()) });
+        return Ok(SubscriptionStatus { status: "unavailable", authenticated: Some(true), connected: false, available: false, message: Some("Cette connexion utilise une facturation API. Choisir une clé API ou un abonnement personnel dans le client officiel.".into()) });
     }
     // Team/Enterprise can fetch managed hooks at startup. Do not attempt to
     // override or bypass those policies through a local subprocess environment.
@@ -900,10 +905,11 @@ fn parse_status(result: &ProcessOutput) -> AppResult<SubscriptionStatus> {
         value.get("subscriptionType").and_then(Value::as_str),
         Some("pro" | "max")
     ) {
-        return Ok(SubscriptionStatus { status: "unavailable", connected: false, available: false, message: Some("Ce type de compte nécessite une vérification de ses politiques administrées avant utilisation sans outils.".into()) });
+        return Ok(SubscriptionStatus { status: "unavailable", authenticated: Some(true), connected: false, available: false, message: Some("Ce type de compte nécessite une vérification de ses politiques administrées avant utilisation sans outils.".into()) });
     }
     Ok(SubscriptionStatus {
         status: "connected",
+        authenticated: Some(true),
         connected: true,
         available: true,
         message: None,

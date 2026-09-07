@@ -585,13 +585,14 @@ async fn send_message_command(
     input: SendMessage,
     lease: Option<&IdempotencyLease>,
 ) -> AppResult<SessionView> {
-    let engine = crate::providers::resolve_engine(state).await?;
     let content = input.content.trim();
     if content.is_empty() {
         return Err(AppError::Invalid("message content is required".into()));
     }
     let mut initial_tx = state.begin_request().await?;
     let session = session_by_public(&mut initial_tx, state.workspace_id, session_id).await?;
+    let resolution =
+        crate::providers::resolve_engine_in_transaction(state, &mut initial_tx).await?;
 
     // Persist the user's intent before contacting an external provider.
     let inserted_user = sqlx::query(
@@ -677,8 +678,8 @@ async fn send_message_command(
     let input_hash = sha256_json(&run_fingerprint)?;
     let model_run = start_model_run(
         &mut initial_tx,
-        engine.provider_name(),
-        engine.requested_model(),
+        &resolution.provider,
+        &resolution.model,
         ModelRunStart {
             workspace_id: session.workspace_id,
             project_id: session.project_id,
@@ -693,6 +694,16 @@ async fn send_message_command(
         },
     )
     .await?;
+    let engine = match resolution.engine {
+        Ok(engine) => engine,
+        Err(error) => {
+            // Preserve the validated intent and selected identity on local failure.
+            fail_model_run_in_transaction(&mut initial_tx, model_run.id, None, None, &error)
+                .await?;
+            initial_tx.commit().await?;
+            return Err(error);
+        }
+    };
     initial_tx.commit().await?;
     let engine_result = match idempotency::with_optional_lease(
         state,

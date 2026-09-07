@@ -6,7 +6,7 @@ use crate::{
     agent::{AgentEngine, DeterministicEngine, StructuredEngine},
     error::{AppError, AppResult},
     idempotency::{self, IdempotencyLease},
-    integrations::providers::{ProviderModel, StructuredTransport, api_transport},
+    integrations::providers::{API_PROVIDERS, ProviderModel, StructuredTransport, api_transport},
     provider_subscriptions::{SubscriptionRuntime, SubscriptionScope},
     service::AppState,
 };
@@ -133,10 +133,7 @@ fn subscription_provider(provider: &str) -> bool {
     matches!(provider, "claude_subscription" | "codex_subscription")
 }
 fn valid_provider(provider: &str) -> bool {
-    matches!(
-        provider,
-        "openai" | "anthropic" | "kimi" | "deepseek" | "openrouter" | "claude_subscription"
-    )
+    provider == "claude_subscription" || API_PROVIDERS.iter().any(|preset| preset.id == provider)
 }
 
 pub async fn settings(state: &AppState) -> AppResult<Settings> {
@@ -145,40 +142,18 @@ pub async fn settings(state: &AppState) -> AppResult<Settings> {
         .providers
         .as_ref()
         .is_some_and(|runtime| runtime.cipher.is_some());
-    let mut providers = [
-        ("openai", "OpenAI", "https://platform.openai.com/api-keys"),
-        (
-            "anthropic",
-            "Anthropic",
-            "https://console.anthropic.com/settings/keys",
-        ),
-        (
-            "kimi",
-            "Kimi / Moonshot",
-            "https://platform.moonshot.ai/console/api-keys",
-        ),
-        (
-            "deepseek",
-            "DeepSeek",
-            "https://platform.deepseek.com/api_keys",
-        ),
-        (
-            "openrouter",
-            "OpenRouter",
-            "https://openrouter.ai/settings/keys",
-        ),
-    ]
-    .into_iter()
-    .map(|(id, name, help_url)| Provider {
-        id,
-        name,
-        help_url,
-        auth_method: "api_key",
-        available,
-        unavailable_reason: (!available)
-            .then(|| "Le stockage sécurisé n’est pas configuré sur le serveur.".into()),
-    })
-    .collect::<Vec<_>>();
+    let mut providers = API_PROVIDERS
+        .iter()
+        .map(|preset| Provider {
+            id: preset.id,
+            name: preset.name,
+            help_url: preset.help_url,
+            auth_method: "api_key",
+            available,
+            unavailable_reason: (!available)
+                .then(|| "Le stockage sécurisé n’est pas configuré sur le serveur.".into()),
+        })
+        .collect::<Vec<_>>();
     let capability = if let Some(runtime) = state
         .providers
         .as_ref()
@@ -367,60 +342,118 @@ pub async fn select(
     Ok(input)
 }
 
+#[derive(sqlx::FromRow)]
+struct TransportConnection {
+    provider: String,
+    model: String,
+    key_ciphertext: Option<Vec<u8>>,
+}
+
+async fn transport_connection(
+    state: &AppState,
+    id: Uuid,
+    tx: &mut Transaction<'_, Postgres>,
+) -> AppResult<TransportConnection> {
+    sqlx::query_as("select provider,model,key_ciphertext from app.provider_connections where public_id=$1 and workspace_id=$2 and actor_id=$3")
+        .bind(id).bind(workspace(state)?).bind(state.actor_id)
+        .fetch_optional(&mut **tx).await?.ok_or(AppError::NotFound)
+}
+
+fn connection_transport(
+    state: &AppState,
+    id: Uuid,
+    connection: &TransportConnection,
+) -> AppResult<Arc<dyn StructuredTransport>> {
+    if subscription_provider(&connection.provider) {
+        let (runtime, scope) = subscription_runtime_for(state, id)?;
+        Ok(runtime.transport(scope))
+    } else {
+        api_transport(
+            &connection.provider,
+            cipher(state)?.decrypt(
+                state.workspace_id,
+                state.actor_id,
+                id,
+                &connection.provider,
+                connection
+                    .key_ciphertext
+                    .as_deref()
+                    .ok_or_else(encryption::storage_error)?,
+            )?,
+        )
+    }
+}
+
 async fn read_transport(
     state: &AppState,
     id: Uuid,
     tx: &mut Transaction<'_, Postgres>,
 ) -> AppResult<(Arc<dyn StructuredTransport>, String)> {
-    let (provider,model,ciphertext):(String,String,Option<Vec<u8>>)=sqlx::query_as("select provider,model,key_ciphertext from app.provider_connections where public_id=$1 and workspace_id=$2 and actor_id=$3").bind(id).bind(workspace(state)?).bind(state.actor_id).fetch_optional(&mut **tx).await?.ok_or(AppError::NotFound)?;
-    let transport = if subscription_provider(&provider) {
-        let (runtime, scope) = subscription_runtime_for(state, id)?;
-        runtime.transport(scope)
-    } else {
-        api_transport(
-            &provider,
-            cipher(state)?.decrypt(
-                state.workspace_id,
-                state.actor_id,
-                id,
-                &provider,
-                &ciphertext.ok_or_else(encryption::storage_error)?,
-            )?,
-        )?
-    };
-    Ok((transport, model))
+    let connection = transport_connection(state, id, tx).await?;
+    Ok((
+        connection_transport(state, id, &connection)?,
+        connection.model,
+    ))
 }
-pub async fn resolve_engine(state: &AppState) -> AppResult<Arc<dyn AgentEngine>> {
+
+/// Retain the selected identity even when local credentials cannot initialize it.
+/// No generation or fallback occurs during resolution.
+pub(crate) struct EngineResolution {
+    pub provider: String,
+    pub model: String,
+    pub engine: AppResult<Arc<dyn AgentEngine>>,
+}
+
+pub(crate) async fn resolve_engine_in_transaction(
+    state: &AppState,
+    tx: &mut Transaction<'_, Postgres>,
+) -> AppResult<EngineResolution> {
     require_editor(state)?;
-    // None exists only in deterministic test fixtures / legacy embedded callers.
-    if state.providers.is_none() {
-        return Ok(Arc::clone(&state.engine));
-    }
-    let mut tx = state.begin_request().await?;
-    lock_actor(state, &mut tx).await?;
-    let selection = read_selection(state, &mut tx).await?;
-    let engine: Arc<dyn AgentEngine> = match selection.mode.as_str() {
-        "server_default" => Arc::clone(&state.engine),
-        "deterministic" => Arc::new(DeterministicEngine),
-        "connection" => {
-            let (transport, model) = read_transport(
-                state,
-                selection
+    let engine: Arc<dyn AgentEngine> = if state.providers.is_none() {
+        // Legacy embedded callers and deterministic fixtures have no settings store.
+        Arc::clone(&state.engine)
+    } else {
+        lock_actor(state, tx).await?;
+        let selection = read_selection(state, tx).await?;
+        match selection.mode.as_str() {
+            "server_default" => Arc::clone(&state.engine),
+            "deterministic" => Arc::new(DeterministicEngine),
+            "connection" => {
+                let id = selection
                     .connection_id
-                    .ok_or_else(encryption::storage_error)?,
-                &mut tx,
-            )
-            .await?;
-            Arc::new(StructuredEngine::with_transport(transport, model))
-        }
-        _ => {
-            return Err(AppError::Agent(
-                "The selected AI connection is invalid".into(),
-            ));
+                    .ok_or_else(encryption::storage_error)?;
+                let connection = transport_connection(state, id, tx).await?;
+                let engine = connection_transport(state, id, &connection).map(|transport| {
+                    Arc::new(StructuredEngine::with_transport(
+                        transport,
+                        connection.model.clone(),
+                    )) as Arc<dyn AgentEngine>
+                });
+                return Ok(EngineResolution {
+                    provider: connection.provider,
+                    model: connection.model,
+                    engine,
+                });
+            }
+            _ => {
+                return Err(AppError::Agent(
+                    "The selected AI connection is invalid".into(),
+                ));
+            }
         }
     };
+    Ok(EngineResolution {
+        provider: engine.provider_name().into(),
+        model: engine.requested_model().into(),
+        engine: Ok(engine),
+    })
+}
+
+pub async fn resolve_engine(state: &AppState) -> AppResult<Arc<dyn AgentEngine>> {
+    let mut tx = state.begin_request().await?;
+    let resolution = resolve_engine_in_transaction(state, &mut tx).await?;
     tx.commit().await?;
-    Ok(engine)
+    resolution.engine
 }
 pub async fn test(state: &AppState, id: Uuid) -> AppResult<ConnectionTest> {
     require_editor(state)?;

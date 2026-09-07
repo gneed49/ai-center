@@ -16,10 +16,19 @@ supplémentaire. Les mutations utilisent le contrat Idempotency-Key commun.
 - `POST /api/ai/connections/{id}/subscription/login/{login_id}/cancel` → tentative annulée.
 - `POST /api/ai/connections/{id}/subscription/logout` → état déconnecté après vérification.
 
-État : `{ status, connected, available, message }`, avec `status` dans
+État : `{ status, authenticated, connected, available, message }`, avec `status` dans
 `connected | disconnected | unavailable | unknown` et `message` nullable.
 Il ne contient aucune adresse e-mail, organisation, identifiant de compte
 fournisseur, chemin privé ou sortie brute du client.
+
+`authenticated` rapporte le champ officiel `loggedIn` : booléen si l'état a été
+vérifié, `null` si le client est indisponible et ne peut pas être inspecté.
+`connected` signifie que le compte authentifié est admissible pour la génération.
+Un compte API ou Team peut donc être authentifié tout en ayant `connected: false`
+et `available: false`. Il reste possible de le déconnecter ou de changer de compte
+sans supprimer le profil. Le serveur vérifie `authenticated: false` après le
+logout officiel ; une réponse encore authentifiée est une erreur. Le motif
+d'inadmissibilité reste visible après une tentative de login non admissible.
 
 Tentative : `{ login_id, status, auth_url }`, avec `status` dans
 `pending | connected | failed | cancelled | expired` et `auth_url` nullable.
@@ -129,11 +138,13 @@ fournisseur n’a été exécutée pendant notre implémentation.
 
 ## Preuve de validation PC-T03
 
-16 tests unitaires et d’intégration de processus passent avec une CLI Python
+18 tests unitaires et d’intégration de processus passent avec une CLI Python
 factice : isolation des scopes et de l’environnement, stdin privé, version
 future refusée, URLs officielles, comptes personnels, enveloppes invalides,
 limites de sortie, échéances, annulation des descendants, logout et suppression
-sans client. `cargo clippy -p ai-center-server --all-targets --offline -- -D warnings`
+sans client. Les régressions PC-T05 couvrent aussi le login API/Team, sa
+récupération vers un abonnement personnel, et un logout qui laisse le compte
+authentifié. `cargo clippy -p ai-center-server --all-targets --offline -- -D warnings`
 passe. Le module a été compilé contre le contrat PC-T01 et les dépendances
 `tokio/process/io-util/fs` et `nix/signal/process`, fournies à l’intégration par
 PC-T02. Aucune preuve fournisseur réel ou E2E n’est revendiquée.
