@@ -9,8 +9,12 @@ import type {
   SubscriptionStatus,
 } from "./provider-types";
 
+function privateRequest<T>(path: string, init?: RequestInit) {
+  return request<T>(path, { ...init, cache: "no-store" });
+}
+
 function post<T>(path: string, body: unknown, key = createIdempotencyKey()) {
-  return request<T>(path, {
+  return privateRequest<T>(path, {
     method: "POST",
     headers: { "Idempotency-Key": key },
     body: JSON.stringify(body),
@@ -23,7 +27,7 @@ const connectionPath = (id: string) =>
 // Only masked metadata belongs in a query cache. Call secret mutations directly.
 export const providersApi = {
   settings: (signal?: AbortSignal) =>
-    request<ProviderSettings>("/api/ai/settings", { signal }),
+    privateRequest<ProviderSettings>("/api/ai/settings", { signal }),
   create: (input: ConnectionInput, key: string) =>
     post<ProviderConnection>("/api/ai/connections", input, key),
   update: (
@@ -41,13 +45,16 @@ export const providersApi = {
   select: (selection: ProviderSelection) =>
     post<ProviderSelection>("/api/ai/selection", selection),
   subscriptionStatus: (id: string, signal?: AbortSignal) =>
-    request<SubscriptionStatus>(`${connectionPath(id)}/subscription/status`, {
-      signal,
-    }),
+    privateRequest<SubscriptionStatus>(
+      `${connectionPath(id)}/subscription/status`,
+      {
+        signal,
+      },
+    ),
   startLogin: (id: string) =>
     post<SubscriptionLogin>(`${connectionPath(id)}/subscription/login`, {}),
   loginStatus: (id: string, loginId: string, signal?: AbortSignal) =>
-    request<SubscriptionLogin>(
+    privateRequest<SubscriptionLogin>(
       `${connectionPath(id)}/subscription/login/${encodeURIComponent(loginId)}`,
       { signal },
     ),

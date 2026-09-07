@@ -31,6 +31,7 @@ describe("provider HTTP boundary", () => {
       "Idempotency-Key": "retry-identity",
     });
     expect(JSON.parse(init.body)).toEqual(input);
+    expect(init.cache).toBe("no-store");
   });
   it("omits an unchanged key and sends test actions without a prompt", async () => {
     setRequestIdentity("actor-b", "workspace-a", "fixture-token");

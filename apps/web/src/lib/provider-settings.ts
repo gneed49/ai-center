@@ -34,7 +34,11 @@ export function officialLoginUrl(
       !url.password &&
       !url.port &&
       !url.hash &&
-      paths[url.hostname] === url.pathname
+      paths[url.hostname] === url.pathname.replace(/\/$/, "") &&
+      !["access_token", "refresh_token", "id_token"].some((key) =>
+        url.searchParams.has(key),
+      ) &&
+      url.searchParams.getAll("code").every((value) => value === "true")
     )
       return url.href;
   } catch {
