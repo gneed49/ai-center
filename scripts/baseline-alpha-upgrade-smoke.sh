@@ -19,6 +19,12 @@ require_command() {
 require_command createdb
 require_command dropdb
 require_command psql
+require_command python3
+
+# Capture the checked plan before creating a database. Process substitution
+# would hide a discovery failure from set -e and could silently skip upgrades.
+alpha_migration_plan="$(python3 scripts/migration-plan.py supabase/migrations)"
+mapfile -t alpha_migrations <<<"${alpha_migration_plan}"
 
 : "${AI_CENTER_ADMIN_DATABASE_URL:?AI_CENTER_ADMIN_DATABASE_URL doit viser le PostgreSQL Supabase local avec le rôle de migration}"
 
@@ -67,7 +73,7 @@ psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet \
   --file=supabase/roles.sql
 psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet \
   --dbname="${alpha_upgrade_database_url}" \
-  --file=supabase/migrations/20260818003330_initial_domain.sql
+  --file="supabase/migrations/${alpha_migrations[0]}"
 
 # Reproduce the durable state that exists before Alpha: multiple workspaces,
 # but no workspace_members table yet.
@@ -89,7 +95,17 @@ SQL
 
 psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet \
   --dbname="${alpha_upgrade_database_url}" \
-  --file=supabase/migrations/20260825121915_alpha_context_proof.sql
+  --file=scripts/sql/upgrade-legacy-fixtures.sql
+
+for alpha_migration in "${alpha_migrations[@]:1}"; do
+  psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet \
+    --dbname="${alpha_upgrade_database_url}" \
+    --file="supabase/migrations/${alpha_migration}"
+done
+
+psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet \
+  --dbname="${alpha_upgrade_database_url}" \
+  --file=scripts/sql/verify-upgraded-domain.sql
 
 alpha_unrecoverable_workspace_count="$(
   psql --no-psqlrc --set=ON_ERROR_STOP=1 \
@@ -116,4 +132,5 @@ if [[ "${alpha_unrecoverable_workspace_count}" != "0" ]]; then
   exit 1
 fi
 
-printf 'Upgrade baseline→alpha vérifié: chaque workspace legacy conserve un owner accepté.\n'
+printf 'Upgrade baseline→courant vérifié: %s migrations, dernière %s ; owners et données legacy conservés.\n' \
+  "${#alpha_migrations[@]}" "${alpha_migrations[-1]}"

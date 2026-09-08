@@ -609,6 +609,19 @@ async fn send_message_command(
     .execute(&mut *initial_tx)
     .await?;
     if inserted_user.rows_affected() == 0 {
+        let existing_content: String = sqlx::query_scalar(
+            "select content from app.messages
+             where session_id = $1 and role = 'user' and client_message_id = $2",
+        )
+        .bind(session.id)
+        .bind(input.client_message_id)
+        .fetch_one(&mut *initial_tx)
+        .await?;
+        if existing_content.trim() != content {
+            return Err(AppError::Conflict(
+                "this client message identity is already bound to different content".into(),
+            ));
+        }
         let assistant_exists: bool = sqlx::query_scalar(
             "select exists(select 1 from app.messages
              where session_id = $1 and role = 'assistant' and client_message_id = $2)",

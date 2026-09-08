@@ -30,10 +30,18 @@ doit porter le nom attendu et le label exact de cette identité CI. Seuls les
 volumes DB/storage validés et détachés sont supprimés, individuellement et sans
 force. Toute autre erreur reste un échec de nettoyage.
 
-La phase `integration` comprend migration baseline→alpha, reset de la seule
+La phase `integration` comprend migration baseline→schéma courant, reset de la seule
 base de test, pgTAP, contrôle/provisionnement du rôle runtime et tests Rust
 PostgreSQL. Le mot de passe runtime est généré pour chaque run et transmis
 uniquement par l’environnement des processus.
+
+Le contrôle d'upgrade découvre toutes les migrations versionnées dans l'ordre,
+à partir de la baseline du 18 août. Il refuse les noms ambigus, versions dupliquées,
+fichiers vides et liens symboliques avant de créer sa base temporaire. Deux
+workspaces avec connaissances confirmées et événements antérieurs sont créés
+avant la première mise à niveau ; les assertions vérifient leur conservation,
+les owners acceptés et les effets des migrations jusqu'aux connexions personnelles.
+Chaque erreur SQL arrête la chaîne et déclenche le nettoyage de cette seule base.
 
 Pour exécuter seulement une partie du contrôle, lister les phases nécessaires.
 Les phases qui utilisent les données applicatives nécessitent `integration`
@@ -99,6 +107,7 @@ Contrôles hors réseau :
 
 ```bash
 python3 -m unittest discover -s scripts/tests -p 'test_integration_target.py'
+python3 -m unittest discover -s scripts/tests -p 'test_migration_plan.py'
 bash -n scripts/integration-common.sh scripts/integration-stack.sh scripts/ci-desktop.sh
 ```
 

@@ -52,6 +52,7 @@ quality() {
   python3 -m py_compile scripts/alpha-eval.py scripts/alpha-live-eval.py
   python3 -m unittest discover -s scripts/tests -p 'test_alpha*.py'
   python3 -m unittest discover -s scripts/tests -p 'test_integration_target.py'
+  python3 -m unittest discover -s scripts/tests -p 'test_migration_plan.py'
   python3 -m unittest discover -s scripts/tests -p 'test_native_smoke.py'
   npm run build:web
   cargo build -p ai-center-server
