@@ -169,6 +169,31 @@ La PR publique est restée au point `91dc76b` lors de la consultation du
 promotion n'est impliquée par ces corrections. Les campagnes, observations
 humaines et durées d'usage restent à réaliser selon le plan d'origine.
 
+### Complément documentaire du 8 septembre — ACP-T14
+
+Le décalage entre le lien FigJam historique et le flow Alpha versionné ouvre
+[ACP-T14](tickets.md#acp-t14--vue-figjam-alpha-et-traçabilité-documentaire).
+Ce complément traite le support visuel demandé en phase 0.
+
+1. Conserver les trois sources Mermaid et leurs exports ; relever le contenu
+   du board historique sans le modifier.
+2. Ajouter à côté une vue Alpha alignée sur le flow de bout en bout, puis
+   vérifier les nœuds, connexions et frontières de production/lecture.
+3. Relier directement cette vue depuis les deux index, distinguer l'historique
+   et consigner la preuve datée dans le registre documentaire et le statut.
+4. Vérifier le format, les liens et le diff ; relire le lot selon Standards et
+   Spec avant son intégration locale.
+
+La validation du schéma est indépendante des preuves fonctionnelles : aucun
+test applicatif, E2E, smoke natif ou appel fournisseur réel n'est nécessaire
+à ce lot. Il ne modifie pas l'état des gates d'usage réel ni de promotion.
+
+**Livraison du 8 septembre :** la vue Alpha est ajoutée au board existant,
+reliée directement depuis README et l'index d'architecture, et relue après
+regroupement. La [note documentaire](../../docs/architecture/diagram-validation-2026-09-08.md)
+localise les preuves et distingue le dessin historique conservé. Les sources
+Mermaid et les exports sont inchangés ; la livraison Git reste locale.
+
 ### Règle permanente
 
 Toute pull request d'implémentation doit citer au moins un identifiant ACP et

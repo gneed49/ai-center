@@ -42,6 +42,13 @@ locaux ; aucun nouveau push, déploiement ou lancement de CI n'a eu lieu.
 
 ## Preuves datées
 
+- **8 septembre, ACP-T14 — `Vérifié` documentaire :** la
+  [vue FigJam Alpha Context Proof](https://www.figma.com/board/gn5z1F1tnQpQ23580fQ5QC?node-id=7-213)
+  ajoute les 14 nœuds et 18 connecteurs du flow à côté du dessin historique
+  conservé. Lecture API et inspection visuelle sont consignées dans la
+  [note du schéma](docs/architecture/diagram-validation-2026-09-08.md).
+  Mermaid et les exports sont inchangés ; les liens et le suivi Git restent
+  locaux. Cette preuve ne valide aucun parcours fonctionnel supplémentaire.
 - **8 septembre, sources intégrées à `b20d36f` sans retouche** : 7 intégrations
   PostgreSQL ciblées, 7 unités de migration, 17 unités de garde de cible,
   upgrade réel sur les 5 migrations et restauration de 41 tables/98 policies.
