@@ -11,21 +11,21 @@ Les tickets ci-dessous forment un graphe. Un ticket dépendant commence après
 intégration de ses prérequis. Les branches de travail sont fusionnées dans la
 branche de consolidation après leurs validations ciblées.
 
-| Ticket  | Objet                                                  | Dépendances        | Statut                                                       |
-| ------- | ------------------------------------------------------ | ------------------ | ------------------------------------------------------------ |
-| ACP-T01 | Intégration locale isolée                              | Aucune             | Intégré et vérifié localement                                |
-| ACP-T02 | Invalidation ciblée des versions sources               | Aucune             | Intégré et vérifié localement                                |
-| ACP-T03 | Références GitHub repository, PR, commit et checks     | Aucune             | Intégré ; contrats simulés et PostgreSQL vérifiés            |
-| ACP-T04 | Certification des parcours desktop manquants           | T01, T02, T03, T07 | Intégré ; 126 tests UI simulés, contrôle exploratoire ouvert |
-| ACP-T05 | Revue du protocole d'évaluation et gates de promotion  | Aucune             | Technique vérifiée ; gates live ouvertes                     |
-| ACP-T06 | Revue Standards/Spec, corrections et preuves courantes | T01–T05, T07–T10   | Correctifs et revues vérifiés ; gates externes ouvertes      |
-| ACP-T07 | Évaluation structurée de couverture                    | T02                | Intégré et vérifié localement                                |
-| ACP-T08 | Traçabilité du travail externe                         | T03, T07           | Intégré et vérifié localement                                |
-| ACP-T09 | Dépendances web                                        | Aucune             | Intégré ; audit npm sans avis                                |
-| ACP-T10 | Smoke métier du client Tauri Linux                     | T01                | Code/build vérifiés ; exécution métier native bloquée        |
-| ACP-T11 | Upgrade de la baseline jusqu'à toutes les migrations courantes | T01, connexions personnelles | Confirmé le 8 septembre ; à corriger |
-| ACP-T12 | Reprise d'un message liée à son contenu original | T06, connexions personnelles | Confirmé le 8 septembre ; à corriger |
-| ACP-T13 | Transport borné du harness de campagne réelle | T05 | Confirmé le 8 septembre ; à corriger |
+| Ticket  | Objet                                                          | Dépendances                  | Statut                                                                           |
+| ------- | -------------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------- |
+| ACP-T01 | Intégration locale isolée                                      | Aucune                       | Intégré et vérifié localement                                                    |
+| ACP-T02 | Invalidation ciblée des versions sources                       | Aucune                       | Intégré et vérifié localement                                                    |
+| ACP-T03 | Références GitHub repository, PR, commit et checks             | Aucune                       | Intégré ; contrats simulés et PostgreSQL vérifiés                                |
+| ACP-T04 | Certification des parcours desktop manquants                   | T01, T02, T03, T07           | Intégré ; 126 tests UI simulés historiques, recette E2E propriétaire ouverte     |
+| ACP-T05 | Revue du protocole d'évaluation et gates de promotion          | Aucune                       | Technique vérifiée ; gates live ouvertes                                         |
+| ACP-T06 | Revue Standards/Spec, corrections et preuves courantes         | T01–T05, T07–T10             | Correctifs et revues vérifiés ; gates externes ouvertes                          |
+| ACP-T07 | Évaluation structurée de couverture                            | T02                          | Intégré et vérifié localement                                                    |
+| ACP-T08 | Traçabilité du travail externe                                 | T03, T07                     | Intégré et vérifié localement                                                    |
+| ACP-T09 | Dépendances web                                                | Aucune                       | Intégré ; audit npm sans avis                                                    |
+| ACP-T10 | Smoke métier du client Tauri Linux                             | T01                          | Code/build vérifiés historiquement ; recette native propriétaire ouverte         |
+| ACP-T11 | Upgrade de la baseline jusqu'à toutes les migrations courantes | T01, connexions personnelles | Intégré ; upgrade des 5 migrations vérifié localement le 8 septembre             |
+| ACP-T12 | Reprise d'un message liée à son contenu original               | T06, connexions personnelles | Intégré ; régression incluse dans les 7 tests DB ciblés réussis le 8 septembre   |
+| ACP-T13 | Transport borné du harness de campagne réelle                  | T05                          | Intégré ; 41 tests Alpha simulés réussis le 8 septembre, campagne réelle ouverte |
 
 Point de contrôle intermédiaire du 5 septembre 2026 : T01, T02, T03 et T07 sont réunis au
 commit `37921d8`. Le cycle isolé complet passe : 32 pgTAP, neuf tests métier
@@ -92,13 +92,16 @@ GitHub ; parcours d'import cohérent dans l'interface.
 Compléter les lacunes constatées dans les scénarios existants : offline et
 reconnexion avec saisie préservée, réponse perdue et replay, résolution en conflit,
 parcours complet plan/preuve/couverture/historique, erreurs par route et
-ressources hors scope. Vérifier les comportements dans le navigateur avant
-figer les tests. Les preuves simulées et full-stack restent identifiées.
+ressources hors scope. Les scénarios sont intégrés ; les preuves simulées et
+full-stack historiques restent identifiées. Selon la consigne du 7 septembre,
+la recette navigateur/E2E et le contrôle exploratoire de la version courante
+sont réalisés par le propriétaire ; ils ne sont pas présumés réussis.
 
 Vérifier également le changement d'utilisateur dans le même onglet et entre
 onglets : les requêtes en cours, caches et sélections de workspace de l'ancien
-acteur ne doivent jamais apparaître sous la nouvelle identité. La lecture du
-code montre actuellement un QueryClient global sans reset lié à l'identité.
+acteur ne doivent jamais apparaître sous la nouvelle identité. Le constat
+initial du QueryClient global sans reset lié à l'identité a été corrigé dans
+la consolidation ; les preuves datées restent celles du rapport du 5 septembre.
 
 **Acceptation :** suites significatives sur Chromium 1440×900 et 1024×768,
 Firefox desktop ; zéro erreur inattendue, duplication, fuite ou violation axe
@@ -208,17 +211,22 @@ T06 attend également T09. Ce ticket est indépendant des changements métier.
 
 **Exigences :** ACP-071 ; phases 1, 8 et 10.
 
-Le job Tauri actuel compile seulement le binaire. Ajouter un smoke WebDriver
-qui lance le vrai client Linux avec un profil et un affichage jetables, puis
-parcourt des actions métier contre la stack déterministe isolée T01. Utiliser
-un overlay de configuration limité aux origines loopback de test, sans élargir
-la CSP produit ni toucher au mobile gelé. Les pilotes et l'affichage virtuel
-restent des dépendances de validation.
+Le smoke WebDriver est intégré : son contrat prévoit le vrai client Linux
+avec un profil et un affichage jetables, puis des actions métier contre la
+stack déterministe isolée T01. Son overlay est limité aux origines loopback
+de test, sans élargir la CSP produit ni toucher au mobile gelé. Les pilotes
+et l'affichage virtuel restent des dépendances de validation.
+
+Le code/build possède les preuves historiques du rapport du 5 septembre ;
+l'exécution métier était alors bloquée par l'environnement. Selon la consigne
+du 7 septembre, la recette native reste désormais à réaliser par le propriétaire.
+Aucun succès natif de la version courante n'est revendiqué.
 
 **Acceptation :** application native chargée, projet et connaissances persistés,
 pack/handoff lisibles après reload, capture et assertions de rendu ; nettoyage
-des processus et du profil. Le workflow pré-alpha exécute réellement ce smoke
-en plus du build. Un succès local ne certifie pas le déploiement privé HTTPS.
+des processus et du profil. Le workflow pré-alpha contient ce smoke en plus
+du build ; son exécution relève de la recette propriétaire. Un succès local
+ne certifie pas le déploiement privé HTTPS.
 T10 dépend de T01 et rejoint les prérequis de T06.
 
 ## Reprise du 8 septembre — écarts logiciels confirmés
@@ -230,14 +238,22 @@ Le propriétaire réalise les E2E et les essais avec ses comptes. Les correction
 ci-dessous utilisent uniquement des tests unitaires, des contrats simulés et
 une base PostgreSQL jetable. Elles ne ferment pas les gates de valeur réelle.
 
+**Intégration du 8 septembre :** T11/T12 sont livrés par `34af226` et T13 par
+`27e3145`, réunis sur la branche de consolidation au point `b20d36f`. Les
+preuves ci-dessous sont des résultats locaux sur leurs commits d'implémentation,
+pas une nouvelle exécution lors de la revue documentaire. L'upgrade des cinq
+migrations et sept intégrations DB ciblées passent ; le harness Alpha compte
+41 tests réussis. Aucun E2E, smoke métier natif ou fournisseur réel n'a été
+exécuté pendant cette reprise. Les gates de corpus, campagne, usage propriétaire,
+alpha privée et promotion restent ouverts.
+
 ### ACP-T11 — Upgrade jusqu'au schéma courant
 
 **Exigences :** phase 1 (baseline→alpha), phase 8 (migration/reprise), ACP-070.
 
-Le script `scripts/baseline-alpha-upgrade-smoke.sh` applique seulement les
-migrations du 18 et du 25 août avant de conclure. Il ignore les migrations de
-septembre, dont les connexions personnelles. La réussite actuelle ne prouve
-donc pas la mise à jour d'une base ancienne vers le serveur courant.
+**Constat à l'ouverture :** `scripts/baseline-alpha-upgrade-smoke.sh` appliquait
+seulement les migrations du 18 et du 25 août avant de conclure, sans celles de
+septembre ni les connexions personnelles.
 
 **Acceptation :** créer la baseline et ses fixtures legacy dans la base
 strictement jetable existante, appliquer chaque migration suivante en ordre
@@ -247,15 +263,22 @@ un succès. Couvrir la découverte/ordre/refus par unités et reproduire l'upgra
 complet sur PostgreSQL réel. Préserver les gardes de cible et le nettoyage.
 Ne pas modifier les migrations historiques pour faire passer le test.
 
+**Livré et vérifié localement le 8 septembre (`34af226`) :** découverte ordonnée
+des migrations, refus explicites, arrêt sur erreur et assertions après upgrade
+sur données legacy. Les cinq migrations actuelles passent dans PostgreSQL réel,
+avec sept unités du plan de migration et les 17 gardes de stack. La restauration
+SQL complémentaire conserve 41 tables et 98 policies ; la réutilisation d'une
+clé déchiffrée après restauration avec sa clé maîtresse séparée n'a pas été
+reproduite. Aucune restauration sur l'hébergement alpha n'est revendiquée.
+
 ### ACP-T12 — Contenu stable d'un message repris
 
 **Exigences :** phase 3, ACP-003, ACP-033, ACP-034 et ADR 0003.
 
-Après un échec fournisseur, envoyer une nouvelle commande avec le même
-`client_message_id` mais un contenu différent ne réinsère pas le message,
-alors que le moteur reçoit le nouveau contenu. L'historique conserve donc un
-texte différent de l'intention transmise au modèle. Après succès, le même cas
-peut rejouer une ancienne réponse sans signaler le changement de contenu.
+**Constat à l'ouverture :** après un échec fournisseur, une nouvelle commande
+avec le même `client_message_id` mais un contenu différent conservait l'ancien
+message tout en transmettant le nouveau texte au moteur. Après succès, elle
+pouvait rejouer l'ancienne réponse sans signaler le changement de contenu.
 
 **Acceptation :** une identité de message existante reste liée au même contenu
 normalisé dans sa session. Un autre contenu renvoie `409` avant tout nouvel
@@ -264,14 +287,21 @@ contenu, une nouvelle commande et la même identité reste possible après un
 échec, sans duplication. Tester après échec et après succès, avec assertions
 sur les messages, runs et appels simulés dans PostgreSQL réel.
 
+**Livré et vérifié localement le 8 septembre (`34af226`) :** comparaison du
+contenu normalisé avant reprise, `409` sans nouvel appel/run/proposition en cas
+de changement, reprise identique sans duplication après échec ou succès. La
+régression a échoué avant le correctif puis réussi ; elle figure dans les sept
+intégrations DB ciblées réussies (idempotence 2, cycle modèle 3, connexions/messages
+2). Cette preuve HTTP/PostgreSQL ne constitue pas une recette E2E.
+
 ### ACP-T13 — Transport de campagne sans redirection et borné
 
 **Exigences :** phases 3, 8 et 9 ; ACP-036, ACP-039, ACP-074, ACP-076.
 
-`ResponsesClient` dans `scripts/alpha-live-eval.py` utilise l'opener urllib
-par défaut, qui peut suivre une redirection avec l'en-tête Authorization,
-puis lit le corps entier sans borne. Ce défaut concerne le harness autonome,
-pas les transports API Rust déjà corrigés.
+**Constat à l'ouverture :** `ResponsesClient` dans `scripts/alpha-live-eval.py`
+utilisait l'opener urllib par défaut, susceptible de suivre une redirection avec
+l'en-tête Authorization, puis lisait le corps sans borne. Le défaut concernait
+le harness autonome, pas les transports API Rust déjà corrigés.
 
 **Acceptation :** refuser les redirections avant tout second appel, garder
 l'origine officielle fixe, borner la taille et le temps de réception même
@@ -280,3 +310,9 @@ offline ou HTTP loopback utilisent des clés fictives et couvrent redirection,
 corps excessif, interruption/timeout, JSON invalide et réponse valide. Aucun
 appel OpenAI réel. Conserver le contrôle de budget, le contrat de campagne et
 les reprises existants.
+
+**Livré et vérifié localement le 8 septembre (`27e3145`) :** redirections refusées,
+origine fixe, corps bornés, délai global et erreurs expurgées. Les 41 tests Alpha
+passent, dont 14 nouvelles régressions transport avec données fictives. Aucun
+appel OpenAI réel ; calibration, corpus autorisé, notation humaine et campagne
+comparative restent à réaliser.
