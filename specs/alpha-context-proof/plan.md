@@ -138,6 +138,28 @@ pending → appel hors transaction → finalisation optimiste.
 
 ## Traçabilité
 
+### Reprise du 8 septembre 2026
+
+L'audit de `a22335c` confirme trois corrections logicielles supplémentaires :
+upgrade de toutes les migrations (ACP-T11), identité et contenu des messages
+repris (ACP-T12), transport du harness d'évaluation (ACP-T13). Les critères
+exacts et le graphe sont dans [tickets.md](tickets.md).
+
+1. Réunir T11/T12 dans un worktree dédié au serveur et à la validation DB ;
+   développer T13 indépendamment dans un worktree du harness.
+2. Exécuter les unités et contrats nécessaires, puis les intégrations ciblées
+   sur PostgreSQL jetable ; ne pas lancer les E2E confiés au propriétaire.
+3. Fusionner dans la branche de consolidation, relire selon les axes
+   Standards/Spec, confier les corrections de revue à un seul implémenteur.
+4. Consigner les preuves et l'état réel des gates, puis nettoyer les worktrees.
+
+La PR publique est restée au point `91dc76b` lors de la consultation du
+8 septembre ; les ajouts suivants sont locaux. Aucune action distante ni
+promotion n'est impliquée par ces corrections. Les campagnes, observations
+humaines et durées d'usage restent à réaliser selon le plan d'origine.
+
+### Règle permanente
+
 Toute pull request d'implémentation doit citer au moins un identifiant ACP et
 indiquer : preuves ajoutées, migrations, risques de rollback et statut de la
 validation. Les gates ne sont jamais déclarées atteintes par la seule présence

@@ -23,6 +23,9 @@ branche de consolidation après leurs validations ciblées.
 | ACP-T08 | Traçabilité du travail externe                         | T03, T07           | Intégré et vérifié localement                                |
 | ACP-T09 | Dépendances web                                        | Aucune             | Intégré ; audit npm sans avis                                |
 | ACP-T10 | Smoke métier du client Tauri Linux                     | T01                | Code/build vérifiés ; exécution métier native bloquée        |
+| ACP-T11 | Upgrade de la baseline jusqu'à toutes les migrations courantes | T01, connexions personnelles | Confirmé le 8 septembre ; à corriger |
+| ACP-T12 | Reprise d'un message liée à son contenu original | T06, connexions personnelles | Confirmé le 8 septembre ; à corriger |
+| ACP-T13 | Transport borné du harness de campagne réelle | T05 | Confirmé le 8 septembre ; à corriger |
 
 Point de contrôle intermédiaire du 5 septembre 2026 : T01, T02, T03 et T07 sont réunis au
 commit `37921d8`. Le cycle isolé complet passe : 32 pgTAP, neuf tests métier
@@ -217,3 +220,63 @@ pack/handoff lisibles après reload, capture et assertions de rendu ; nettoyage
 des processus et du profil. Le workflow pré-alpha exécute réellement ce smoke
 en plus du build. Un succès local ne certifie pas le déploiement privé HTTPS.
 T10 dépend de T01 et rejoint les prérequis de T06.
+
+## Reprise du 8 septembre — écarts logiciels confirmés
+
+Point de départ : `a22335cd1849c9b8c5f317eb94905fa3489a51a8`. La livraison
+des connexions personnelles est intégrée et ses preuves figurent dans le
+[rapport du 7 septembre](../provider-connections/validation-2026-09-07.md).
+Le propriétaire réalise les E2E et les essais avec ses comptes. Les corrections
+ci-dessous utilisent uniquement des tests unitaires, des contrats simulés et
+une base PostgreSQL jetable. Elles ne ferment pas les gates de valeur réelle.
+
+### ACP-T11 — Upgrade jusqu'au schéma courant
+
+**Exigences :** phase 1 (baseline→alpha), phase 8 (migration/reprise), ACP-070.
+
+Le script `scripts/baseline-alpha-upgrade-smoke.sh` applique seulement les
+migrations du 18 et du 25 août avant de conclure. Il ignore les migrations de
+septembre, dont les connexions personnelles. La réussite actuelle ne prouve
+donc pas la mise à jour d'une base ancienne vers le serveur courant.
+
+**Acceptation :** créer la baseline et ses fixtures legacy dans la base
+strictement jetable existante, appliquer chaque migration suivante en ordre
+déterministe et vérifier l'état courant ainsi que la conservation des owners
+et des données legacy. Un oubli ou un échec de migration ne peut pas produire
+un succès. Couvrir la découverte/ordre/refus par unités et reproduire l'upgrade
+complet sur PostgreSQL réel. Préserver les gardes de cible et le nettoyage.
+Ne pas modifier les migrations historiques pour faire passer le test.
+
+### ACP-T12 — Contenu stable d'un message repris
+
+**Exigences :** phase 3, ACP-003, ACP-033, ACP-034 et ADR 0003.
+
+Après un échec fournisseur, envoyer une nouvelle commande avec le même
+`client_message_id` mais un contenu différent ne réinsère pas le message,
+alors que le moteur reçoit le nouveau contenu. L'historique conserve donc un
+texte différent de l'intention transmise au modèle. Après succès, le même cas
+peut rejouer une ancienne réponse sans signaler le changement de contenu.
+
+**Acceptation :** une identité de message existante reste liée au même contenu
+normalisé dans sa session. Un autre contenu renvoie `409` avant tout nouvel
+appel fournisseur, run ou proposition. Une reprise légitime avec le même
+contenu, une nouvelle commande et la même identité reste possible après un
+échec, sans duplication. Tester après échec et après succès, avec assertions
+sur les messages, runs et appels simulés dans PostgreSQL réel.
+
+### ACP-T13 — Transport de campagne sans redirection et borné
+
+**Exigences :** phases 3, 8 et 9 ; ACP-036, ACP-039, ACP-074, ACP-076.
+
+`ResponsesClient` dans `scripts/alpha-live-eval.py` utilise l'opener urllib
+par défaut, qui peut suivre une redirection avec l'en-tête Authorization,
+puis lit le corps entier sans borne. Ce défaut concerne le harness autonome,
+pas les transports API Rust déjà corrigés.
+
+**Acceptation :** refuser les redirections avant tout second appel, garder
+l'origine officielle fixe, borner la taille et le temps de réception même
+pour un corps lent, et exposer uniquement des erreurs nettoyées. Les tests
+offline ou HTTP loopback utilisent des clés fictives et couvrent redirection,
+corps excessif, interruption/timeout, JSON invalide et réponse valide. Aucun
+appel OpenAI réel. Conserver le contrôle de budget, le contrat de campagne et
+les reprises existants.
