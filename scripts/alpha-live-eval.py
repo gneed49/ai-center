@@ -14,12 +14,15 @@ import fcntl
 import hashlib
 import importlib.util
 import json
+import math
+import multiprocessing
 import os
 import random
 import re
 import secrets
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -36,6 +39,8 @@ FORMAT_VERSION = "1.0"
 PROMPT_VERSION = "alpha-context-proof-live-v2"
 OUTPUT_SCHEMA_VERSION = "alpha-context-proof-live-v2"
 RESPONSES_API_URL = "https://api.openai.com/v1/responses"
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+MAX_REQUEST_BYTES = 2 * 1024 * 1024
 API_KEY_ENV = "OPENAI_API_KEY"
 LIVE_CONFIRMATION = "RUN_OPENAI_ALPHA_CONTEXT_PROOF"
 STAGES = ("calibration", "main", "reserve")
@@ -1378,35 +1383,132 @@ class BudgetLedger:
         return settled
 
 
+class NoResponseRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, _request, _response, _code, _message, _headers, _url):
+        raise LiveEvalError("provider_redirect_refused") from None
+
+
 class ResponsesClient:
     def __init__(self, opener: Any | None = None):
-        self.opener = opener or urllib.request.urlopen
+        self.opener = opener or urllib.request.build_opener(
+            urllib.request.ProxyHandler({}), NoResponseRedirects()
+        ).open
 
     def create(self, body: dict[str, Any], api_key: str, timeout_seconds: int) -> dict[str, Any]:
-        request = urllib.request.Request(
-            RESPONSES_API_URL,
-            data=canonical_json(body),
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "User-Agent": f"ai-center-alpha-live-eval/{RUNNER_VERSION}",
-            },
-            method="POST",
-        )
+        # This Unix command-line harness has one thread per invocation. Forking
+        # isolates DNS, headers and a continuously trickling body under one deadline.
+        if "fork" not in multiprocessing.get_all_start_methods() or threading.active_count() != 1:
+            raise LiveEvalError("provider_transport_unavailable")
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(timeout_seconds)
+            or not 0 < timeout_seconds <= 300
+            or not isinstance(api_key, str)
+            or not 1 <= len(api_key) <= 8192
+            or any(ord(character) < 32 or ord(character) > 126 for character in api_key)
+        ):
+            raise LiveEvalError("provider_invalid_request")
         try:
-            with self.opener(request, timeout=timeout_seconds) as response:
-                raw = response.read()
-        except urllib.error.HTTPError as error:
-            raise LiveEvalError(f"provider_http_{error.code}") from error
-        except urllib.error.URLError as error:
-            raise LiveEvalError("provider_transport_failure") from error
+            payload = canonical_json(body)
+        except (TypeError, ValueError, RecursionError):
+            raise LiveEvalError("provider_invalid_request") from None
+        if len(payload) > MAX_REQUEST_BYTES:
+            raise LiveEvalError("provider_request_too_large")
+        deadline = time.monotonic() + timeout_seconds
+        context = multiprocessing.get_context("fork")
+        receiver = sender = worker = None
         try:
-            value = json.loads(raw)
-        except json.JSONDecodeError as error:
-            raise LiveEvalError("provider_unreadable_response") from error
+            receiver, sender = context.Pipe(duplex=False)
+            worker = context.Process(target=self._receive, args=(sender, payload, api_key, timeout_seconds))
+            worker.start()
+            sender.close()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not receiver.poll(remaining):
+                raise LiveEvalError("provider_timeout")
+            packet = receiver.recv_bytes(MAX_RESPONSE_BYTES + 1)
+            if time.monotonic() > deadline:
+                raise LiveEvalError("provider_timeout")
+        except LiveEvalError:
+            raise
+        except (OSError, EOFError, ValueError, RuntimeError):
+            raise LiveEvalError("provider_transport_failure") from None
+        finally:
+            # No detached request survives success, failure, timeout or cancellation.
+            for connection in (sender, receiver):
+                if connection is not None:
+                    connection.close()
+            if worker is not None:
+                if worker.pid is not None:
+                    if worker.is_alive():
+                        worker.kill()
+                    worker.join()
+                worker.close()
+        if not packet or packet[0] not in (0, 1):
+            raise LiveEvalError("provider_transport_failure")
+        if packet[0] == 1:
+            reason = packet[1:].decode("ascii", errors="replace")
+            if not re.fullmatch(
+                r"provider_(?:http_[1-5][0-9]{2}|redirect_refused|response_too_large|timeout|transport_failure)",
+                reason,
+            ):
+                reason = "provider_transport_failure"
+            raise LiveEvalError(reason) from None
+        try:
+            value = json.loads(packet[1:])
+        except (ValueError, UnicodeError, RecursionError):
+            raise LiveEvalError("provider_unreadable_response") from None
         if not isinstance(value, dict):
             raise LiveEvalError("provider_invalid_response_shape")
         return value
+
+    def _receive(self, pipe: Any, payload: bytes, api_key: str, timeout_seconds: int) -> None:
+        # Private memory and a bounded pipe only: no key/prompt in argv, new
+        # environment variables, files or logs. The worker runs fixed HTTP code.
+        try:
+            try:
+                request = urllib.request.Request(
+                    RESPONSES_API_URL,
+                    data=payload,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                        "User-Agent": f"ai-center-alpha-live-eval/{RUNNER_VERSION}",
+                    },
+                    method="POST",
+                )
+                with self.opener(request, timeout=timeout_seconds) as response:
+                    declared_length = response.getheader("Content-Length")
+                    if declared_length is not None:
+                        if not re.fullmatch(r"[0-9]{1,20}", declared_length):
+                            raise LiveEvalError("provider_transport_failure")
+                        declared_length = int(declared_length)
+                        if declared_length > MAX_RESPONSE_BYTES:
+                            raise LiveEvalError("provider_response_too_large")
+                    raw = response.read(MAX_RESPONSE_BYTES + 1)
+                    if len(raw) > MAX_RESPONSE_BYTES:
+                        raise LiveEvalError("provider_response_too_large")
+                    if declared_length is not None and len(raw) != declared_length:
+                        raise LiveEvalError("provider_transport_failure")
+                packet = b"\x00" + raw
+            except urllib.error.HTTPError as error:
+                code = error.code
+                error.close()
+                reason = "provider_redirect_refused" if 300 <= code < 400 else f"provider_http_{code}"
+                packet = b"\x01" + reason.encode("ascii")
+            except TimeoutError:
+                packet = b"\x01provider_timeout"
+            except LiveEvalError as error:
+                # The parent accepts only fixed error codes, never arbitrary text.
+                packet = b"\x01" + str(error).encode("ascii", errors="replace")[:128]
+            except Exception:
+                packet = b"\x01provider_transport_failure"
+            pipe.send_bytes(packet)
+        except BaseException:
+            # Even interpreter/pipe cancellation must not print a private traceback.
+            pass
+        finally:
+            pipe.close()
 
 
 def extract_structured_output(response: dict[str, Any]) -> dict[str, Any] | None:

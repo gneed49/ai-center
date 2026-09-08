@@ -32,7 +32,23 @@ de rétention zéro.
 - Aucun retry réseau automatique n'est effectué : une réponse perdue peut être
   facturée. La réservation reste alors bloquée jusqu'à réconciliation.
 - L'URL fournisseur est fixée à `https://api.openai.com/v1/responses` ; elle
-  n'est pas configurable par le corpus.
+  n'est configurable ni par le corpus ni par `OPENAI_BASE_URL`. Les redirections
+  sont refusées avant un second appel et les proxies hérités de l'environnement
+  ne sont pas utilisés.
+- Chaque requête JSON et chaque réponse sont limitées à 2 Mio. Le délai
+  `timeout_seconds` du contrat couvre la connexion, les en-têtes et le corps
+  complet, y compris un flux qui progresse lentement. Un corps tronqué est
+  refusé. Les dépassements produisent uniquement un code d'erreur nettoyé.
+- Le transport s'exécute dans un processus local dédié, arrêté puis récupéré
+  avant le retour, y compris après délai dépassé ou interruption. La clé et le
+  prompt circulent en mémoire ; le résultat transite par un pipe borné. Aucun
+  argument de commande, fichier temporaire ou variable d'environnement
+  supplémentaire ne sert à cet échange. Le worker exécute uniquement le code
+  HTTP fixe du harness.
+- L'exécution live requiert un système Unix avec `fork` et une invocation à
+  un seul thread ; les autres modes sont refusés explicitement. Le harness
+  dépend déjà de `fcntl` pour son budget. Cette borne du transport ne modifie
+  ni les versions du protocole gelé, ni la réservation ou la réconciliation.
 - Le scanner local bloque les noms de champs sensibles, les motifs de token,
   les clés privées et les adresses e-mail détectables. Il complète, mais ne
   remplace pas, la revue humaine du corpus.

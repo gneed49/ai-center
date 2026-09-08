@@ -5,9 +5,15 @@ import concurrent.futures
 import contextlib
 import importlib.util
 import io
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
+import multiprocessing
+import os
+import signal
 import tempfile
 import threading
+import time
+import traceback
 import unittest
 import uuid
 from decimal import Decimal
@@ -516,6 +522,284 @@ class LiveEvalTests(unittest.TestCase):
         rejected = next(item for item in summary["models"] if item["model"] == "model-b")
         self.assertEqual(rejected["relevant_context_recall"], 0.0)
         self.assertFalse(rejected["passed"])
+
+
+class LocalResponsesFixture:
+    """Real HTTP framing on loopback, containing only synthetic test data."""
+
+    def __init__(self, status=200, body=b'{"ok":true}', redirect=None, delay=0, length=None):
+        self._requests = []
+        self.receiver, self.sender = multiprocessing.get_context("fork").Pipe(duplex=False)
+        fixture = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+
+            def do_POST(self):
+                request_body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                fixture.sender.send((self.command, self.path, dict(self.headers), request_body))
+                self.reply()
+
+            def do_GET(self):
+                fixture.sender.send((self.command, self.path, dict(self.headers), b""))
+                self.reply()
+
+            def reply(self):
+                self.send_response(status)
+                if redirect:
+                    self.send_header("Location", redirect)
+                if length is not False:
+                    self.send_header("Content-Length", str(len(body) if length is None else length))
+                self.end_headers()
+                try:
+                    if delay:
+                        for byte in body:
+                            self.wfile.write(bytes([byte]))
+                            self.wfile.flush()
+                            time.sleep(delay)
+                    else:
+                        self.wfile.write(body)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # The client deliberately closes rejected responses.
+
+        self.server = HTTPServer(("127.0.0.1", 0), Handler)
+        self.process = multiprocessing.get_context("fork").Process(target=self.server.serve_forever)
+        self.url = f"http://127.0.0.1:{self.server.server_port}/v1/responses"
+
+    def __enter__(self):
+        self.process.start()
+        self.sender.close()
+        return self
+
+    @property
+    def requests(self):
+        while self.receiver.poll():
+            try:
+                self._requests.append(self.receiver.recv())
+            except EOFError:
+                break
+        return self._requests
+
+    def __exit__(self, *_args):
+        if self.process.is_alive():
+            self.process.kill()
+        self.process.join()
+        self.process.close()
+        self.server.server_close()
+        self.receiver.close()
+
+
+class FakeProviderResponse(io.BytesIO):
+    def getheader(self, _name):
+        return None
+
+
+class ResponsesTransportTests(unittest.TestCase):
+    def test_only_the_fixed_official_origin_receives_the_request(self):
+        def opener(request, *, timeout):
+            return FakeProviderResponse(json.dumps({
+                "url": request.full_url,
+                "method": request.get_method(),
+                "body": json.loads(request.data),
+                "timeout": timeout,
+            }).encode())
+
+        body = {"input": "synthetic", "base_url": "https://untrusted.invalid"}
+        with mock.patch.dict(os.environ, {"OPENAI_BASE_URL": "https://untrusted.invalid"}, clear=True):
+            result = live.ResponsesClient(opener).create(body, "fixture-only-key", 2)
+        self.assertEqual(result, {
+            "url": "https://api.openai.com/v1/responses",
+            "method": "POST",
+            "body": body,
+            "timeout": 2,
+        })
+
+    def test_inherited_proxy_is_not_used(self):
+        with LocalResponsesFixture() as proxy, LocalResponsesFixture() as source:
+            with (
+                mock.patch.object(live, "RESPONSES_API_URL", source.url),
+                mock.patch.dict(os.environ, {
+                    "http_proxy": proxy.url, "https_proxy": proxy.url, "no_proxy": "",
+                }, clear=True),
+            ):
+                self.assertEqual(live.ResponsesClient().create({}, "fixture-only-key", 2), {"ok": True})
+            self.assertEqual(len(source.requests), 1)
+            self.assertEqual(proxy.requests, [])
+
+    def test_valid_response_at_the_size_boundary_is_preserved(self):
+        body = b'{"result":"' + b'x' * (live.MAX_RESPONSE_BYTES - 13) + b'"}'
+        self.assertEqual(len(body), live.MAX_RESPONSE_BYTES)
+        with LocalResponsesFixture(body=body) as source:
+            with mock.patch.object(live, "RESPONSES_API_URL", source.url):
+                result = live.ResponsesClient().create({"input": "synthetic"}, "fixture-only-key", 2)
+            self.assertEqual(result, json.loads(body))
+
+    def test_unknown_length_still_has_a_response_size_limit(self):
+        with LocalResponsesFixture(body=b'x' * (live.MAX_RESPONSE_BYTES + 1), length=False) as source:
+            with mock.patch.object(live, "RESPONSES_API_URL", source.url):
+                with self.assertRaisesRegex(live.LiveEvalError, "^provider_response_too_large$"):
+                    live.ResponsesClient().create({}, "fixture-only-key", 2)
+
+    def test_invalid_json_and_non_object_response_have_safe_errors(self):
+        for body, reason in (
+            (b'{"private":"synthetic-broken-body"', "provider_unreadable_response"),
+            (b'{"private":"\xff"}', "provider_unreadable_response"),
+            (b'[]', "provider_invalid_response_shape"),
+            (b'null', "provider_invalid_response_shape"),
+        ):
+            with self.subTest(body=body):
+                with self.assertRaisesRegex(live.LiveEvalError, f"^{reason}$"):
+                    live.ResponsesClient(lambda *_a, **_kw: FakeProviderResponse(body)).create(
+                        {}, "fixture-only-key", 2
+                    )
+
+    def test_http_failures_never_expose_provider_body_url_or_key(self):
+        for status in (401, 403, 429, 500, 503):
+            with self.subTest(status=status), LocalResponsesFixture(
+                status=status, body=b'fixture-only-key https://private.invalid synthetic-error-body'
+            ) as source:
+                with mock.patch.object(live, "RESPONSES_API_URL", source.url):
+                    api_key = "fixture-only-key"
+                    try:
+                        live.ResponsesClient().create({}, api_key, 2)
+                    except live.LiveEvalError as error:
+                        self.assertEqual(str(error), f"provider_http_{status}")
+                        rendered = "".join(traceback.format_exception(error))
+                        for private in ("fixture-only-key", "private.invalid", "synthetic-error-body", source.url):
+                            self.assertNotIn(private, rendered)
+                    else:
+                        self.fail("an HTTP failure was accepted")
+
+    def test_worker_is_reaped_on_success_error_timeout_and_abrupt_exit(self):
+        for outcome in ("success", "error", "timeout", "exit"):
+            with self.subTest(outcome=outcome):
+                worker_pid = multiprocessing.RawValue("i", 0)
+
+                def opener(*_args, **_kwargs):
+                    worker_pid.value = os.getpid()
+                    if outcome == "error":
+                        raise OSError("fixture-only-key https://private.invalid synthetic-error-body")
+                    if outcome == "timeout":
+                        time.sleep(5)
+                    if outcome == "exit":
+                        os._exit(0)
+                    return FakeProviderResponse(b'{"ok":true}')
+
+                started = time.monotonic()
+                if outcome == "success":
+                    self.assertEqual(live.ResponsesClient(opener).create({}, "fixture-only-key", 0.2), {"ok": True})
+                else:
+                    expected = "provider_timeout" if outcome == "timeout" else "provider_transport_failure"
+                    with self.assertRaisesRegex(live.LiveEvalError, f"^{expected}$"):
+                        live.ResponsesClient(opener).create({}, "fixture-only-key", 0.2)
+                self.assertLess(time.monotonic() - started, 0.8)
+                self.assertGreater(worker_pid.value, 0)
+                with self.assertRaises(ChildProcessError):
+                    os.waitpid(worker_pid.value, os.WNOHANG)
+
+    def test_cancelling_the_call_reaps_the_transport_worker(self):
+        worker_pid = multiprocessing.RawValue("i", 0)
+        caller_pid = os.getpid()
+
+        def opener(*_args, **_kwargs):
+            worker_pid.value = os.getpid()
+            time.sleep(5)
+            return FakeProviderResponse(b'{"ok":true}')
+
+        def cancel_when_worker_starts():
+            deadline = time.monotonic() + 1
+            while not worker_pid.value and time.monotonic() < deadline:
+                time.sleep(0.01)
+            if worker_pid.value:
+                os.kill(caller_pid, signal.SIGINT)
+
+        cancellation = multiprocessing.get_context("fork").Process(target=cancel_when_worker_starts)
+        cancellation.start()
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                live.ResponsesClient(opener).create({}, "fixture-only-key", 2)
+        finally:
+            if cancellation.is_alive():
+                cancellation.kill()
+            cancellation.join()
+            cancellation.close()
+        self.assertGreater(worker_pid.value, 0)
+        with self.assertRaises(ChildProcessError):
+            os.waitpid(worker_pid.value, os.WNOHANG)
+
+    def test_transport_setup_failures_are_sanitized(self):
+        context = multiprocessing.get_context("fork")
+        for factory in ("Pipe", "Process"):
+            with self.subTest(factory=factory), mock.patch.object(
+                context, factory, side_effect=OSError("synthetic-private-setup-detail")
+            ):
+                with self.assertRaisesRegex(live.LiveEvalError, "^provider_transport_failure$"):
+                    live.ResponsesClient().create({}, "fixture-only-key", 2)
+        with mock.patch.object(
+            multiprocessing.process.BaseProcess,
+            "start", side_effect=RuntimeError("synthetic-private-setup-detail"),
+        ):
+            with self.assertRaisesRegex(live.LiveEvalError, "^provider_transport_failure$"):
+                live.ResponsesClient().create({}, "fixture-only-key", 2)
+
+    def test_bad_request_and_unsupported_runtime_fail_before_transport(self):
+        unused_opener = mock.Mock(side_effect=AssertionError("must not send"))
+        client = live.ResponsesClient(unused_opener)
+        for timeout in (True, 0, -1, 301, float("inf"), float("nan"), "2"):
+            with self.subTest(timeout=timeout):
+                with self.assertRaisesRegex(live.LiveEvalError, "^provider_invalid_request$"):
+                    client.create({}, "fixture-only-key", timeout)
+        with self.assertRaisesRegex(live.LiveEvalError, "^provider_invalid_request$"):
+            client.create({}, "fixture\nkey", 2)
+        with self.assertRaisesRegex(live.LiveEvalError, "^provider_request_too_large$"):
+            client.create({"input": "x" * live.MAX_REQUEST_BYTES}, "fixture-only-key", 2)
+        for patch in (
+            mock.patch.object(live.multiprocessing, "get_all_start_methods", return_value=["spawn"]),
+            mock.patch.object(live.threading, "active_count", return_value=2),
+        ):
+            with patch, self.assertRaisesRegex(live.LiveEvalError, "^provider_transport_unavailable$"):
+                client.create({}, "fixture-only-key", 2)
+        unused_opener.assert_not_called()
+
+    def test_interrupted_body_is_refused_even_when_prefix_is_valid_json(self):
+        with LocalResponsesFixture(body=b'{"ok":true}', length=100) as source:
+            with mock.patch.object(live, "RESPONSES_API_URL", source.url):
+                with self.assertRaisesRegex(live.LiveEvalError, "^provider_transport_failure$"):
+                    live.ResponsesClient().create({"input": "synthetic"}, "fixture-only-key", 2)
+
+    def test_slow_progress_does_not_extend_the_total_response_deadline(self):
+        with LocalResponsesFixture(body=b'{"result":"slow-but-continuous"}', delay=0.04) as source:
+            with mock.patch.object(live, "RESPONSES_API_URL", source.url):
+                started = time.monotonic()
+                with self.assertRaisesRegex(live.LiveEvalError, "^provider_timeout$"):
+                    live.ResponsesClient().create({"input": "synthetic"}, "fixture-only-key", 0.2)
+                self.assertLess(time.monotonic() - started, 0.8)
+            self.assertEqual(len(source.requests), 1)
+
+    def test_excessive_response_is_rejected_without_returning_the_body(self):
+        body = json.dumps({"private": "x" * (2 * 1024 * 1024)}).encode()
+        with LocalResponsesFixture(body=body) as source:
+            with mock.patch.object(live, "RESPONSES_API_URL", source.url):
+                with self.assertRaisesRegex(live.LiveEvalError, "^provider_response_too_large$"):
+                    live.ResponsesClient().create({"input": "synthetic"}, "fixture-only-key", 2)
+            self.assertEqual(len(source.requests), 1)
+
+    def test_redirect_cannot_send_a_second_request_or_credential_to_another_origin(self):
+        for status in (301, 302, 303, 307, 308):
+            with self.subTest(status=status), LocalResponsesFixture() as target, LocalResponsesFixture(
+                status=status, redirect=target.url
+            ) as source:
+                with mock.patch.object(live, "RESPONSES_API_URL", source.url):
+                    error = None
+                    try:
+                        live.ResponsesClient().create({"input": "synthetic"}, "fixture-only-key", 2)
+                    except live.LiveEvalError as cause:
+                        error = cause
+                self.assertEqual(len(source.requests), 1)
+                self.assertEqual(target.requests, [], "a redirect forwarded the API credential")
+                self.assertIsNotNone(error)
+                self.assertEqual(str(error), "provider_redirect_refused")
 
 
 if __name__ == "__main__":
