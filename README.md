@@ -122,9 +122,12 @@ Les sources Mermaid détaillées sont versionnées dans
 - [cycle de vie d’un ContextPack](docs/architecture/context-pack-lifecycle.md) ;
 - [séquence export → outil → GitHub → preuve](docs/architecture/external-proof-sequence.md).
 
-Le [flowchart FigJam éditable](https://www.figma.com/board/gn5z1F1tnQpQ23580fQ5QC?utm_source=other&utm_content=edit_in_figjam&oai_id=v1%2Fw4Op3Y3yGzQaNiGag9bVe9tyqgyd72pnQ7P1yHakH4IGC28Jc0zH6q&request_id=30a987bf-c867-40eb-9df4-fdb761c7b90d)
-reste un support visuel complémentaire ; Mermaid est la source versionnée. Les
-exports prêts à partager sont disponibles en
+La [vue FigJam Alpha Context Proof éditable](https://www.figma.com/board/gn5z1F1tnQpQ23580fQ5QC?node-id=7-213)
+complète le flow versionné ; sa structure et son rendu ont été vérifiés le
+[8 septembre 2026](docs/architecture/diagram-validation-2026-09-08.md).
+Le dessin antérieur « Plan simulé » reste conservé à côté comme historique.
+Mermaid est la source versionnée ; les exports prêts à partager restent
+disponibles en
 [SVG](docs/architecture/assets/alpha-context-control-flow.svg) et
 [PNG](docs/architecture/assets/alpha-context-control-flow.png).
 

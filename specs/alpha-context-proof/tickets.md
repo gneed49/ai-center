@@ -26,6 +26,7 @@ branche de consolidation après leurs validations ciblées.
 | ACP-T11 | Upgrade de la baseline jusqu'à toutes les migrations courantes | T01, connexions personnelles | Intégré ; upgrade des 5 migrations vérifié localement le 8 septembre             |
 | ACP-T12 | Reprise d'un message liée à son contenu original               | T06, connexions personnelles | Intégré ; régression incluse dans les 7 tests DB ciblés réussis le 8 septembre   |
 | ACP-T13 | Transport borné du harness de campagne réelle                  | T05                          | Intégré ; 41 tests Alpha simulés réussis le 8 septembre, campagne réelle ouverte |
+| ACP-T14 | Vue FigJam Alpha alignée sur le flow Mermaid                   | Phase 0, sources Mermaid     | Livré ; structure/rendu FigJam et documentation vérifiés le 8 septembre          |
 
 Point de contrôle intermédiaire du 5 septembre 2026 : T01, T02, T03 et T07 sont réunis au
 commit `37921d8`. Le cycle isolé complet passe : 32 pgTAP, neuf tests métier
@@ -316,3 +317,33 @@ origine fixe, corps bornés, délai global et erreurs expurgées. Les 41 tests A
 passent, dont 14 nouvelles régressions transport avec données fictives. Aucun
 appel OpenAI réel ; calibration, corpus autorisé, notation humaine et campagne
 comparative restent à réaliser.
+
+## ACP-T14 — Vue FigJam Alpha et traçabilité documentaire
+
+**Exigences :** phase 0 du plan directeur, ACP-001 et ACP-006 ; représentation
+documentaire de ACP-016 à ACP-021 et ACP-050 à ACP-056.
+
+**Constat à l'ouverture, le 8 septembre 2026 :** le README présente le board
+FigJam historique comme complément du flow Alpha, alors que sa lecture API
+montre encore « Plan simulé » et aucune chaîne GitHub → ExternalReference →
+preuve → couverture. La source Mermaid versionnée décrit déjà cette chaîne.
+
+**Acceptation :** ajouter dans le même board une vue Alpha distincte, alignée
+sur [le flow versionné](../../docs/architecture/context-control-flow.md), puis
+relire ses nœuds et connexions. Les liens directs de README et de l'index
+d'architecture doivent ouvrir cette vue ; le schéma antérieur reste identifié
+comme historique et préservé. Conserver les trois sources Mermaid et les
+exports SVG/PNG existants. Consigner la date, le lien, les observations et les
+limites de la preuve dans une note durable reliée au statut du projet.
+
+**Portée :** correction documentaire et visuelle uniquement. Elle n'ajoute
+aucune preuve d'exécution des parcours représentés et ne ferme aucune gate
+de campagne, recette propriétaire ou promotion.
+
+**Livré et vérifié le 8 septembre :** la
+[vue Alpha `7:213`](https://www.figma.com/board/gn5z1F1tnQpQ23580fQ5QC?node-id=7-213)
+contient les 14 nœuds et 18 connecteurs du flow, relus après regroupement. Les
+liens ouvrent directement cette vue ; le dessin historique est préservé à côté.
+La [note de validation](../../docs/architecture/diagram-validation-2026-09-08.md)
+consigne la lecture API et l'inspection visuelle. Les modifications du dépôt
+restent locales ; aucune nouvelle preuve fonctionnelle n'est revendiquée.

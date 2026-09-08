@@ -7,8 +7,14 @@ exports visuels.
 - [Flow contextuel de bout en bout](context-control-flow.md)
 - [Cycle de vie d'un ContextPack](context-pack-lifecycle.md)
 - [Séquence d'une preuve GitHub](external-proof-sequence.md)
+- [Vue FigJam Alpha Context Proof éditable](https://www.figma.com/board/gn5z1F1tnQpQ23580fQ5QC?node-id=7-213),
+  complément du flow de bout en bout ; [validation du 8 septembre 2026](diagram-validation-2026-09-08.md).
 - Export du flow principal : [SVG](assets/alpha-context-control-flow.svg) ·
   [PNG](assets/alpha-context-control-flow.png)
+
+Le même board conserve à côté le dessin historique « Plan simulé ». Le lien
+ci-dessus ouvre directement la vue Alpha ; Mermaid reste la source versionnée.
+La validation du dessin ne constitue pas une preuve d'exécution des parcours.
 
 ![Flow Alpha Context Proof](assets/alpha-context-control-flow.svg)
 
