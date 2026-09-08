@@ -49,6 +49,7 @@ quality() {
   cargo clippy --workspace --all-targets -- -D warnings
   npm run test -w @ai-center/web
   cargo test --workspace --lib
+  cargo test -p ai-center-server --test synthetic_context_contract
   python3 -m py_compile scripts/alpha-eval.py scripts/alpha-live-eval.py
   python3 -m unittest discover -s scripts/tests -p 'test_alpha*.py'
   python3 -m unittest discover -s scripts/tests -p 'test_integration_target.py'
@@ -99,6 +100,10 @@ integration() {
     AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
     AI_CENTER_AGENT_MODE=deterministic \
     cargo test -p ai-center-server --test mvp_flow -- --test-threads=1
+  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
+    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
+    AI_CENTER_AGENT_MODE=deterministic \
+    cargo test -p ai-center-server --test synthetic_projects -- --test-threads=1
   DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
     AI_CENTER_ADMIN_DATABASE_URL="${AI_CENTER_ADMIN_DATABASE_URL}" \
     AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
