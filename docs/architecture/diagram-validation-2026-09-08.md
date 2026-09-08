@@ -78,3 +78,70 @@ appel fournisseur réel n'est exécuté pour ce lot documentaire.
 La mise à jour FigJam est effective dans le board partagé. Les changements du
 dépôt sont une livraison locale ; ils n'impliquent aucun push, modification de
 PR, lancement de CI, déploiement ou promotion de l'alpha.
+
+## Standards
+
+**HEAD relu :** `af548beaffc0f4546c8c07bbdb8e564d50dc0276`.
+
+**Diff figé :** `git diff 1a24cfdfcb8fedf109bce7d82e3d2b2e1bf4837b...HEAD`.
+Commits : `0d690bb` et `af548be`. Six fichiers Markdown ; arbre de travail propre au contrôle initial.
+
+**Violations documentées : zéro.**
+
+- `README.md` et `docs/architecture/README.md` désignent directement la vue Alpha, distinguent le dessin historique et maintiennent Mermaid comme référence. Le delta respecte la préservation des sources et la traçabilité exigées par `AGENTS.md:10,28-30`.
+- `specs/alpha-context-proof/plan.md:172-195` et `tickets.md:321-349` relient ce lot au plan, aux exigences et à une acceptation bornée. Cela respecte le maintien du plan et la définition des preuves (`AGENTS.md:19-22`). Aucune décision produit nouvelle nécessitant une modification de `docs/product/` n'est introduite.
+- `docs/architecture/diagram-validation-2026-09-08.md` et `PROJECT_STATUS.md` datent la validation, localisent le support et la note, distinguent validation visuelle et exécution fonctionnelle, puis précisent la livraison Git locale et les gates ouvertes. Cela respecte `AGENTS.md:33`, le vocabulaire de preuve de `spec.md:35-46` et la distinction des preuves datées de `docs/agents/issue-tracker.md`.
+
+**Jugements facultatifs : zéro.** Aucun des douze smells de la baseline n'appelle de correction sur ce delta documentaire ; les renvois répétés assurent la navigation entre statut, ticket et preuve.
+
+**Limites :** inspection indépendante des documents locaux et du diff uniquement. Le fichier de preuves FigJam transmis par le coordinateur a été lu comme preuve rapportée : je n'ai ni interrogé FigJam ni inspecté moi-même sa capture. Les résultats de formatage et de liens déjà rapportés n'ont pas été rejoués. Aucun test applicatif, E2E, réseau ou changement dans le dépôt.
+
+**Bilan Standards : 0 constat bloquant, 0 constat facultatif.**
+
+## Spec
+
+**HEAD examiné :** `af548beaffc0f4546c8c07bbdb8e564d50dc0276`.
+**Comparaison :** `git diff 1a24cfdfcb8fedf109bce7d82e3d2b2e1bf4837b...HEAD`.
+Commits : `0d690bb` et `af548be`. Le delta contient six fichiers Markdown.
+
+**Résultat : zéro constat.** Aucune demande manquante ou partielle, aucun
+élargissement injustifié et aucune mise en œuvre erronée établis dans ce delta.
+
+- La phase 0 demande « Conserver Mermaid comme source versionnée ; produire
+  en complément un diagramme FigJam propre et un export SVG/PNG »
+  (plan directeur fourni, phase 0, lignes 53–57). Les trois sources
+  Mermaid et les exports existants sont conservés ; le complément apporte
+  la vue Alpha et ses références documentaires.
+- ACP-T14 exige une « vue Alpha distincte, alignée sur le flow versionné »,
+  la relecture des nœuds et connexions, des liens directs, la préservation de
+  l'historique et une note durable (`specs/alpha-context-proof/tickets.md:331-337`).
+  Le relevé de structure fourni par le coordinateur
+  contient les 14 nœuds et les 18 arêtes orientées de
+  `docs/architecture/context-control-flow.md:5-43`, sans arête manquante ou
+  supplémentaire. Les libellés préservent les branches oui/non, l'export
+  JSON/Markdown, la production externe, la lecture autorisée, la validation
+  humaine, la révision réelle et l'invalidation ciblée. README et l'index
+  d'architecture ciblent tous deux la section `7:213` ; la note datée est reliée
+  au statut du projet.
+- La portée prescrit « aucune preuve d'exécution des parcours représentés »
+  et aucune fermeture de gate (`specs/alpha-context-proof/tickets.md:339-341`).
+  Les ajouts respectent cette limite et précisent la livraison Git locale.
+
+**Limite de revue :** comparaison indépendante du diff et du relevé fourni,
+sans inspection distante indépendante. L'apparence du board et la conservation
+effective de ses anciens nœuds reposent sur ce relevé et la note de validation.
+Aucun test applicatif, E2E, essai natif, appel fournisseur ou accès réseau.
+
+**Bilan des deux axes : Standards 0 constat ; Spec 0 constat. Aucun problème de sévérité à classer.**
+
+## Intégration et nettoyage
+
+Le commit documentaire `0d690bbec1a74c6a4a9666109c1eff7ccae5de4d` est intégré
+par `af548beaffc0f4546c8c07bbdb8e564d50dc0276`, avec un arbre strictement
+identique. Les deux revues ci-dessus portent sur cette fusion ; elles n'ont
+pas demandé de correction. Leur consignation ici est documentaire uniquement.
+
+Le worktree `ai-center-alpha-diagram-docs` a été retiré sans forcer après
+vérification de sa propreté et de l'intégration de son commit. Sa branche est
+conservée et seul le checkout principal reste présent. Aucun environnement de
+test ou service supplémentaire n'a été démarré pour ACP-T14.
