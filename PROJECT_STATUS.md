@@ -8,6 +8,7 @@ publication_status: public_baseline_pr_open_local_changes_release_gates_pending
 canonical_path: /home/gneed49/Documents/projects/AICenter
 audit_base_commit: a22335cd1849c9b8c5f317eb94905fa3489a51a8
 verified_consolidation_commit: b20d36fa9dd95b0a5b2fad8266b81ca9e31acb64
+verified_synthetic_cases_commit: 5e0e98d82f4f538bbf83060001141a2dd3729d09
 verified_public_commit: 91dc76b95b798ec6adc22480a86db9e9e09da200
 tracking_commit: resolve-with-git-log--1---PROJECT_STATUS.md
 ---
@@ -19,7 +20,9 @@ tracking_commit: resolve-with-git-log--1---PROJECT_STATUS.md
 AI Center est une application desktop/web de contrôle du contexte et de la
 cohérence. La branche locale `feat/alpha-context-proof` du projet ChatGPT
 contient les connexions IA personnelles du 7 septembre et les corrections
-ACP-T11/T12/T13 du 8 septembre. Le checkout canonique ci-dessus reste intact.
+ACP-T11/T12/T13 du 8 septembre, ainsi que les tests des deux projets fictifs
+Médiathèque Partagée et Atelier Réparable. Le checkout canonique ci-dessus
+reste intact.
 
 La [PR n°1](https://github.com/gneed49/ai-center/pull/1), « feat: consolider la
 boucle Alpha Context Proof », est ouverte et prête pour revue au point public
@@ -42,6 +45,15 @@ locaux ; aucun nouveau push, déploiement ou lancement de CI n'a eu lieu.
 
 ## Preuves datées
 
+- **8 septembre, SYN-T01/T02 — `Vérifié` logiciel :** les deux projets
+  fictifs parcourent les services et PostgreSQL dans un même workspace.
+  3 nouveaux contrats du compilateur et 1 intégration couplée réussis :
+  confirmation, sélection/provenance, isolation, contradiction, révision et
+  recompilation avec historique conservé et atelier inchangé. Également
+  reproduits : 125 unités serveur (1 ignorée), 32 pgTAP, 41 tests Alpha et
+  17 gardes. Les [preuves et limites](specs/synthetic-context-cases/validation-2026-09-08.md)
+  et les [deux revues sans constat](specs/synthetic-context-cases/review-2026-09-08.md)
+  sont consignées. Base jetable, volumes et worktree nettoyés ; aucun E2E.
 - **8 septembre, ACP-T14 — `Vérifié` documentaire :** la
   [vue FigJam Alpha Context Proof](https://www.figma.com/board/gn5z1F1tnQpQ23580fQ5QC?node-id=7-213)
   ajoute les 14 nœuds et 18 connecteurs du flow à côté du dessin historique

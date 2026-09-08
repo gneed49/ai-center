@@ -1,6 +1,7 @@
 # Validation — deux projets fictifs
 
 Date : 8 septembre 2026. Base du lot : `85b5517`.
+Tests livrés dans `b5999f0`, intégrés sans changement à `5e0e98d`.
 Demande : [spécification et amendement](spec.md).
 
 ## Résultat reproduit
@@ -93,8 +94,19 @@ rapport ne revendique pas une exécution de toutes les autres suites DB.
 
 ## Revue et portée
 
-Les revues indépendantes Standards et Spec et le nettoyage sont à consigner
-après intégration du commit de tests.
+Les [revues indépendantes](review-2026-09-08.md) portent sur les onze fichiers
+du diff `85b5517...5e0e98d` : Standards — zéro violation et zéro jugement
+facultatif ; Spec — zéro constat. Aucun correctif de revue n'est nécessaire.
+Clippy strict des deux nouveaux binaires réussit, ainsi que le format Rust,
+la syntaxe Bash, le contrôle des liens Markdown (162 cibles dans 76 fichiers
+au point de consolidation) et Prettier sur les fichiers concernés.
+
+La stack et ses seuls volumes ont été supprimés : le journal
+`/tmp/acp-synthetic-stop.log` confirme le nettoyage ciblé, puis les inventaires
+Podman filtrés par cette identité sont vides. Le fichier privé de connexion
+runtime a été supprimé. Le service Podman temporaire s'est arrêté avec code 0.
+Le worktree d'implémentation propre a été retiré après vérification de son
+intégration ; sa branche reste conservée. SYN-T01 et SYN-T02 sont terminés.
 
 Ces résultats prouvent les contrats logiciels testés avec deux domaines
 fictifs. Ils ne mesurent pas la compréhension d'un modèle réel, un avantage

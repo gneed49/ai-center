@@ -204,6 +204,12 @@ L'attente du choix de deux projets réels est levée pour cette validation.
 Les E2E restent au propriétaire ; les résultats synthétiques ne sont pas des
 scores comparatifs réels ni une semaine d'usage observée.
 
+**Livré localement :** SYN-T01/T02 sont terminés, tests intégrés à `5e0e98d`.
+Les [preuves datées](../synthetic-context-cases/validation-2026-09-08.md)
+consignent les deux projets testés ensemble, les contrats, les contrôles
+complémentaires et les deux revues sans constat. L'environnement jetable
+et le worktree ont été nettoyés.
+
 ### Règle permanente
 
 Toute pull request d'implémentation doit citer au moins un identifiant ACP et

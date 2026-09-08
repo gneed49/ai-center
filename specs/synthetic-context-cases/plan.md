@@ -29,7 +29,7 @@ uniquement les défauts produits réellement révélés par ces scénarios.
 
 ### SYN-T02 — Exécution, intégration et revue
 
-Statut : à faire. Dépend de SYN-T01.
+Statut : livré localement le 8 septembre 2026. Dépend de SYN-T01.
 
 Exécuter les unités pertinentes et les intégrations PostgreSQL sur la stack
 jetable gardée, sans phase E2E. Faire fusionner le commit par un agent merger,
@@ -37,3 +37,11 @@ relire les axes Standards et Spec indépendamment et confier toute correction
 à un seul implémenteur. Consigner les résultats réels, mettre à jour le suivi
 Alpha pour retirer l'attente des deux projets réels de ce lot, puis nettoyer
 la stack et les worktrees. Les changements restent locaux.
+
+**Résultat :** le commit de tests `b5999f0` est intégré sans changement à
+`5e0e98d`. Les 3 contrats et l'intégration couplée des 2 projets réussissent,
+avec les contrôles complémentaires datés dans la
+[validation](validation-2026-09-08.md). Les deux
+[axes de revue](review-2026-09-08.md) n'ont aucun constat. Stack, volumes,
+identifiant runtime privé et worktree temporaire sont nettoyés ; aucune
+publication ni exécution E2E.

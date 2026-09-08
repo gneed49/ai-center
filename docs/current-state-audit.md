@@ -32,6 +32,16 @@ logicielle n'attend donc plus de corpus réel fourni par le propriétaire.
 Les gates ci-dessous décrivent les preuves opérationnelles du jalon Alpha ;
 elles ne sont pas des prérequis pour exécuter ces tests synthétiques.
 
+**Complément vérifié le 8 septembre, intégré à `5e0e98d` :** les deux projets
+Médiathèque Partagée et Atelier Réparable traversent les services applicatifs
+dans un même workspace PostgreSQL. Les 3 nouveaux contrats hors base et
+l'intégration réunissant les 2 projets passent, ainsi que 125 unités serveur
+(1 ignorée), 32 pgTAP, 41 tests Alpha et 17 gardes. Les deux revues sont sans
+constat. Le [rapport du lot](../specs/synthetic-context-cases/validation-2026-09-08.md)
+détaille l'isolation, les versions, la contradiction/révision et les limites ;
+il distingue ces nouvelles exécutions des preuves antérieures ci-dessous.
+La stack, ses volumes, le service Podman et le worktree temporaires sont nettoyés.
+
 ## Comportements et preuves récentes
 
 | Domaine                          | Résultat livré et preuve datée                                                                                                                                                    | Limite                                                                                                   |

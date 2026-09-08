@@ -1,6 +1,8 @@
 # Deux projets fictifs — validation du contexte
 
-> Statut : active — demande du propriétaire du 8 septembre 2026.
+> Statut : livré et vérifié localement — demande du propriétaire du 8 septembre 2026.
+>
+> Preuves : [validation](validation-2026-09-08.md) et [revue](review-2026-09-08.md).
 
 ## Intention et amendement
 
