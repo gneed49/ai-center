@@ -24,6 +24,9 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[path = "provider_connections/message_identity.rs"]
+mod message_identity;
+
 // A non-network failing default proves that personal choices are honored even
 // when the application's default cannot produce any business output.
 struct ForbiddenDefault;
