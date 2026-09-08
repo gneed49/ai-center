@@ -9,7 +9,15 @@ Source : [spec.md](spec.md), amendement utilisateur du 8 septembre 2026.
 
 ### SYN-T01 — Fixtures et tests exécutables
 
-Statut : à faire. Exigences SYN-001 à SYN-007.
+Statut : livré le 8 septembre 2026. Exigences SYN-001 à SYN-007.
+
+Les fixtures versionnées Médiathèque Partagée et Atelier Réparable alimentent
+trois contrats du compilateur sans base et un test d'intégration couplé des
+deux projets. La collecte `quality` et `integration` inclut ces binaires.
+Les trois contrats passent ; le test PostgreSQL exécuté par l'orchestrateur
+sur la stack isolée avec le rôle runtime RLS passe en 2,79 s. Le premier montage
+de fixture ouvrait directement une session Tech : il a été corrigé pour
+respecter le handoff obligatoire. Aucun comportement produit n'a été modifié.
 
 Un implémenteur dans un worktree dédié crée les deux fixtures explicites,
 ajoute des assertions comportementales aux interfaces convenues et raccorde
