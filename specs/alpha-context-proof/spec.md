@@ -19,6 +19,12 @@ La preuve doit être obtenue avec des données réelles non sensibles sur trois
 projets, dont AI Center, et comparée à un workflow témoin qui transmet l'ensemble
 du contexte sans sélection.
 
+**Amendement du propriétaire, 8 septembre 2026 :** la validation logicielle
+en cours utilise [deux projets fictifs choisis par l'agent](../synthetic-context-cases/spec.md),
+avec tests unitaires et d'intégration. Le choix de deux projets réels n'est
+plus un prérequis de ce lot. Cette substitution n'attribue pas aux résultats
+synthétiques les propriétés d'une campagne réelle ou d'une recette humaine.
+
 ## Frontières non négociables
 
 - GitHub et les outils de travail restent canoniques pour leurs objets.
