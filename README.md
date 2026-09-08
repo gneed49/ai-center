@@ -38,52 +38,38 @@ Cette évolution du 7 septembre est livrée localement : sa validation repose
 sur les tests unitaires et d'intégration. Le propriétaire réalise les E2E et
 les essais avec ses comptes fournisseurs ; aucun résultat réel n'est présumé.
 
-## Socle Alpha Context Proof — état documenté au 5 septembre 2026
+## Socle Alpha Context Proof — état au 8 septembre 2026
 
-Le socle logiciel **Alpha Context Proof est consolidé** sur
-`feat/alpha-context-proof`, [PR #1](https://github.com/gneed49/ai-center/pull/1),
-avec suivi dans l'[issue #2](https://github.com/gneed49/ai-center/issues/2).
-Les 31 commits de reprise ont été publiés le 5 septembre jusqu'à `91dc76b`,
-après autorisation du propriétaire ; la PR a été marquée prête pour revue.
-Le complément documentaire `8861eca` et l'évolution de connexions personnelles
-du 7 septembre restent locaux. Ces états ne constituent ni une fusion, ni une
-release, ni un déploiement. Les constats Standards/Spec et
-le dernier écart de calibration sont corrigés et revus. Les gates réels restent
-ouverts ; aucune release ou alpha équipe n'est annoncée.
+Le socle logiciel et les connexions IA personnelles sont réunis sur
+`feat/alpha-context-proof`, avec suivi dans l'[issue #2](https://github.com/gneed49/ai-center/issues/2).
+La [PR #1](https://github.com/gneed49/ai-center/pull/1) est ouverte et prête
+pour revue ; sa version publique reste à `91dc76b`, après la publication
+explicitement autorisée du 5 septembre. Les connexions du 7 septembre et les
+corrections suivantes restent locales. Aucun déploiement ou release n'a eu lieu.
 
-| Statut | Sens |
-| --- | --- |
-| `Vérifié` | Reproduit sur la version et dans l'environnement indiqués. |
-| `Présent mais non reproduit` | Code ou artefact disponible, parcours complet non exécuté. |
-| `Déclaré` | Résultat historique sans reproduction sur la version courante. |
-| `Futur` | Résultat ou exploitation encore à réaliser. |
+| Contrôle daté                        | Preuve et limite                                                                                                                             |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Connexions, 7 septembre              | 125 unités Rust, 49 tests web, 32 pgTAP et 11 intégrations PostgreSQL ; comptes/processus fournisseurs simulés.                              |
+| Fiabilité, 8 septembre               | 7 intégrations DB ciblées, dont le refus d'un nouveau contenu sous une identité de message déjà utilisée ; faux moteur, base réelle jetable. |
+| Upgrade, 8 septembre                 | 7 unités de migration et 17 gardes ; les 5 migrations passent sur les données legacy avec owners conservés.                                  |
+| Restauration, 8 septembre            | 41 tables, 98 policies et données/grants/RLS concordants ; déchiffrement après restauration avec clé maîtresse séparée non rejoué.           |
+| Harness, 8 septembre                 | 41 tests Alpha, dont 14 nouveaux tests transport ; redirections refusées, taille et délai bornés, appels loopback uniquement.                |
+| Qualité, 8 septembre                 | Clippy serveur tous targets, formatage et syntaxe réussis. Les suites complètes du 7 septembre ne sont pas recomptées comme nouvelles.       |
+| CI publique, 5 septembre, relue le 8 | Desktop CI 5/5 et OCI 3/3 pour chacun des déclenchements push/PR à `91dc76b` ; aucun résultat distant sur les changements locaux suivants.   |
 
-| Surface | Preuve locale reproduite |
-| --- | --- |
-| Backend | 89 tests Rust, tous les tests compilés et Clippy strict sur `7a1a64c`, intégré sans changement de source. |
-| Évaluation | 27 tests offline et schémas valides sur `fc30ab6` ; métriques calculées depuis les entrées vérifiées et annotations humaines. |
-| PostgreSQL | `7a1a64c` : base neuve et upgrade, 32 pgTAP, 11 tests métier avec rôle RLS runtime ; appels longs et concurrence couverts. |
-| Sauvegarde et auth | `84634b7` : 39 tables et 96 policies restaurées/comparées ; magic link local et réponses attendues 200/200/403/403/401 ; nettoyage confirmé. |
-| Web | Six Vitest, lint et build sur `c8a723b` ; source web inchangée par les corrections de revue. |
-| Desktop simulé | 126/126 sur `90ca758` : 42 scénarios × Chromium 1440×900, Chromium 1024×768 et Firefox 1440×900 ; aucun retry. |
-| Tauri Linux | `90ca758` : build avec overlay isolé et empreinte ; quatre tests de garde. Le parcours métier natif n'a pas été exécuté. |
-| Navigateur sur API/DB réelles | Preuve antérieure `37921d8`, 1/1 jusqu'au handoff rechargé ; extension récente vers plan/couverture/historique non reproduite localement. |
-| Dépendances | Installation propre et audit npm sans avis ; audit Rust sans avis bloquant, avec avertissements et exception documentés. |
+Le [rapport du 8 septembre](specs/alpha-context-proof/review-2026-09-08.md)
+conserve les versions, deux axes de revue, journaux et limites. Le
+[rapport du 5 septembre](specs/alpha-context-proof/review-2026-09-05.md)
+conserve les anciennes preuves navigateur et build Tauri. L'[audit courant](docs/current-state-audit.md)
+sépare la présence du code, les tests locaux, la CI publique et l'usage réel.
 
-Le [rapport de revue et validation](specs/alpha-context-proof/review-2026-09-05.md)
-conserve versions, commandes et limites. L'[audit courant](docs/current-state-audit.md)
-sépare ces preuves des gates du plan. Les résultats CI du HEAD se consultent
-directement sur la PR ; les anciens runs d'août ne certifient pas cette reprise.
-
-Restent `Présent mais non reproduit` : exploration UI de cette reprise et smoke
-métier natif. L'environnement a bloqué l'exécution interactive ; aucun autre
-canal n'a été utilisé pour la contourner.
-
-Restent `Futur` : campagne comparative sur trois projets autorisés dans le budget
-de 100 USD, GitHub App privée, dix boucles propriétaires sur une semaine, puis
-alpha HTTPS de deux à trois utilisateurs pendant deux semaines. Le quota OpenAI
-signalé en août n'a pas été recontrôlé. Aucun build, test ou viewport mobile
-n'appartient à ce jalon.
+Les E2E, l'exploration UI et le smoke métier natif de la version actuelle sont
+confiés au propriétaire. Restent également à réaliser la campagne comparative
+sur trois projets autorisés, la GitHub App privée, dix boucles pendant une
+semaine puis l'alpha HTTPS de deux à trois utilisateurs pendant deux semaines.
+Le [registre propriétaire](specs/alpha-context-proof/owner-proof-template.md)
+et le [dossier opérateur](docs/operations/private-alpha-handoff.md) préparent
+ces étapes sans inventer de résultats. Android/iOS restent hors de ce jalon.
 
 La migration des observations et le serveur doivent être mis à niveau ensemble ;
 voir les [consignes de migration](specs/alpha-context-proof/review-2026-09-05.md#migration-et-exploitation).
@@ -142,7 +128,11 @@ exports prêts à partager sont disponibles en
 [SVG](docs/architecture/assets/alpha-context-control-flow.svg) et
 [PNG](docs/architecture/assets/alpha-context-control-flow.png).
 
-## Capacités du snapshot
+## Capacités — preuves historiques du 5 septembre
+
+Les deux tableaux suivants décrivent le point de contrôle du 5 septembre et
+ses versions de preuve. Les livraisons des 7/8 septembre ont leurs résultats
+datés plus haut ; la recette E2E de la version actuelle reste au propriétaire.
 
 | Domaine                 | État de preuve                          | Réalité actuelle                                                                      |
 | ----------------------- | --------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -156,7 +146,7 @@ exports prêts à partager sont disponibles en
 | Steward et résolution   | `Vérifié` sur PostgreSQL                | contradictions multiples, résolution atomique, stale, outbox et recompilation         |
 | Auth et workspaces      | `Vérifié` en smoke Supabase et pgtap    | magic link/JWT/JWKS, rôles, contexte transactionnel et refus de workspace forgé       |
 | GitHub read-only        | `Vérifié` contre faux serveur           | URL/SSRF/SHA/ETag/checks et transitions ; aucune installation GitHub App réelle       |
-| Web desktop             | `Vérifié`                               | 126 tests mockés ; flow full-stack antérieur au point `37921d8`                         |
+| Web desktop             | `Vérifié`                               | 126 tests mockés ; flow full-stack antérieur au point `37921d8`                       |
 | Tauri Linux             | `Vérifié` au build                      | binaire release sans bundle ; smoke métier natif interactif non exécuté               |
 
 ## Dix parcours de certification
@@ -165,7 +155,7 @@ Le contrat complet associe état initial, action, mutation, preuve, erreur, retr
 et reload à chaque parcours dans la
 [`spécification Alpha Context Proof`](specs/alpha-context-proof/spec.md).
 
-| ID    | Parcours                                       | Preuve actuelle                                            |
+| ID    | Parcours                                       | Preuve au point du 5 septembre                             |
 | ----- | ---------------------------------------------- | ---------------------------------------------------------- |
 | UF-01 | Créer un projet                                | `Vérifié` full-stack et RLS                                |
 | UF-02 | Confirmer ou rejeter une connaissance          | `Vérifié` en DB et UI                                      |
@@ -274,8 +264,8 @@ npm run test:e2e -w @ai-center/web -- --project=firefox-desktop
 Le script [`scripts/ci-desktop.sh`](scripts/ci-desktop.sh) décrit les gates de
 qualité, d’intégration, de navigateur, de desktop et de secret scan. La CI de PR
 utilise `chromium-desktop`; la certification pré-alpha manuelle ajoute
-`chromium-compact` et `firefox-desktop`. Les résultats CI du commit distant `8a6e0da` sont historiques ; consulter la PR
-pour les résultats du HEAD courant. La certification pré-alpha manuelle reste
+`chromium-compact` et `firefox-desktop`. La CI publique de `91dc76b` a été relue le 8 septembre ; elle ne certifie pas
+les modifications locales suivantes. La certification pré-alpha manuelle reste
 `Présent mais non reproduit`.
 
 Les évaluations IA réelles ne sont jamais lancées en CI de PR. Leur harness et
@@ -291,8 +281,8 @@ Les constats de revue sont corrigés et leurs régressions passent. L’alpha
    réussir la campagne A/B sur les trois projets autorisés ;
 2. installer la GitHub App privée read-only et fermer une boucle réelle PR →
    ExternalReference → preuve → couverture ;
-3. déclencher la certification pré-alpha manuelle et réaliser le smoke métier
-   interactif dans Tauri Linux ;
+3. réaliser, par le propriétaire, les E2E et la certification pré-alpha manuelle,
+   puis le smoke métier interactif dans Tauri Linux ;
 4. réaliser dix boucles propriétaires réelles ;
 5. déployer la surface HTTPS privée, vérifier alertes et restauration dans cet
    environnement, puis mener le dogfood et l’alpha équipe.

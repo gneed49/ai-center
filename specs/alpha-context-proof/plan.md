@@ -153,6 +153,17 @@ exacts et le graphe sont dans [tickets.md](tickets.md).
    Standards/Spec, confier les corrections de revue à un seul implémenteur.
 4. Consigner les preuves et l'état réel des gates, puis nettoyer les worktrees.
 
+**Livraison locale du 8 septembre :** T11/T12 (`34af226`) et T13 (`27e3145`)
+sont intégrés à `b20d36f`. Les 7 intégrations DB ciblées, 7 unités de migration,
+17 unités de garde, 5 migrations réelles, restauration SQL 41 tables/98 policies
+et 41 tests Alpha sont réussis, selon les portées du
+[rapport de reprise](review-2026-09-08.md). La revue Spec ne retient aucun
+constat ; l'unique P3 documentaire Standards est corrigé par `662f4e5` et relu
+comme clos. Les documents de
+[semaine propriétaire](owner-proof-template.md) et
+[d'alpha privée](../../docs/operations/private-alpha-handoff.md) sont prêts à
+renseigner. Ils ne ferment pas les gates d'usage réel.
+
 La PR publique est restée au point `91dc76b` lors de la consultation du
 8 septembre ; les ajouts suivants sont locaux. Aucune action distante ni
 promotion n'est impliquée par ces corrections. Les campagnes, observations

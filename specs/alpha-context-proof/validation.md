@@ -13,7 +13,40 @@ la date, la commande ou le scénario exact, l'environnement et le chemin de
 l'artefact. Les rapports de CI, captures et résultats agrégés sont conservés
 sans secret ni donnée du corpus.
 
-## État courant du registre — 5 septembre 2026
+## État courant du registre — 8 septembre 2026
+
+La consigne du propriétaire du 7 septembre lui confie les E2E, l'exploration
+UI, le smoke natif et les essais avec ses comptes. Les deux livraisons des
+7/8 septembre exécutent uniquement des unités, contrats simulés et intégrations.
+Les gates de parcours et d'usage réel restent ouverts ; les anciennes preuves
+navigateur restent datées et ne certifient pas la version actuelle.
+
+Le [rapport du 8 septembre](review-2026-09-08.md) rattache les corrections
+ACP-T11/T12/T13 aux sources intégrées sans retouche à `b20d36f` :
+
+| Contrôle                   | Résultat du 8 septembre                                                         | Portée                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Plan de migration et cible | 7 unités de migration et 17 unités des gardes réussies.                         | Ordre, refus, arrêt après erreur et nettoyage de la seule base créée.      |
+| Upgrade réel               | Les 5 migrations passent sur les fixtures legacy, données et owners conservés.  | PostgreSQL exclusif jetable, aucune base utilisateur modifiée.             |
+| HTTP/DB ciblés             | 7 intégrations réussies : idempotence 2, cycle modèle 3, connexions/messages 2. | Faux moteur et PostgreSQL réel ; contenu modifié refusé avant nouveau run. |
+| Restauration SQL           | 41 tables, 98 policies, données/grants/RLS concordants.                         | Déchiffrement après restauration avec clé maîtresse séparée non rejoué.    |
+| Harness Alpha              | 41 tests réussis, dont 14 nouveaux sur le transport.                            | Loopback/simulation ; aucune campagne fournisseur.                         |
+| Qualité serveur            | Clippy tous targets, formatage et syntaxe réussis.                              | Aucun build desktop ou E2E lancé.                                          |
+
+Le [rapport des connexions du 7 septembre](../provider-connections/validation-2026-09-07.md)
+conserve les 125 unités Rust, 49 tests web, 32 pgTAP et 11 intégrations de cette
+version ; ces suites complètes n'ont pas été répétées le 8 septembre.
+
+La PR publique, relue le 8 septembre, reste à `91dc76b` : les deux déclenchements
+push/PR du 5 septembre ont chacun réussi Desktop CI 5/5 et OCI 3/3. Ils ne
+certifient pas les sources locales suivantes. Aucun workflow n'a été relancé.
+
+Les documents de [recette propriétaire](../provider-connections/manual-verification.md),
+[semaine propriétaire](owner-proof-template.md) et
+[alpha privée](../../docs/operations/private-alpha-handoff.md) restent à exécuter
+et renseigner. Leurs durées, participants, mesures et preuves ne sont pas présumés.
+
+## Historique du registre — 5 septembre 2026
 
 Le [rapport de revue et validation](review-2026-09-05.md) identifie les commits,
 commandes et journaux du point de contrôle fonctionnel `a9b3140`. Les sections
@@ -60,7 +93,11 @@ Les trois commandes Playwright ont été exécutées depuis la racine avec
 `npm run test:e2e -w @ai-center/web -- --project=<projet>`. Aucune commande
 Android, iOS ou mobile n'a été lancée.
 
-## Matrice des preuves
+## Matrice des preuves historique — point du 5 septembre 2026
+
+Cette matrice conserve le périmètre des anciennes preuves. Les corrections et
+responsabilités courantes sont précisées dans le registre du 8 septembre ; G6
+et G8 ne sont pas fermés pour la version actuelle.
 
 | Gate                | ACP principaux         | Suite / scénario                 | Artefact attendu           | Statut                                                                 |
 | ------------------- | ---------------------- | -------------------------------- | -------------------------- | ---------------------------------------------------------------------- |
@@ -77,24 +114,28 @@ Android, iOS ou mobile n'a été lancée.
 | G10 Dogfood         | Tous les P0            | Dix boucles réelles              | Registre de preuve         | `Futur`                                                                |
 | G11 Équipe          | Tous                   | Alpha privée deux semaines       | Décision de promotion      | `Futur`                                                                |
 
-## Scénarios E2E obligatoires
+## Scénarios E2E à réaliser par le propriétaire
 
-| Fichier cible                           | Parcours                          | Viewports de PR   | Gate pré-alpha supplémentaire |
-| --------------------------------------- | --------------------------------- | ----------------- | ----------------------------- |
-| `p0-context-loop.spec.ts`               | UF-01 à UF-06                     | Chromium 1440×900 | Chromium 1024×768 + Firefox   |
-| `blocked-reject-revise.spec.ts`         | UF-02, UF-03, UF-07, UF-08        | Chromium 1440×900 | Firefox                       |
-| `resilience-reload-idempotence.spec.ts` | UF-01, UF-02, UF-04, UF-06, UF-10 | Chromium 1440×900 | Chromium 1024×768             |
-| `isolation-routing.spec.ts`             | UF-05, UF-10                      | Chromium 1440×900 | Firefox                       |
-| `page-states.spec.ts`                   | Toutes les routes                 | Chromium 1440×900 | Chromium 1024×768             |
-| `accessibility-desktop.spec.ts`         | UF-01 à UF-10                     | Chromium 1440×900 | Firefox + reduced motion      |
-| `external-proof.spec.ts`                | UF-04, UF-09                      | Chromium 1440×900 | Firefox                       |
+Les noms ci-dessous correspondent aux fichiers présents, depuis la racine du
+dépôt. Cette cartographie décrit les scénarios disponibles ; elle n'ajoute
+aucun résultat de test sur la version courante.
 
-Les E2E UI de pull request interceptent l'API avec le faux serveur versionné
-afin de couvrir les états et retries sans fournisseur. Les tests Rust/PostgreSQL
-utilisent séparément une base Supabase isolée. Le happy path P0 a aussi été
-rejoué contre cette base et l'API réelle en mode déterministe. Les traces
-Playwright sont conservées au premier retry et aucun projet ou dépôt réel n'est
-appelé en CI.
+| Couverture prévue          | Fichiers existants                                                                                    | Parcours                          | Configurations attendues                                 |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------- | -------------------------------------------------------- |
+| Boucle P0 sur API/DB       | `apps/web/real-e2e/context-loop.spec.ts`                                                              | UF-01 à UF-06                     | Chromium 1440×900 ; compact/Firefox selon certification. |
+| Blocage, refus, révision   | `apps/web/e2e/decision-and-states.spec.ts`, `context-flow.spec.ts`, `desktop-resilience.spec.ts`      | UF-02, UF-03, UF-07, UF-08        | Chromium 1440×900 et Firefox.                            |
+| Reload, retry, idempotence | `apps/web/e2e/context-flow.spec.ts`, `idempotent-form-commands.spec.ts`, `desktop-resilience.spec.ts` | UF-01, UF-02, UF-04, UF-06, UF-10 | Chromium 1440×900 et 1024×768.                           |
+| Isolation et navigation    | `apps/web/e2e/identity-boundary.spec.ts`, `decision-and-states.spec.ts`                               | UF-05, UF-10                      | Chromium 1440×900 et Firefox.                            |
+| États de page              | `apps/web/e2e/decision-and-states.spec.ts`, `desktop-resilience.spec.ts`                              | Routes et états                   | Chromium 1440×900 et 1024×768.                           |
+| Accessibilité desktop      | `apps/web/e2e/accessibility-desktop.spec.ts`                                                          | UF-01 à UF-10                     | Chromium 1440×900, Firefox et reduced motion.            |
+| Preuve externe             | `apps/web/e2e/external-proof.spec.ts`                                                                 | UF-04, UF-09                      | Chromium 1440×900 et Firefox.                            |
+
+Les noms courts d'une cellule partagent le dossier `apps/web/e2e/` du premier
+fichier. Les tests UI interceptent l'API avec le faux serveur versionné ; les
+tests Rust/PostgreSQL utilisent séparément une base isolée. Le scénario sous
+`real-e2e` utilise l'API et la base réelles en mode déterministe. Les succès
+historiques figurent dans les rapports datés et ne sont pas une recette du
+nouveau HEAD. Aucun fournisseur réel n'est appelé par ces scénarios CI.
 
 ## Protocole de campagne réelle
 
@@ -160,13 +201,17 @@ git diff --check
 ```
 
 La [stack d’intégration jetable](../../docs/operations/isolated-integration.md)
-exécute les migrations, la RLS, les tests PostgreSQL, la restauration, l’Auth
-et le parcours navigateur réel sur des ports et volumes distincts du
-développement. Docker est requis :
+sépare les migrations, tests PostgreSQL et restauration du développement.
+Pour les intégrations sans E2E de cette livraison, choisir explicitement les
+phases suivantes ; Docker est requis :
 
 ```bash
-./scripts/integration-stack.sh run
+./scripts/integration-stack.sh run integration backup-restore
 ```
+
+La commande `run` sans phase lance aussi l'Auth et le parcours navigateur réel.
+Elle appartient à la recette propriétaire, comme les workflows E2E de PR et de
+pré-alpha ; aucun de ces workflows n'est déclenché dans cette livraison.
 
 ## Interdictions de promotion
 
