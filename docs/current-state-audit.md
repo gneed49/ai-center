@@ -26,6 +26,12 @@ Une intégration PostgreSQL avec faux fournisseur ne prouve pas une génération
 réelle ni la qualité du contexte. Une compilation ne prouve pas le parcours
 natif. Un résultat local n'est ni une CI distante ni un déploiement.
 
+Le 8 septembre, le propriétaire a demandé à l'agent d'inventer et tester
+[deux projets](../specs/synthetic-context-cases/spec.md). Leur validation
+logicielle n'attend donc plus de corpus réel fourni par le propriétaire.
+Les gates ci-dessous décrivent les preuves opérationnelles du jalon Alpha ;
+elles ne sont pas des prérequis pour exécuter ces tests synthétiques.
+
 ## Comportements et preuves récentes
 
 | Domaine                          | Résultat livré et preuve datée                                                                                                                                                    | Limite                                                                                                   |

@@ -194,6 +194,16 @@ regroupement. La [note documentaire](../../docs/architecture/diagram-validation-
 localise les preuves et distingue le dessin historique conservé. Les sources
 Mermaid et les exports sont inchangés ; la livraison Git reste locale.
 
+### Deux projets fictifs — amendement du 8 septembre
+
+Le propriétaire confie à l'agent le choix et le test de deux cas inventés.
+Le [plan SYN-T01 → SYN-T02](../synthetic-context-cases/plan.md) couvre les
+fixtures Médiathèque Partagée et Atelier Réparable, les contrats unitaires,
+leur coexistence dans PostgreSQL et la résolution ciblée d'une contradiction.
+L'attente du choix de deux projets réels est levée pour cette validation.
+Les E2E restent au propriétaire ; les résultats synthétiques ne sont pas des
+scores comparatifs réels ni une semaine d'usage observée.
+
 ### Règle permanente
 
 Toute pull request d'implémentation doit citer au moins un identifiant ACP et

@@ -72,8 +72,10 @@ locaux ; aucun nouveau push, déploiement ou lancement de CI n'a eu lieu.
 - Les E2E, l'exploration UI, le smoke Tauri et les essais avec les comptes réels
   sont confiés au propriétaire depuis sa consigne du 7 septembre. Aucun de
   ces parcours n'a été exécuté pendant les livraisons des 7/8 septembre.
-- Corpus autorisé sur trois projets, campagne comparative et annotations
-  humaines ; deux projets et le contenu non sensible restent à préciser.
+- Campagne comparative et annotations humaines pour une preuve de valeur
+  réelle. Pour la validation logicielle demandée le 8 septembre, le propriétaire
+  autorise [deux projets fictifs](specs/synthetic-context-cases/spec.md) choisis
+  et testés par l'agent ; aucun choix de projets réels n'est attendu pour ce lot.
 - GitHub App privée en lecture seule et boucle réelle d'export jusqu'à la
   couverture ; dix boucles propriétaires sur trois projets pendant une semaine.
 - Hébergement HTTPS privé, deux à trois invités, alertes et sauvegardes actives,
