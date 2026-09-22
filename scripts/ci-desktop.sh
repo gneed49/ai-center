@@ -14,6 +14,7 @@ AI Center — contrôles CI desktop-only
 Usage:
   ./scripts/ci-desktop.sh quality
   ./scripts/ci-desktop.sh integration
+  ./scripts/ci-desktop.sh tls-smoke
   ./scripts/ci-desktop.sh backup-restore
   ./scripts/ci-desktop.sh auth-smoke
   ./scripts/ci-desktop.sh e2e
@@ -50,7 +51,7 @@ quality() {
   npm run test -w @ai-center/web
   cargo test --workspace --lib
   cargo test -p ai-center-server --test synthetic_context_contract
-  python3 -m py_compile scripts/alpha-eval.py scripts/alpha-live-eval.py
+  python3 -m py_compile scripts/alpha-eval.py scripts/alpha-live-eval.py scripts/postgres-tls-smoke.py scripts/oci-api-smoke.py
   python3 -m unittest discover -s scripts/tests -p 'test_alpha*.py'
   python3 -m unittest discover -s scripts/tests -p 'test_integration_target.py'
   python3 -m unittest discover -s scripts/tests -p 'test_migration_plan.py'
@@ -358,6 +359,14 @@ case "${1:-}" in
     ;;
   integration)
     integration
+    ;;
+  oci-api-smoke)
+    integration_require_stack
+    python3 scripts/oci-api-smoke.py
+    ;;
+  tls-smoke)
+    integration_require_stack
+    python3 scripts/postgres-tls-smoke.py
     ;;
   backup-restore)
     backup_restore

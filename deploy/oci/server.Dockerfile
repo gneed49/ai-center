@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     cargo build --locked --release --package ai-center-server
 
-FROM debian:12.11-slim AS runtime
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:1ca671d851d5cd39326d095b949a1d4e6ec836f59c5022b21efcd2773bd3a6d5 AS runtime
 
 ARG OCI_VERSION=dev
 ARG OCI_REVISION=unknown
@@ -30,12 +30,6 @@ LABEL org.opencontainers.image.title="AI Center API" \
       org.opencontainers.image.revision="${OCI_REVISION}" \
       org.opencontainers.image.source="https://github.com/gneed49/ai-center" \
       org.opencontainers.image.licenses="UNLICENSED"
-
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates curl tini \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 10001 ai-center \
-    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin ai-center
 
 COPY --from=build --chown=10001:10001 \
     /workspace/target/release/ai-center-server \
@@ -53,7 +47,7 @@ USER 10001:10001
 EXPOSE 4317
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD ["curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:4317/api/health"]
+    CMD ["/usr/local/bin/ai-center-server", "--healthcheck"]
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/usr/local/bin/ai-center-server"]
+ENTRYPOINT ["/usr/local/bin/ai-center-server"]
+CMD []

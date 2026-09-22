@@ -151,3 +151,13 @@ preuve de restauration séparée, tests SMTP/Auth, identités pseudonymisées de
 participants, sources et destinations réellement autorisées, budget IA mesuré,
 alerte effectivement reçue, procédure de suspension et observations de pilote.
 Aucune de ces preuves ne doit contenir les valeurs des secrets.
+
+
+### Transport PostgreSQL
+
+Le binaire inclut Rustls pour PostgreSQL. Une base distante doit utiliser
+`sslmode=verify-full` dans `DATABASE_URL`, avec certificat et nom DNS vérifiés.
+Si le fournisseur demande sa propre autorité, monter son certificat CA en
+lecture seule et préciser `sslrootcert` dans la configuration privée. Les
+connexions loopback des stacks locales peuvent rester sans TLS. Une erreur TLS
+n'est jamais contournée en passant une base distante à `require` ou `disable`.

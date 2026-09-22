@@ -47,7 +47,9 @@ pub mod auth;
 pub mod automation;
 pub mod company;
 pub mod config;
+pub mod container_health;
 pub mod context;
+mod database_transport;
 pub mod error;
 pub mod external_references;
 pub mod idempotency;
@@ -312,7 +314,9 @@ pub async fn build(
     let pool = PgPoolOptions::new()
         .max_connections(10)
         .acquire_timeout(std::time::Duration::from_secs(5))
-        .connect(config.database_url.expose_secret())
+        .connect_with(database_transport::options(
+            config.database_url.expose_secret(),
+        )?)
         .await
         .context("failed to connect to PostgreSQL")?;
     if config.auth_mode == config::AuthMode::Supabase {

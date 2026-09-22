@@ -4,13 +4,13 @@ status_schema: 2
 last_reviewed: 2026-09-22
 stage: company-context-v1-integration
 health: amber
-publication_status: local_candidate_in_progress_not_deployed
+publication_status: draft_pr_in_progress_not_deployed
 canonical_path: /home/gneed49/.codex/.chatgpt-projects/g-p-6a777a349e208191a064f18e7f93230d/ai-center
 preserved_previous_checkout: /home/gneed49/Documents/projects/AICenter
 branch: feat/company-context-v1
 audit_base_commit: 966ce9bbb597327e0ebbc3084836c6dedd759eca
 implementation_committed: true
-push_effectue: false
+push_effectue: true
 deployment_effectue: false
 tracking_commit: resolve-with-git-log--1---PROJECT_STATUS.md
 ---
@@ -60,7 +60,9 @@ Le [rapport du 22 septembre](specs/company-context-v1/candidate-validation-2026-
 précise les validations reproduites et les écarts ouverts. Il prévaut sur la
 photo intermédiaire ci-dessous. Les deux parcours API/DB réelles et les 20 scénarios société passent après
 l’extension du graphe. Un jalon local est enregistré, avec les écarts restants
-explicitement ouverts ; aucune publication distante ou production n’est annoncée.
+explicitement ouverts ; le jalon `9be97b6` est poussé dans la [PR de travail n°3](https://github.com/gneed49/ai-center/pull/3).
+Ses huit contrôles CI distincts passent. Les corrections d’images/TLS suivantes
+sont en consolidation ; aucune production n’est annoncée.
 
 ## Preuves intermédiaires du 21 septembre
 

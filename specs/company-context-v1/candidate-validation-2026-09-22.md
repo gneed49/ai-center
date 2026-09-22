@@ -96,3 +96,21 @@ Le scan initial Grype 0.119.0 de l'image web antérieure aux dernières pages tr
 zéro vulnérabilité avec correctif disponible et neuf correspondances sans
 correctif classées à part. Ce résultat filtré ne signifie pas zéro vulnérabilité ;
 l'analyse non filtrée et l'image finale doivent encore être qualifiées.
+
+
+## Publication du jalon et correction transport/images
+
+Le jalon **9be97b6eb052e1b3a6933e954f26f9c9756724f5** est poussé dans la
+[PR de travail n°3](https://github.com/gneed49/ai-center/pull/3). Les contrôles
+qualité, intégration PostgreSQL, navigateur Chromium, build Tauri Linux,
+audits, politique packaging et builds API/web passent pour ce commit
+([CI](https://github.com/gneed49/ai-center/actions/runs/35704464351),
+[images](https://github.com/gneed49/ai-center/actions/runs/35704464360)).
+
+La correction qui suit ajoute TLS PostgreSQL vérifié, healthcheck intégré et
+images minimisées. 155 unités Rust passent (10 tests DB ignorés dans cette
+commande), Clippy passe ; le test TLS réel, les deux recettes d'images, Auth
+local et les deux parcours navigateur passent. Le
+[rapport de qualification des images](../../docs/operations/image-security-2026-09-22.md)
+conserve les résidus et les identités exactes. Cette correction doit obtenir sa
+propre CI après commit ; les huit contrôles ci-dessus ne la qualifient pas.

@@ -25,6 +25,12 @@ RUN npm run build --workspace @ai-center/web
 
 FROM nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:04a3275f25d766cff8926d2e57b2ff34a783d6b12a702dc98bb82226d2d9a508 AS runtime
 
+# This app serves static assets and proxies HTTP. Image processing, XSLT,
+# GeoIP, NJS and curl are not used by its config or the upstream entrypoint.
+USER root
+RUN apk del --no-cache nginx-module-image-filter nginx-module-xslt nginx-module-geoip nginx-module-njs curl
+USER 101:101
+
 ARG OCI_VERSION=dev
 ARG OCI_REVISION=unknown
 

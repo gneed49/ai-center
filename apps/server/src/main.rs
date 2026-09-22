@@ -3,6 +3,21 @@ use anyhow::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    if std::env::args().nth(1).as_deref() == Some("--healthcheck") {
+        let bind: std::net::SocketAddr = std::env::var("AI_CENTER_BIND")
+            .unwrap_or_else(|_| "0.0.0.0:4317".into())
+            .parse()?;
+        let ip = if bind.is_ipv6() {
+            std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)
+        } else {
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
+        };
+        return ai_center_server::container_health::check(std::net::SocketAddr::new(
+            ip,
+            bind.port(),
+        ))
+        .await;
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()

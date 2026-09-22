@@ -6,6 +6,9 @@ ni déployées ; une reconstruction du candidat final et la configuration Auth
 de sa cible restent nécessaires. La CI construit les images sans les publier.
 Le [guide V1 web](company-web-v1.md) porte la procédure d'ouverture courante.
 
+Le [rapport images/TLS du 22 septembre](image-security-2026-09-22.md) précise les
+scans non filtrés, signalements résiduels et preuves de démarrage actuels.
+
 ## Périmètre
 
 - `deploy/oci/server.Dockerfile` produit uniquement l'API Axum Linux ;
@@ -59,6 +62,8 @@ connexion PostgreSQL.
 - contextes `.env*`, certificats et clés privées exclus par `.dockerignore` ;
 - copie explicite des sources nécessaires dans l'image API ;
 - utilisateurs non-root dans les deux images finales ;
+- API Distroless sans shell/curl, healthcheck HTTP/DB intégré au binaire ;
+- web sans modules Nginx optionnels inutilisés ;
 - images de base versionnées et build Rust exécuté avec `--locked` ;
 - publication absente du workflow `.github/workflows/oci-build.yml`.
 
