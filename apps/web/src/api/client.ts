@@ -37,7 +37,11 @@ export class ApiError extends Error {
   }
 }
 
-export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestPayload<T>(
+  path: string,
+  init: RequestInit | undefined,
+  read: (response: Response) => Promise<T>,
+): Promise<T> {
   const context = captureRequestContext();
   let response: Response;
   try {
@@ -77,9 +81,23 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
   if (response.status === 204) return undefined as T;
-  const data = (await response.json()) as T;
+  const data = await read(response);
   context.assertCurrent();
   return data;
+}
+
+export function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return requestPayload(
+    path,
+    init,
+    (response) => response.json() as Promise<T>,
+  );
+}
+
+export type ContextPackExportFormat = "json" | "markdown";
+
+export function requestText(path: string, init?: RequestInit): Promise<string> {
+  return requestPayload(path, init, (response) => response.text());
 }
 
 export function createIdempotencyKey(): string {
@@ -106,6 +124,7 @@ async function prepareHandoff(
   projectId: UUID,
   sourceSessionId: UUID,
   idempotencyKeys: HandoffIdempotencyKeys = createHandoffIdempotencyKeys(),
+  targetNodeKey: "tech" | "dev" = "tech",
 ) {
   const context = captureRequestContext();
   const contextPack = await request<ContextPackSummary>(
@@ -117,6 +136,7 @@ async function prepareHandoff(
         source_session_id: sourceSessionId,
         task_kind: "technical-delivery-plan",
         token_budget: 12_000,
+        target_node_key: targetNodeKey,
       } satisfies CompileContextPackInput),
     },
   );
@@ -143,8 +163,8 @@ export const api = {
       headers: mutationHeaders(idempotencyKey),
       body: JSON.stringify(input),
     }),
-  snapshot: (projectId: UUID) =>
-    request<ProjectSnapshot>(`/api/projects/${projectId}/snapshot`),
+  snapshot: (projectId: UUID, init?: RequestInit) =>
+    request<ProjectSnapshot>(`/api/projects/${projectId}/snapshot`, init),
   createSession: (
     projectId: UUID,
     nodeKey: string,
@@ -163,6 +183,7 @@ export const api = {
     sessionId: UUID,
     content: string,
     idempotencyKey: string = createIdempotencyKey(),
+    clientMessageId: string = idempotencyKey,
   ) =>
     request<SessionView>(
       `/api/projects/${projectId}/sessions/${sessionId}/messages`,
@@ -171,7 +192,7 @@ export const api = {
         headers: mutationHeaders(idempotencyKey),
         body: JSON.stringify({
           content,
-          client_message_id: idempotencyKey,
+          client_message_id: clientMessageId,
         }),
       },
     ),
@@ -216,6 +237,17 @@ export const api = {
       headers: mutationHeaders(idempotencyKey),
       body: JSON.stringify(input),
     }),
+  contextPack: (contextPackId: UUID) =>
+    request<ContextPackSummary>(
+      `/api/context-packs/${encodeURIComponent(contextPackId)}`,
+      { cache: "no-store" },
+    ),
+  exportContextPack: (contextPackId: UUID, format: ContextPackExportFormat) =>
+    requestPayload(
+      `/api/context-packs/${encodeURIComponent(contextPackId)}/export?format=${format}`,
+      { cache: "no-store" },
+      (response) => response.text(),
+    ),
   handoff: (
     projectId: UUID,
     sourceSessionId: UUID,

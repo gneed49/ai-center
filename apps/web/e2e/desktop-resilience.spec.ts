@@ -13,17 +13,13 @@ test("conserve le message hors ligne et ne l’envoie qu’une fois après recon
   const composer = page.getByLabel("Message à l’agent tech");
   await composer.fill("Saisie conservée malgré la coupure");
   await context.setOffline(true);
-  await expect(
-    page.getByText(/Hors connexion · vos saisies sont conservées/),
-  ).toBeVisible();
+  await expect(page.getByText(/Hors connexion\. Restez sur/)).toBeVisible();
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(composer).toHaveValue("Saisie conservée malgré la coupure");
   expect(state.messageMutations).toBe(0);
   await context.setOffline(false);
   await expect(composer).toHaveValue("");
-  await expect(
-    page.getByText(/Hors connexion · vos saisies sont conservées/),
-  ).toHaveCount(0);
+  await expect(page.getByText(/Hors connexion\. Restez sur/)).toHaveCount(0);
   expect(state.messageProviderAttempts).toBe(1);
   expect(state.messageMutations).toBe(1);
   expect(errors).toEqual([]);
@@ -88,7 +84,7 @@ const routes = [
     name: "Center",
     page: "/",
     resource: "/api/projects",
-    ready: "Un seul endroit pour garder le contexte vivant.",
+    ready: "Le contexte de votre entreprise",
   },
   {
     name: "Projet",

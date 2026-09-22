@@ -23,7 +23,7 @@ ENV VITE_API_URL=${VITE_API_URL} \
 
 RUN npm run build --workspace @ai-center/web
 
-FROM nginxinc/nginx-unprivileged:1.29.1-alpine3.22 AS runtime
+FROM nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:04a3275f25d766cff8926d2e57b2ff34a783d6b12a702dc98bb82226d2d9a508 AS runtime
 
 ARG OCI_VERSION=dev
 ARG OCI_REVISION=unknown
@@ -39,6 +39,7 @@ ENV AI_CENTER_API_UPSTREAM=http://api:4317 \
     NGINX_ENVSUBST_FILTER=AI_CENTER_API_UPSTREAM
 
 COPY deploy/oci/nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY deploy/oci/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /workspace/apps/web/dist /usr/share/nginx/html
 
 EXPOSE 8080

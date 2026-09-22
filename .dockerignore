@@ -3,6 +3,8 @@
 .gitignore
 .agents
 .codex
+.run
+**/.run
 
 # Credentials and local configuration must never enter a build context
 .env

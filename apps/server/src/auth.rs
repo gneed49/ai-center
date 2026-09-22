@@ -32,6 +32,7 @@ pub struct AuthRuntime {
     mode: AuthMode,
     local_context: RequestContext,
     verifier: Option<Arc<SupabaseJwtVerifier>>,
+    company_creators: std::collections::HashSet<Uuid>,
 }
 
 impl AuthRuntime {
@@ -50,8 +51,12 @@ impl AuthRuntime {
         let verifier = supabase_url
             .map(|url| SupabaseJwtVerifier::new(&url).map(Arc::new))
             .transpose()?;
+        let company_creators = parse_company_creators(
+            &std::env::var("AI_CENTER_COMPANY_CREATORS").unwrap_or_default(),
+        )?;
         Ok(Self {
             mode,
+            company_creators,
             local_context: RequestContext {
                 actor_id: local_actor_id,
                 workspace_id: local_workspace_id,
@@ -60,6 +65,30 @@ impl AuthRuntime {
             },
             verifier,
         })
+    }
+
+    /// Restricts private-instance bootstrap to approved creators and owners.
+    /// # Errors
+    /// Returns a database error when existing ownership cannot be verified.
+    pub async fn may_create_company(&self, actor: Uuid, pool: &PgPool) -> AppResult<bool> {
+        if actor.is_nil() {
+            return Ok(false);
+        }
+        if self.mode == AuthMode::Local || self.company_creators.contains(&actor) {
+            return Ok(true);
+        }
+        let mut tx = pool.begin().await?;
+        sqlx::query("select set_config('app.current_actor_id',$1,true)")
+            .bind(actor.to_string())
+            .execute(&mut *tx)
+            .await?;
+        let owner = sqlx::query_scalar(
+            "select exists(select 1 from app.list_actor_workspaces() where role='owner')",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(owner)
     }
 
     /// Authenticates a request and resolves its accepted workspace membership.
@@ -148,6 +177,25 @@ impl AuthRuntime {
             .verify(token)
             .await
     }
+}
+
+fn parse_company_creators(value: &str) -> AppResult<std::collections::HashSet<Uuid>> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            value
+                .parse::<Uuid>()
+                .ok()
+                .filter(|actor| !actor.is_nil())
+                .ok_or_else(|| {
+                    AppError::Internal(
+                        "AI_CENTER_COMPANY_CREATORS must contain nonempty actor UUIDs".into(),
+                    )
+                })
+        })
+        .collect()
 }
 
 struct CachedJwks {
@@ -272,6 +320,22 @@ impl SupabaseJwtVerifier {
 mod tests {
     use super::*;
     use jsonwebtoken::{DecodingKey, crypto};
+
+    #[test]
+    fn private_bootstrap_allowlist_rejects_malformed_and_nil_identities() {
+        assert!(
+            parse_company_creators("")
+                .expect("empty allowlist")
+                .is_empty()
+        );
+        let actor = Uuid::new_v4();
+        let allowed =
+            parse_company_creators(&format!(" {actor}, {actor} ")).expect("UUID allowlist");
+        assert_eq!(allowed.len(), 1);
+        assert!(allowed.contains(&actor));
+        assert!(parse_company_creators("not-an-identity").is_err());
+        assert!(parse_company_creators(&Uuid::nil().to_string()).is_err());
+    }
 
     #[test]
     fn audience_shapes_deserialize_without_becoming_authorization_data() {

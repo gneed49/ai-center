@@ -535,6 +535,7 @@ async fn independent_coverage_run_is_atomic_scoped_and_never_validates_evidence(
         &base,
         project.public_id,
         CompileContextPack {
+            target_node_key: None,
             source_session_id: session.session.public_id,
             task_kind: "technical-delivery-plan".into(),
             token_budget: None,

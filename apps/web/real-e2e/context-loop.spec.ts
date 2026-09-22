@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("traverse le vrai backend déterministe jusqu’au plan, à sa couverture et à son historique", async ({
   page,
+  request,
 }, testInfo) => {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
@@ -123,6 +124,44 @@ test("traverse le vrai backend déterministe jusqu’au plan, à sa couverture e
   await expect(committed.locator("..").locator("pre")).toContainText(
     "Technical Delivery Plan",
   );
+  // Navigate from persisted graph objects to their exact source, not a latest-version alias.
+  const projectId = projectPath.split("/").at(-1)!;
+  const apiUrl =
+    process.env.AI_CENTER_REAL_E2E_API_URL ?? "http://127.0.0.1:4617";
+  const graphResponse = await request.get(
+    `${apiUrl}/api/projects/${projectId}/graph`,
+  );
+  expect(graphResponse.status()).toBe(200);
+  const graph: {
+    nodes: { id: string; kind: string; app_path: string | null }[];
+  } = await graphResponse.json();
+  for (const category of ["knowledge", "context_pack", "session"]) {
+    const node = graph.nodes.find((item) =>
+      category === "context_pack"
+        ? item.app_path?.includes("/sources/context_pack/")
+        : item.kind === category,
+    );
+    expect(node?.app_path).toBeTruthy();
+    await page.goto(`/graph?project=${projectId}`);
+    await page.locator(`[data-node-key="${node!.kind}:${node!.id}"]`).click();
+    await page
+      .getByRole("link", { name: "Ouvrir la source", exact: true })
+      .click();
+    await expect(page).toHaveURL(new RegExp(node!.app_path! + "$"));
+    if (category === "session")
+      await expect(
+        page.getByRole("textbox", { name: /Message à l’agent/ }),
+      ).toBeVisible();
+    else {
+      await expect(
+        page.getByRole("region", { name: "Contenu de la source" }),
+      ).toBeVisible();
+      await page.getByRole("link", { name: "Revenir au graphe" }).click();
+      await expect(page).toHaveURL(
+        new RegExp(`/graph\\?project=${projectId}$`),
+      );
+    }
+  }
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
   expect(requestFailures).toEqual([]);

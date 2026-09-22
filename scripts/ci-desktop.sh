@@ -55,6 +55,8 @@ quality() {
   python3 -m unittest discover -s scripts/tests -p 'test_integration_target.py'
   python3 -m unittest discover -s scripts/tests -p 'test_migration_plan.py'
   python3 -m unittest discover -s scripts/tests -p 'test_native_smoke.py'
+  python3 -m unittest discover -s scripts/tests -p 'test_company_erasure.py'
+  python3 -m unittest discover -s scripts/tests -p 'test_project_maintenance.py'
   npm run build:web
   cargo build -p ai-center-server
 }
@@ -96,43 +98,42 @@ integration() {
     exit 1
   fi
 
-  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
-    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
-    AI_CENTER_AGENT_MODE=deterministic \
-    cargo test -p ai-center-server --test mvp_flow -- --test-threads=1
-  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
-    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
-    AI_CENTER_AGENT_MODE=deterministic \
-    cargo test -p ai-center-server --test synthetic_projects -- --test-threads=1
-  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
-    AI_CENTER_ADMIN_DATABASE_URL="${AI_CENTER_ADMIN_DATABASE_URL}" \
-    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
-    AI_CENTER_AGENT_MODE=deterministic \
-    cargo test -p ai-center-server --test context_pack_concurrency -- --test-threads=1
-  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
-    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
-    AI_CENTER_AGENT_MODE=deterministic \
-    cargo test -p ai-center-server --test idempotency_atomicity -- --test-threads=1
-  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
-    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
-    AI_CENTER_AGENT_MODE=deterministic \
-    cargo test -p ai-center-server --test model_run_lifecycle -- --test-threads=1
-  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
-    AI_CENTER_ADMIN_DATABASE_URL="${AI_CENTER_ADMIN_DATABASE_URL}" \
-    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
-    AI_CENTER_AGENT_MODE=deterministic \
-    cargo test -p ai-center-server --test targeted_invalidation -- --test-threads=1
-  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
-    AI_CENTER_ADMIN_DATABASE_URL="${AI_CENTER_ADMIN_DATABASE_URL}" \
-    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
-    AI_CENTER_AGENT_MODE=deterministic \
-    cargo test -p ai-center-server --test provider_connections -- --test-threads=1
+  # Legacy suites share the baseline tenant and intentionally issue more model
+  # calls than a human's hourly allowance. Lift only their hourly test budgets;
+  # automation::tests supplies explicit low limits and verifies real quotas.
+  export AI_CENTER_AI_CALLS_PER_HOUR=10000
+  export AI_CENTER_AI_ACTOR_CALLS_PER_HOUR=10000
+
+  # Each suite owns distinct fixture identities. Collect failures so one lot
+  # does not hide failures in another; schema/role failures above still stop.
+  local alpha_test alpha_failed=0
+  for alpha_test in mvp_flow synthetic_projects context_pack_concurrency \
+    idempotency_atomicity model_run_lifecycle targeted_invalidation \
+    provider_connections company_context artifacts team_access work_tools; do
+    DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
+      AI_CENTER_ADMIN_DATABASE_URL="${AI_CENTER_ADMIN_DATABASE_URL}" \
+      AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
+      AI_CENTER_AGENT_MODE=deterministic \
+      cargo test -p ai-center-server --test "${alpha_test}" -- --test-threads=1 \
+      || alpha_failed=1
+  done
   DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
     AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
     AI_CENTER_AGENT_MODE=deterministic \
     cargo test -p ai-center-server --lib \
       github_persistence_preserves_proofs_under_rate_limits_and_binds_idempotence_to_target \
-      -- --ignored --test-threads=1
+      -- --ignored --test-threads=1 || alpha_failed=1
+  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
+    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
+    AI_CENTER_AGENT_MODE=deterministic \
+    cargo test -p ai-center-server --lib automation::tests:: \
+      -- --ignored --test-threads=1 || alpha_failed=1
+  DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
+    AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
+    AI_CENTER_AGENT_MODE=deterministic \
+    cargo test -p ai-center-server --lib outbox::capacity_tests:: \
+      -- --ignored --test-threads=1 || alpha_failed=1
+  return "${alpha_failed}"
 }
 
 backup_restore() {
@@ -194,6 +195,7 @@ real_e2e() {
   (cd -- "${AI_CENTER_INTEGRATION_WORKDIR}" && \
   exec env DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
     AI_CENTER_BIND=127.0.0.1:4617 \
+    AI_CENTER_AI_CALLS_PER_HOUR=10000 AI_CENTER_AI_ACTOR_CALLS_PER_HOUR=10000 \
     AI_CENTER_CORS_ORIGINS="${AI_CENTER_REAL_E2E_WEB_URL}" \
     AI_CENTER_AUTH_MODE=local \
     AI_CENTER_AGENT_MODE=deterministic \
@@ -290,6 +292,7 @@ PY
   (cd -- "${AI_CENTER_INTEGRATION_WORKDIR}" && \
     exec env DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
       AI_CENTER_BIND=127.0.0.1:4617 \
+    AI_CENTER_AI_CALLS_PER_HOUR=10000 AI_CENTER_AI_ACTOR_CALLS_PER_HOUR=10000 \
       AI_CENTER_CORS_ORIGINS=tauri://localhost \
       AI_CENTER_AUTH_MODE=local AI_CENTER_AGENT_MODE=deterministic \
       AI_CENTER_WORKSPACE_ID=10000000-0000-0000-0000-000000000001 \
@@ -332,12 +335,12 @@ secret_scan() {
   alpha_token_pattern="(${alpha_openai_prefix}(proj-)?[A-Za-z0-9_-]{20,}|${alpha_github_prefix}[A-Za-z0-9]{20,}|${alpha_github_fine_prefix}[A-Za-z0-9_]{20,})"
   alpha_private_key_pattern='BEGIN [A-Z0-9 ]*PRIVATE KEY'
 
-  if git grep --untracked -nIE "${alpha_token_pattern}" -- . ':!package-lock.json'; then
+  if git grep --untracked -lIE "${alpha_token_pattern}" -- . ':!package-lock.json'; then
     printf 'Secret potentiel détecté dans un fichier suivi.\n' >&2
     exit 1
   fi
 
-  if git grep --untracked -nIE "${alpha_private_key_pattern}" -- . ':!scripts/ci-desktop.sh'; then
+  if git grep --untracked -lIE "${alpha_private_key_pattern}" -- . ':!scripts/ci-desktop.sh'; then
     printf 'Clé privée potentielle détectée dans un fichier suivi.\n' >&2
     exit 1
   fi

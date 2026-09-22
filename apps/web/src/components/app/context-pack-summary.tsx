@@ -21,7 +21,7 @@ export function ContextPackSummaryCard({
   graphVersion: number;
   compact?: boolean;
 }) {
-  const current = isContextPackCurrent(pack, graphVersion);
+  const current = isContextPackCurrent(pack);
   const included = (pack.selection_items ?? []).filter(
     (item) => item.decision === "included",
   );
@@ -46,7 +46,7 @@ export function ContextPackSummaryCard({
           </div>
           <p className="mt-2 text-xs text-slate-500">
             Compilé {formatDate(pack.compiled_at, true)} · sélection{" "}
-            {humanize(pack.selection_mode)}
+            {humanize(pack.selection_mode)} · graphe actuel v{graphVersion}
           </p>
         </div>
         <span className="font-mono text-xs text-slate-500">
@@ -57,8 +57,7 @@ export function ContextPackSummaryCard({
       {!current ? (
         <div role="alert" className="border-b border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-semibold text-amber-950">
-            Ce pack cible le graphe v{pack.source_graph_version}, alors que le
-            projet est en v{graphVersion}.
+            Ce pack n’est plus utilisable selon l’état de ses sources.
           </p>
           <p className="mt-1 text-xs leading-5 text-amber-800">
             {pack.stale_reason

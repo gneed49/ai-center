@@ -10,7 +10,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useRef } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
 import {
@@ -20,6 +20,7 @@ import {
   type HandoffIdempotencyKeys,
 } from "@/api/client";
 import { ContextPackSummaryCard } from "@/components/app/context-pack-summary";
+import { ContextPackExport } from "@/components/app/context-pack-export";
 import {
   EmptyState,
   ErrorState,
@@ -33,8 +34,14 @@ import { shortId } from "@/lib/format";
 
 export function HandoffPage() {
   const { projectId = "" } = useParams();
+  const [params] = useSearchParams();
+  const targetNodeKey = params.get("target") === "dev" ? "dev" : "tech";
+  const targetLabel = targetNodeKey === "dev" ? "Développement" : "Tech";
   const queryClient = useQueryClient();
-  const handoffIdempotencyKeys = useRef<HandoffIdempotencyKeys | null>(null);
+  const handoffIdempotencyKeys = useRef<{
+    target: "tech" | "dev";
+    keys: HandoffIdempotencyKeys;
+  } | null>(null);
   const gateIdempotencyKey = useRef<string | null>(null);
   const snapshot = useQuery({
     queryKey: ["snapshot", projectId],
@@ -62,18 +69,23 @@ export function HandoffPage() {
         (item) => item.node_key === "product",
       );
       if (!source) throw new Error("Ouvrez d’abord une session Produit.");
-      handoffIdempotencyKeys.current ??= createHandoffIdempotencyKeys();
+      if (handoffIdempotencyKeys.current?.target !== targetNodeKey)
+        handoffIdempotencyKeys.current = {
+          target: targetNodeKey,
+          keys: createHandoffIdempotencyKeys(),
+        };
       return api.prepareHandoff(
         projectId,
         source.public_id,
-        handoffIdempotencyKeys.current,
+        handoffIdempotencyKeys.current.keys,
+        targetNodeKey,
       );
     },
     onSuccess: (data) => {
       handoffIdempotencyKeys.current = null;
       queryClient.setQueryData(["handoff", projectId, "latest"], data);
       queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
-      toast.success("ContextPack transmis à l’agent Tech");
+      toast.success(`ContextPack transmis à l’agent ${targetLabel}`);
     },
     onError: notifyRequestError,
   });
@@ -92,7 +104,14 @@ export function HandoffPage() {
     );
   if (!snapshot.data) return null;
   const data = snapshot.data;
-  const result = latestHandoff.data ?? null;
+  const latest = latestHandoff.data ?? null;
+  const latestTarget =
+    latest?.context_pack.content.target_node_key ??
+    data.sessions.find(
+      (session) => session.public_id === latest?.target_session_public_id,
+    )?.node_key ??
+    "tech";
+  const result = latestTarget === targetNodeKey ? latest : null;
   const productSession = data.sessions.find(
     (item) => item.node_key === "product",
   );
@@ -102,10 +121,7 @@ export function HandoffPage() {
     data.gate &&
     ["passed", "passed_with_warning"].includes(data.gate.status),
   );
-  const resultCurrent = isContextPackCurrent(
-    result?.context_pack,
-    data.project.graph_version,
-  );
+  const resultCurrent = isContextPackCurrent(result?.context_pack);
   const productKnowledge = data.knowledge.filter(
     (item) => item.node_key === "product",
   );
@@ -113,8 +129,8 @@ export function HandoffPage() {
     <div className="space-y-8">
       <PageHeader
         eyebrow="Transmission contextuelle"
-        title="Handoff Produit → Tech"
-        description="Compilez une projection immuable et sourcée. L’agent Tech reçoit le nécessaire, pas tout le projet."
+        title={`Handoff Produit → ${targetLabel}`}
+        description={`Compilez une projection immuable et sourcée. L’agent ${targetLabel} reçoit les connaissances utiles à son travail.`}
         actions={
           <Button variant="outline" asChild>
             <Link to={`/projects/${projectId}`}>
@@ -140,14 +156,15 @@ export function HandoffPage() {
               </span>
             </div>
             <Scope
-              title="Tech"
+              title={targetLabel}
               subtitle="Session ciblée"
               tone="emerald"
               count={
                 result
                   ? 1
-                  : data.sessions.filter((item) => item.node_key === "tech")
-                      .length
+                  : data.sessions.filter(
+                      (item) => item.node_key === targetNodeKey,
+                    ).length
               }
             />
           </div>
@@ -206,14 +223,14 @@ export function HandoffPage() {
                 </div>
                 <p className="mt-2 text-sm text-emerald-800">
                   ContextPack {shortId(result.context_pack_public_id)} compilé
-                  et session Tech ouverte. Cet état a été restauré depuis le
-                  serveur.
+                  et session {targetLabel} ouverte. Cet état a été restauré
+                  depuis le serveur.
                 </p>
                 <Button asChild className="mt-4">
                   <Link
                     to={`/projects/${projectId}/sessions/${result.target_session_public_id}`}
                   >
-                    Ouvrir la session Tech
+                    Ouvrir la session {targetLabel}
                     <ArrowRight />
                   </Link>
                 </Button>
@@ -261,8 +278,8 @@ export function HandoffPage() {
                   {handoff.isPending
                     ? "Compilation du ContextPack…"
                     : result
-                      ? "Recompiler et ouvrir une session Tech"
-                      : "Compiler et ouvrir la session Tech"}
+                      ? `Recompiler et ouvrir une session ${targetLabel}`
+                      : `Compiler et ouvrir la session ${targetLabel}`}
                 </Button>
                 {handoff.error ? (
                   <div className="mt-4">
@@ -281,7 +298,7 @@ export function HandoffPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-300">
             ContextPack Preview
           </p>
-          <h2 className="mt-2 text-lg font-semibold">Contrat Tech</h2>
+          <h2 className="mt-2 text-lg font-semibold">Contrat {targetLabel}</h2>
           <div className="mt-6 space-y-5">
             <PreviewSection
               label="Objectif"
@@ -307,10 +324,16 @@ export function HandoffPage() {
         </aside>
       </div>
       {result ? (
-        <ContextPackSummaryCard
-          pack={result.context_pack}
-          graphVersion={data.project.graph_version}
-        />
+        <>
+          <ContextPackExport
+            key={result.context_pack.public_id}
+            pack={result.context_pack}
+          />
+          <ContextPackSummaryCard
+            pack={result.context_pack}
+            graphVersion={data.project.graph_version}
+          />
+        </>
       ) : null}
     </div>
   );

@@ -29,6 +29,8 @@ import {
   LoadingState,
   PageHeader,
 } from "@/components/app/page";
+import { ProjectExport } from "@/components/company/project-export";
+import { ProjectRename } from "@/components/company/project-rename";
 import { StatusPill } from "@/components/app/status-pill";
 import { Button } from "@/components/ui/button";
 import { isContextPackCurrent } from "@/lib/context-pack";
@@ -122,6 +124,10 @@ export function ProjectPage() {
           </>
         }
       />
+      <div className="flex flex-wrap items-start gap-3">
+        <ProjectRename key={projectId} project={data.project} />
+        <ProjectExport key={`export-${projectId}`} projectId={projectId} />
+      </div>
       <section className="grid gap-px border border-slate-200 bg-slate-200 sm:grid-cols-2 xl:grid-cols-4">
         <ProjectMetric
           icon={BookOpen}
@@ -322,10 +328,7 @@ export function ProjectPage() {
                 value={
                   data.latest_handoff
                     ? `v${data.latest_handoff.context_pack.version} · ${
-                        isContextPackCurrent(
-                          data.latest_handoff.context_pack,
-                          data.project.graph_version,
-                        )
+                        isContextPackCurrent(data.latest_handoff.context_pack)
                           ? "courant"
                           : "obsolète"
                       }`

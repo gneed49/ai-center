@@ -1,5 +1,7 @@
 #![allow(clippy::missing_errors_doc, clippy::too_many_lines)]
 
+mod session_recovery;
+
 use std::{collections::HashSet, fmt::Write as _, sync::Arc};
 
 use serde::Serialize;
@@ -13,10 +15,7 @@ use crate::{
         AgentEngine, AgentInput, AgentRunMetadata, ContextSelectionInput, CoverageEvaluationDraft,
         CoverageEvaluationInput, TechnicalPlanDraft, TechnicalPlanInput,
     },
-    context::{
-        ContextCandidate, DEFAULT_CONTEXT_BUDGET_TOKENS,
-        compile_context_pack as compile_context_projection,
-    },
+    context::{DEFAULT_CONTEXT_BUDGET_TOKENS, compile_context_pack as compile_context_projection},
     error::{AppError, AppResult},
     idempotency::{self, IdempotencyLease},
     models::{
@@ -223,7 +222,7 @@ pub async fn list_projects(state: &AppState) -> AppResult<Vec<ProjectSummary>> {
     let projects = sqlx::query_as::<_, ProjectSummary>(
         "select p.public_id, p.name, p.objective, p.summary, p.status, p.graph_version, p.created_at, p.updated_at
          from app.projects p join app.workspaces w on w.id = p.workspace_id
-         where w.public_id = $1 and p.status = 'active'
+         where w.public_id = $1 and p.status = 'active' and p.scope_kind = 'project'
          order by p.updated_at desc, p.id desc",
     )
     .bind(state.workspace_id)
@@ -338,6 +337,11 @@ async fn create_project_command(
         .await?;
     }
 
+    sqlx::query("select app.ensure_scope_agents($1)")
+        .bind(project.public_id)
+        .execute(&mut *tx)
+        .await?;
+
     audit(
         &mut tx,
         workspace_id,
@@ -430,7 +434,18 @@ async fn create_session_command(
 ) -> AppResult<SessionView> {
     let mut tx = state.begin_request().await?;
     let project = project_by_public(&mut tx, state.workspace_id, project_public_id).await?;
-    if input.node_key == "tech" {
+    crate::company::data::require_active(&mut tx, project.id).await?;
+    let requires_pack: bool = sqlx::query_scalar(
+        "select a.scope_kind = 'tech' from app.context_nodes n
+         join app.agent_profiles a on a.id = n.agent_profile_id
+         where n.project_id = $1 and n.node_key = $2",
+    )
+    .bind(project.id)
+    .bind(&input.node_key)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(AppError::NotFound)?;
+    if requires_pack {
         return Err(AppError::Invalid(
             "a Tech session requires a current ContextPack and must be created through a handoff"
                 .into(),
@@ -484,8 +499,12 @@ async fn session_view_in_transaction(
 ) -> AppResult<SessionView> {
     let session = session_by_public(tx, workspace_id, public_id).await?;
     let messages = sqlx::query_as::<_, MessageView>(
-        "select public_id, role, content, agent_scope, metadata, created_at
-         from app.messages where session_id = $1 order by created_at, id",
+        "select m.public_id,m.client_message_id,m.author_actor_id,nullif(member.display_name,'') as author_name,
+                coalesce(m.author_actor_id=app.current_actor_id(),false) as is_own,
+                m.role,m.content,m.agent_scope,m.metadata,m.created_at
+         from app.messages m left join app.workspace_members member
+           on member.workspace_id=m.workspace_id and member.actor_id=m.author_actor_id
+         where m.session_id=$1 order by m.created_at,m.id",
     )
     .bind(session.id)
     .fetch_all(&mut **tx)
@@ -502,6 +521,7 @@ async fn session_view_in_transaction(
         None => None,
     };
     let project_public_id = project_public_id_for_internal(tx, session.project_id).await?;
+    let message_commands = session_recovery::commands(tx, &session).await?;
     let view = SessionView {
         session: SessionSummary {
             public_id: session.public_id,
@@ -516,6 +536,7 @@ async fn session_view_in_transaction(
         messages,
         proposals,
         context_pack,
+        message_commands,
     };
     Ok(view)
 }
@@ -591,14 +612,16 @@ async fn send_message_command(
     }
     let mut initial_tx = state.begin_request().await?;
     let session = session_by_public(&mut initial_tx, state.workspace_id, session_id).await?;
+    crate::company::data::require_active(&mut initial_tx, session.project_id).await?;
     let resolution =
         crate::providers::resolve_engine_in_transaction(state, &mut initial_tx).await?;
 
     // Persist the user's intent before contacting an external provider.
     let inserted_user = sqlx::query(
         "insert into app.messages (
-           workspace_id, project_id, session_id, client_message_id, role, content
-         ) values ($1, $2, $3, $4, 'user', $5)
+           workspace_id, project_id, session_id, client_message_id, role, content,
+           author_actor_id,command_public_id,submitted_content
+         ) values ($1, $2, $3, $4, 'user', $5, $6, $7, $8)
          on conflict do nothing",
     )
     .bind(session.workspace_id)
@@ -606,17 +629,24 @@ async fn send_message_command(
     .bind(session.id)
     .bind(input.client_message_id)
     .bind(content)
+    .bind(state.actor_id)
+    .bind(lease.map(|value| value.record_public_id))
+    .bind(lease.map(|_| input.content.as_str()))
     .execute(&mut *initial_tx)
     .await?;
     if inserted_user.rows_affected() == 0 {
-        let existing_content: String = sqlx::query_scalar(
-            "select content from app.messages
+        let (existing_content, author, command): (String, Option<Uuid>, Option<Uuid>) =
+            sqlx::query_as(
+                "select content,author_actor_id,command_public_id from app.messages
              where session_id = $1 and role = 'user' and client_message_id = $2",
-        )
-        .bind(session.id)
-        .bind(input.client_message_id)
-        .fetch_one(&mut *initial_tx)
-        .await?;
+            )
+            .bind(session.id)
+            .bind(input.client_message_id)
+            .fetch_one(&mut *initial_tx)
+            .await?;
+        if author != Some(state.actor_id) {
+            return Err(AppError::Forbidden);
+        }
         if existing_content.trim() != content {
             return Err(AppError::Conflict(
                 "this client message identity is already bound to different content".into(),
@@ -638,6 +668,11 @@ async fn send_message_command(
             initial_tx.commit().await?;
             return Ok(result);
         }
+        if command != lease.map(|value| value.record_public_id) {
+            return Err(AppError::Conflict(
+                "Reprenez ce message avec sa commande d’origine depuis la conversation.".into(),
+            ));
+        }
     }
 
     let source_graph_version: i64 =
@@ -645,46 +680,47 @@ async fn send_message_command(
             .bind(session.project_id)
             .fetch_one(&mut *initial_tx)
             .await?;
-    let (knowledge_context, source_public_ids) = if session.scope_kind == "tech" {
+    let (knowledge_context, source_public_ids, scope_stamps) = if session.scope_kind == "tech" {
         let pack_id = session.context_pack_id.ok_or_else(|| {
             AppError::Invalid("a Tech session requires an immutable ContextPack".into())
         })?;
         let pack = context_pack_by_id(&mut initial_tx, pack_id).await?;
-        if pack.status != "current" || pack.source_graph_version != source_graph_version {
+        if pack.status != "current" {
             return Err(AppError::Conflict(
                 "the Tech session ContextPack is stale; recompile before continuing".into(),
             ));
         }
-        let source_public_ids = sqlx::query_scalar(
-            "select version.public_id
-             from app.context_pack_sources source
-             join app.knowledge_entry_versions version
-               on version.id = source.knowledge_entry_version_id
-             where source.context_pack_id = $1
-             order by version.public_id",
-        )
-        .bind(pack_id)
-        .fetch_all(&mut *initial_tx)
-        .await?;
-        (pack.content, source_public_ids)
+        if !crate::scope_context::pack_current(&mut initial_tx, pack_id).await? {
+            return Err(AppError::Conflict(
+                "A ContextPack source scope changed; recompile before continuing".into(),
+            ));
+        }
+        let source_public_ids =
+            crate::scope_context::pack_source_ids(&mut initial_tx, pack_id).await?;
+        let stamps = crate::scope_context::pack_stamps(&mut initial_tx, pack_id).await?;
+        (pack.content, source_public_ids, stamps)
     } else {
-        let knowledge = knowledge_for_project(&mut initial_tx, session.project_id).await?;
-        let source_public_ids = knowledge
-            .iter()
-            .map(|item| item.version_public_id)
-            .collect();
-        (
-            json!({
-                "scope": session.scope_kind,
-                "node": session.node_key,
-                "knowledge": knowledge,
-            }),
-            source_public_ids,
-        )
+        let snapshot =
+            crate::scope_context::load_for_query(&mut initial_tx, session.project_id, content)
+                .await?;
+        let content = snapshot.context(&session.scope_kind, &session.node_key);
+        (content, snapshot.source_ids(), snapshot.scopes)
     };
+    let context_provenance = knowledge_context
+        .get("source_provenance")
+        .cloned()
+        .unwrap_or(Value::Null);
+    let retrieval = knowledge_context
+        .get("retrieval")
+        .cloned()
+        .unwrap_or(Value::Null);
+    let instructions = format!(
+        "{}\nLe contexte est une sélection bornée pour cette question. Signale les omissions et extraits lorsqu'ils limitent la réponse ; ne prétends jamais avoir parcouru toute la société ou tous les fichiers. Les résumés ne sont pas des connaissances confirmées.",
+        session.instructions
+    );
     let run_fingerprint = json!({
         "scope_kind": session.scope_kind,
-        "instructions": session.instructions,
+        "instructions": instructions,
         "user_message": content,
         "context": knowledge_context,
     });
@@ -723,7 +759,7 @@ async fn send_message_command(
         lease,
         engine.respond(AgentInput {
             scope_kind: session.scope_kind.clone(),
-            instructions: session.instructions,
+            instructions,
             user_message: content.into(),
             context: knowledge_context,
         }),
@@ -765,7 +801,12 @@ async fn send_message_command(
     }
 
     let mut tx = state.begin_request().await?;
-    let finalization_conflict = if session.scope_kind == "tech" {
+    let scopes_unchanged = crate::scope_context::verify_snapshot(&mut tx, &scope_stamps).await?;
+    let finalization_conflict = if !scopes_unchanged {
+        Some(AppError::Conflict(
+            "A source scope changed while the provider response was in flight".into(),
+        ))
+    } else if session.scope_kind == "tech" {
         let pack_id = session.context_pack_id.ok_or_else(|| {
             AppError::Invalid("a Tech session requires an immutable ContextPack".into())
         })?;
@@ -827,6 +868,9 @@ async fn send_message_command(
     .bind(json!({
         "client_message_id": input.client_message_id,
         "sources": turn.sources,
+        "source_scopes": scope_stamps,
+        "source_provenance": context_provenance,
+        "retrieval": retrieval,
         "model_run_public_id": model_run.public_id,
         "model_run": engine_result.metadata,
     }))
@@ -873,7 +917,7 @@ async fn send_message_command(
         .bind(proposal.title)
         .bind(proposal.statement)
         .bind(proposal.rationale)
-        .bind(json!({"source_version_ids": turn.sources}))
+        .bind(json!({"source_version_ids": turn.sources,"source_provenance":context_provenance}))
         .execute(&mut *tx)
         .await?;
     }
@@ -932,6 +976,7 @@ async fn decide_proposals_command(
     }
     let mut tx = state.begin_request().await?;
     let session = session_by_public(&mut tx, state.workspace_id, session_public_id).await?;
+    crate::company::data::require_active(&mut tx, session.project_id).await?;
     let proposals = sqlx::query_as::<_, ProposalRecord>(
         "select mp.id, mp.public_id, m.public_id as source_message_public_id, mp.entry_type,
                 mp.title, mp.statement, mp.rationale, mp.status, mp.source_data
@@ -1090,15 +1135,16 @@ async fn decide_proposals_command(
                         "insert into app.edges (
                            workspace_id, project_id, source_kind, source_public_id,
                            target_kind, target_public_id, edge_type, status, provenance,
-                           created_by_actor_id
+                           created_by_actor_id,target_project_id
                          )
                          select $1,$2,'knowledge_entry_version',$3,
-                           'knowledge_entry_version',source.public_id,
-                           'derived_from','confirmed',$5,$6
-                         from app.knowledge_entry_versions source
-                         where source.public_id = $4
-                           and source.project_id = $2
-                           and source.workspace_id = $1
+                           source.kind,source.public_id,
+                           'derived_from','confirmed',$5,$6,source.project_id
+                         from (
+                           select public_id,project_id,workspace_id,'knowledge_entry_version'::text as kind from app.knowledge_entry_versions
+                           union all select public_id,project_id,workspace_id,'artifact_document_version' from app.artifact_document_versions where status='validated'
+                         ) source
+                         where source.public_id = $4 and source.workspace_id = $1
                          on conflict (project_id, source_public_id, target_public_id, edge_type)
                          do nothing",
                     )
@@ -1114,19 +1160,18 @@ async fn decide_proposals_command(
                         let source_exists_in_project: bool = sqlx::query_scalar(
                             "select exists(
                                select 1 from app.knowledge_entry_versions source
-                               where source.public_id = $1
-                                 and source.project_id = $2
-                                 and source.workspace_id = $3
+                               where source.public_id=$1 and source.workspace_id=$2
+                               union all select 1 from app.artifact_document_versions source
+                               where source.public_id=$1 and source.workspace_id=$2 and source.status='validated'
                              )",
                         )
                         .bind(source_version_id)
-                        .bind(session.project_id)
                         .bind(session.workspace_id)
                         .fetch_one(&mut *tx)
                         .await?;
                         if !source_exists_in_project {
                             return Err(AppError::Conflict(
-                                "proposal references a source outside the project context".into(),
+                                "proposal references a source outside its authorized company context".into(),
                             ));
                         }
                     }
@@ -1223,6 +1268,7 @@ async fn evaluate_product_gate_command(
 ) -> AppResult<GateResult> {
     let mut tx = state.begin_request().await?;
     let project = project_by_public(&mut tx, state.workspace_id, project_public_id).await?;
+    crate::company::data::require_active(&mut tx, project.id).await?;
     let locked_graph_version: i64 =
         sqlx::query_scalar("select graph_version from app.projects where id = $1 for update")
             .bind(project.id)
@@ -1348,6 +1394,7 @@ async fn generate_feature_brief_command(
     }
     let mut tx = state.begin_request().await?;
     let project = project_by_public(&mut tx, state.workspace_id, project_public_id).await?;
+    crate::company::data::require_active(&mut tx, project.id).await?;
     let locked_graph_version: i64 =
         sqlx::query_scalar("select graph_version from app.projects where id = $1 for update")
             .bind(project.id)
@@ -1535,6 +1582,12 @@ async fn compile_context_pack_command(
     input: CompileContextPack,
     lease: Option<&IdempotencyLease>,
 ) -> AppResult<ContextPackSummary> {
+    let target_node_key = input.target_node_key.as_deref().unwrap_or("tech");
+    if !matches!(target_node_key, "tech" | "dev") {
+        return Err(AppError::Invalid(
+            "ContextPack target must be tech or dev".into(),
+        ));
+    }
     let engine = crate::providers::resolve_engine(state).await?;
     if input.task_kind != "technical-delivery-plan" {
         return Err(AppError::Invalid(
@@ -1549,6 +1602,7 @@ async fn compile_context_pack_command(
     }
     let mut read_tx = state.begin_request().await?;
     let project = project_by_public(&mut read_tx, state.workspace_id, project_public_id).await?;
+    crate::company::data::require_active(&mut read_tx, project.id).await?;
     if gate.graph_version != project.graph_version {
         return Err(AppError::Conflict(
             "the project context changed while evaluating ProductReadyGate".into(),
@@ -1556,25 +1610,27 @@ async fn compile_context_pack_command(
     }
     let source =
         session_by_public(&mut read_tx, state.workspace_id, input.source_session_id).await?;
-    if source.project_id != project.id || source.node_key != "product" {
+    if source.project_id != project.id
+        || (source.node_key != "product"
+            && !(source.node_key == "tech" && target_node_key == "dev"))
+    {
         return Err(AppError::Invalid(
-            "handoff source must be a Product session from this project".into(),
+            "handoff source must be Product, or Tech lead when targeting dev, in this project"
+                .into(),
         ));
     }
-    let knowledge = knowledge_for_project(&mut read_tx, project.id).await?;
-    let candidates = knowledge
-        .iter()
-        .map(|item| ContextCandidate {
-            knowledge_public_id: item.public_id,
-            version_public_id: item.version_public_id,
-            version_number: item.version_number,
-            entry_type: item.entry_type.clone(),
-            title: item.title.clone(),
-            statement: item.statement.clone(),
-            rationale: item.rationale.clone(),
-            node_key: item.node_key.clone(),
-        })
-        .collect::<Vec<_>>();
+    if source.node_key == "tech" {
+        let source_pack = source.context_pack_id.ok_or_else(|| {
+            AppError::Invalid("Tech lead relay requires its own ContextPack".into())
+        })?;
+        if context_pack_by_id(&mut read_tx, source_pack).await?.status != "current" {
+            return Err(AppError::Conflict(
+                "Tech lead source ContextPack is stale".into(),
+            ));
+        }
+    }
+    let source_snapshot = crate::scope_context::load(&mut read_tx, project.id).await?;
+    let candidates = source_snapshot.candidates();
     let contract: Value = sqlx::query_scalar(
         "select jsonb_build_object(
            'contract_key', contract_key, 'name', name, 'required_sections', required_sections,
@@ -1642,7 +1698,7 @@ async fn compile_context_pack_command(
             return Err(error);
         }
     };
-    let compiled = match compile_context_projection(
+    let mut compiled = match compile_context_projection(
         &project.objective,
         &project.summary,
         project.graph_version,
@@ -1670,13 +1726,47 @@ async fn compile_context_pack_command(
         }
     };
 
+    compiled.compiler_version = "company-scoped-context-v2".into();
+    compiled.content["source_scopes"] = source_snapshot.extra_content()["source_scopes"].clone();
+    compiled.content["source_provenance"] =
+        source_snapshot.extra_content()["source_provenance"].clone();
+    compiled.content["target_node_key"] = json!(target_node_key);
+    compiled.content["coverage_requirement_version_ids"] = json!(
+        source_snapshot
+            .sources
+            .iter()
+            .filter(|source| source.source_project_id == project.id
+                && source.candidate.entry_type == "requirement")
+            .map(|source| source.candidate.version_public_id)
+            .collect::<Vec<_>>()
+    );
+    compiled.content_hash = sha256_json(&compiled.content)?;
+    let serialized = serde_json::to_string(&compiled.content)
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    let actual_estimate = i32::try_from(serialized.chars().count().div_ceil(4)).unwrap_or(i32::MAX);
+    if actual_estimate > compiled.token_budget {
+        let error =
+            AppError::Invalid("Context and cross-scope provenance exceed the token budget".into());
+        record_failed_model_run_with_output(
+            state,
+            model_run.id,
+            &selection.metadata,
+            Some(&selection_output),
+            &error,
+        )
+        .await?;
+        return Err(error);
+    }
+    compiled.token_count = compiled.token_count.max(actual_estimate);
     let mut tx = state.begin_request().await?;
+    let scopes_unchanged =
+        crate::scope_context::verify_snapshot(&mut tx, &source_snapshot.scopes).await?;
     let current_graph_version: i64 =
         sqlx::query_scalar("select graph_version from app.projects where id = $1 for update")
             .bind(project.id)
             .fetch_one(&mut *tx)
             .await?;
-    if current_graph_version != project.graph_version {
+    if current_graph_version != project.graph_version || !scopes_unchanged {
         let error = AppError::Conflict(
             "the project context changed while compiling the ContextPack".into(),
         );
@@ -1697,12 +1787,10 @@ async fn compile_context_pack_command(
     .bind(project.id)
     .fetch_one(&mut *tx)
     .await?;
-    let (tech_node_id, tech_profile_id): (i64, i64) = sqlx::query_as(
-        "select id, agent_profile_id from app.context_nodes where project_id = $1 and node_key = 'tech'",
-    )
-    .bind(project.id)
-    .fetch_one(&mut *tx)
-    .await?;
+    let (tech_node_id,tech_profile_id):(i64,i64)=sqlx::query_as(
+        "select n.id,n.agent_profile_id from app.context_nodes n join app.agent_profiles a on a.id=n.agent_profile_id
+         where n.project_id=$1 and n.node_key=$2 and a.scope_kind='tech'"
+    ).bind(project.id).bind(target_node_key).fetch_optional(&mut *tx).await?.ok_or(AppError::NotFound)?;
     let supersedes_context_pack_id: Option<i64> = sqlx::query_scalar(
         "select id from app.context_packs
          where project_id = $1 and target_node_id = $2 and task_kind = $3 and status = 'current'
@@ -1761,6 +1849,19 @@ async fn compile_context_pack_command(
     .fetch_one(&mut *tx)
     .await?;
     for selection_item in &compiled.selection_items {
+        let source_record = source_snapshot
+            .sources
+            .iter()
+            .find(|source| source.candidate.version_public_id == selection_item.version_public_id)
+            .ok_or_else(|| {
+                AppError::Internal("Selected source absent from authorized snapshot".into())
+            })?;
+        if source_record.source_project_id != project.id
+            || source_record.source_kind != "knowledge_entry_version"
+        {
+            continue;
+        }
+
         let (entry_id, version_id): (i64, i64) = sqlx::query_as(
             "select k.id, v.id from app.knowledge_entries k
              join app.knowledge_entry_versions v on v.knowledge_entry_id = k.id
@@ -1816,6 +1917,8 @@ async fn compile_context_pack_command(
             .await?;
         }
     }
+    crate::scope_context::persist(&mut tx, project.id, pack_id, &source_snapshot, &compiled)
+        .await?;
     complete_model_run(
         &mut tx,
         model_run.id,
@@ -1914,19 +2017,15 @@ async fn create_handoff_command(
 ) -> AppResult<HandoffView> {
     let mut tx = state.begin_request().await?;
     let project = project_by_public(&mut tx, state.workspace_id, project_public_id).await?;
+    crate::company::data::require_active(&mut tx, project.id).await?;
     let source = session_by_public(&mut tx, state.workspace_id, input.source_session_id).await?;
-    if source.project_id != project.id || source.node_key != "product" {
+    if source.project_id != project.id || !matches!(source.node_key.as_str(), "product" | "tech") {
         return Err(AppError::Invalid(
-            "handoff source must be a Product session from this project".into(),
+            "handoff source must be a Product or Tech lead session from this project".into(),
         ));
     }
-    let (pack_id, source_graph_version, pack_status, current_graph_version): (
-        i64,
-        i64,
-        String,
-        i64,
-    ) = sqlx::query_as(
-        "select pack.id, pack.source_graph_version, pack.status, project.graph_version
+    let (pack_id, pack_status): (i64, String) = sqlx::query_as(
+        "select pack.id, pack.status
          from app.context_packs pack
          join app.projects project on project.id = pack.project_id
          where pack.public_id = $1 and pack.project_id = $2
@@ -1937,7 +2036,7 @@ async fn create_handoff_command(
     .fetch_optional(&mut *tx)
     .await?
     .ok_or(AppError::NotFound)?;
-    if pack_status != "current" || source_graph_version != current_graph_version {
+    if pack_status != "current" || !crate::scope_context::pack_current(&mut tx, pack_id).await? {
         return Err(AppError::Conflict(
             "ContextPack is stale; recompile before creating a handoff".into(),
         ));
@@ -1947,18 +2046,28 @@ async fn create_handoff_command(
         tx.commit().await?;
         return Ok(existing);
     }
-    let (tech_node_id, tech_profile_id): (i64, i64) = sqlx::query_as(
-        "select id, agent_profile_id from app.context_nodes
-         where project_id = $1 and node_key = 'tech'",
-    )
-    .bind(project.id)
-    .fetch_one(&mut *tx)
-    .await?;
+    let (tech_node_id,tech_profile_id,target_title,target_key):(i64,i64,String,String)=sqlx::query_as(
+        "select n.id,n.agent_profile_id,n.title,n.node_key from app.context_packs pack
+         join app.context_nodes n on n.id=pack.target_node_id join app.agent_profiles a on a.id=n.agent_profile_id
+         where pack.id=$1 and n.project_id=$2 and a.scope_kind='tech'"
+    ).bind(pack_id).bind(project.id).fetch_one(&mut *tx).await?;
+    if source.node_key == "tech" {
+        let source_pack = source.context_pack_id.ok_or_else(|| {
+            AppError::Invalid("Tech lead relay requires its own ContextPack".into())
+        })?;
+        if target_key != "dev"
+            || context_pack_by_id(&mut tx, source_pack).await?.status != "current"
+        {
+            return Err(AppError::Conflict(
+                "Tech lead can relay only a current context to a developer pack".into(),
+            ));
+        }
+    }
     let target_session_public_id: Uuid = sqlx::query_scalar(
         "insert into app.sessions (
            workspace_id, project_id, context_node_id, agent_profile_id, context_pack_id,
            title, created_by_actor_id
-         ) values ($1,$2,$3,$4,$5,'Plan de livraison Tech',$6) returning public_id",
+         ) values ($1,$2,$3,$4,$5,$7,$6) returning public_id",
     )
     .bind(project.workspace_id)
     .bind(project.id)
@@ -1966,6 +2075,7 @@ async fn create_handoff_command(
     .bind(tech_profile_id)
     .bind(pack_id)
     .bind(state.actor_id)
+    .bind(format!("Session {target_title}"))
     .fetch_one(&mut *tx)
     .await?;
     let pack_public_id = input.context_pack_id;
@@ -2105,8 +2215,9 @@ async fn generate_technical_plan_command(
     let engine = crate::providers::resolve_engine(state).await?;
     let mut read_tx = state.begin_request().await?;
     let project = project_by_public(&mut read_tx, state.workspace_id, project_public_id).await?;
+    crate::company::data::require_active(&mut read_tx, project.id).await?;
     let session = session_by_public(&mut read_tx, state.workspace_id, input.session_id).await?;
-    if session.project_id != project.id || session.node_key != "tech" {
+    if session.project_id != project.id || session.scope_kind != "tech" {
         return Err(AppError::Invalid(
             "a Tech handoff session with a ContextPack is required".into(),
         ));
@@ -2116,7 +2227,7 @@ async fn generate_technical_plan_command(
     })?;
     let context_pack = context_pack_by_id(&mut read_tx, pack_id).await?;
     if context_pack.status != "current"
-        || context_pack.source_graph_version != project.graph_version
+        || !crate::scope_context::pack_current(&mut read_tx, pack_id).await?
     {
         return Err(AppError::Conflict(
             "the Tech session ContextPack is stale; recompile through a new handoff".into(),
@@ -2139,16 +2250,12 @@ async fn generate_technical_plan_command(
             "at least one confirmed requirement is required".into(),
         ));
     }
-    let pack_source_ids: std::collections::HashSet<Uuid> = sqlx::query_scalar(
-        "select v.public_id from app.context_pack_sources source
-         join app.knowledge_entry_versions v on v.id = source.knowledge_entry_version_id
-         where source.context_pack_id = $1",
-    )
-    .bind(pack_id)
-    .fetch_all(&mut *read_tx)
-    .await?
-    .into_iter()
-    .collect();
+    let pack_source_ids: std::collections::HashSet<Uuid> =
+        crate::scope_context::pack_source_ids(&mut read_tx, pack_id)
+            .await?
+            .into_iter()
+            .collect();
+    let scope_stamps = crate::scope_context::pack_stamps(&mut read_tx, pack_id).await?;
     let mut pack_source_public_ids = pack_source_ids.iter().copied().collect::<Vec<_>>();
     pack_source_public_ids.sort_unstable();
     let plan_input = TechnicalPlanInput {
@@ -2227,7 +2334,9 @@ async fn generate_technical_plan_command(
     };
     let coverage_input_hash = sha256_json(&coverage_input)?;
     let mut coverage_tx = state.begin_request().await?;
-    if !pack_is_current(&mut coverage_tx, project.id, pack_id, project.graph_version).await? {
+    if !crate::scope_context::verify_snapshot(&mut coverage_tx, &scope_stamps).await?
+        || !pack_is_current(&mut coverage_tx, project.id, pack_id, project.graph_version).await?
+    {
         let error = AppError::Conflict(
             "the ContextPack became stale while generating the technical plan".into(),
         );
@@ -2313,7 +2422,9 @@ async fn generate_technical_plan_command(
     })).collect::<Vec<_>>());
     let content_hash = sha256_json(&content)?;
     let mut tx = state.begin_request().await?;
-    if !pack_is_current(&mut tx, project.id, pack_id, project.graph_version).await? {
+    if !crate::scope_context::verify_snapshot(&mut tx, &scope_stamps).await?
+        || !pack_is_current(&mut tx, project.id, pack_id, project.graph_version).await?
+    {
         let error = AppError::Conflict(
             "the ContextPack became stale while evaluating plan coverage".into(),
         );
@@ -2619,7 +2730,7 @@ pub async fn coverage(state: &AppState, project_public_id: Uuid) -> AppResult<Co
 pub async fn list_insights(state: &AppState) -> AppResult<Vec<InsightSummary>> {
     let mut tx = state.begin_request().await?;
     let insights = sqlx::query_as::<_, InsightSummary>(
-        "select i.public_id, p.public_id as project_public_id, p.name as project_name,
+        "select i.public_id,app.steward_scope_source_status(i.steward_assessment_id) as source_status, p.public_id as project_public_id, p.name as project_name,
                 p.graph_version as project_graph_version,
                 i.insight_type, i.status, i.severity,
                 i.confidence::double precision as confidence, i.title, i.explanation,
@@ -2651,7 +2762,7 @@ async fn insight_detail_in_transaction(
     public_id: Uuid,
 ) -> AppResult<InsightDetail> {
     let insight = sqlx::query_as::<_, InsightSummary>(
-        "select i.public_id, p.public_id as project_public_id, p.name as project_name,
+        "select i.public_id,app.steward_scope_source_status(i.steward_assessment_id) as source_status, p.public_id as project_public_id, p.name as project_name,
                 p.graph_version as project_graph_version,
                 i.insight_type, i.status, i.severity,
                 i.confidence::double precision as confidence, i.title, i.explanation,
@@ -2667,14 +2778,24 @@ async fn insight_detail_in_transaction(
     .await?
     .ok_or(AppError::NotFound)?;
     let sources = sqlx::query_as::<_, InsightSourceView>(
-        "select s.source_role, s.object_kind, s.object_public_id,
-                k.public_id as knowledge_public_id, v.public_id as version_public_id,
-                v.title as version_title, v.statement as version_statement
-         from app.insight_sources s
-         join app.insights i on i.id = s.insight_id
-         left join app.knowledge_entry_versions v on v.id = s.knowledge_entry_version_id
-         left join app.knowledge_entries k on k.id = v.knowledge_entry_id
-         where i.public_id = $1 order by s.id",
+        "select s.source_role,s.object_kind,s.object_public_id,k.public_id as knowledge_public_id,
+           v.public_id as version_public_id,v.title as version_title,v.statement as version_statement,
+           p.public_id as source_project_public_id,null::text as source_status,null::jsonb as provenance
+         from app.insight_sources s join app.insights i on i.id=s.insight_id
+         join app.projects p on p.id=s.project_id
+         left join app.knowledge_entry_versions v on v.id=s.knowledge_entry_version_id
+         left join app.knowledge_entries k on k.id=v.knowledge_entry_id
+         where i.public_id=$1 and not exists(select 1 from app.steward_scope_sources scoped where scoped.assessment_id=i.steward_assessment_id and scoped.source_public_id=s.object_public_id)
+         union all
+         select s.source_role,s.source_kind,s.source_public_id,
+           case when s.source_project_id=i.project_id then k.public_id else null end,s.source_public_id,
+           s.source_snapshot->>'title',s.source_snapshot->>'statement',p.public_id,
+           app.steward_scope_source_status(i.steward_assessment_id),s.source_snapshot->'provenance'
+         from app.steward_scope_sources s join app.insights i on i.steward_assessment_id=s.assessment_id
+         join app.projects p on p.id=s.source_project_id
+         left join app.knowledge_entry_versions v on v.id=s.knowledge_version_id
+         left join app.knowledge_entries k on k.id=v.knowledge_entry_id
+         where i.public_id=$1 order by source_role,object_public_id",
     )
     .bind(public_id)
     .fetch_all(&mut **tx)
@@ -2723,6 +2844,9 @@ async fn act_on_insight_command(
         }
     };
     let mut tx = state.begin_request().await?;
+    let scope: i64 = sqlx::query_scalar("select project_id from app.insights where public_id=$1 and workspace_id=app.current_workspace_id()")
+        .bind(public_id).fetch_optional(&mut *tx).await?.ok_or(AppError::NotFound)?;
+    crate::company::data::require_active(&mut tx, scope).await?;
     let row: Option<(i64, i64, i64, String)> = sqlx::query_as(
         "select i.id, i.workspace_id, i.project_id, i.status
          from app.insights i join app.workspaces w on w.id = i.workspace_id
@@ -2735,6 +2859,13 @@ async fn act_on_insight_command(
     let (insight_id, workspace_id, project_id, before_status) = row.ok_or(AppError::NotFound)?;
     if matches!(before_status.as_str(), "resolved" | "dismissed") {
         return Err(AppError::Conflict("insight is already closed".into()));
+    }
+    if next_status == "accepted" {
+        let sources_expired:bool=sqlx::query_scalar("select coalesce(app.steward_scope_source_status(steward_assessment_id)='stale',false) from app.insights where id=$1")
+            .bind(insight_id).fetch_one(&mut *tx).await?;
+        if sources_expired {
+            return Err(AppError::Conflict("This insight cites revised sources; inspect the current analysis before accepting it".into()));
+        }
     }
     let graph_version: i64 =
         sqlx::query_scalar("select graph_version from app.projects where id = $1")
@@ -2854,6 +2985,7 @@ async fn resolve_insight_command(
     }
     let mut tx = state.begin_request().await?;
     let project = project_by_public(&mut tx, state.workspace_id, project_public_id).await?;
+    crate::company::data::require_active(&mut tx, project.id).await?;
     let current_graph_version: i64 =
         sqlx::query_scalar("select graph_version from app.projects where id = $1 for update")
             .bind(project.id)
@@ -2876,6 +3008,12 @@ async fn resolve_insight_command(
     .ok_or(AppError::NotFound)?;
     if matches!(insight_status.as_str(), "resolved" | "dismissed") {
         return Err(AppError::Conflict("insight is already closed".into()));
+    }
+
+    let sources_expired:bool=sqlx::query_scalar("select coalesce(app.steward_scope_source_status(steward_assessment_id)='stale',false) from app.insights where id=$1")
+        .bind(insight_id).fetch_one(&mut *tx).await?;
+    if sources_expired {
+        return Err(AppError::Conflict("This insight cites revised sources; inspect a current analysis before applying a resolution".into()));
     }
 
     let InsightResolutionMutation::ReviseKnowledge {
@@ -3130,6 +3268,7 @@ async fn revise_knowledge_command(
         old_statement,
         old_version_id,
     ) = row.ok_or(AppError::NotFound)?;
+    crate::company::data::require_active(&mut tx, project_id).await?;
     let next_version = latest_version + 1;
     let title = input
         .title
@@ -3269,6 +3408,9 @@ async fn invalidate_dependent_projections(
              not exists (
                select 1 from app.context_pack_sources source
                where source.context_pack_id = cp.id
+             ) and not exists (
+               select 1 from app.context_pack_scope_sources scoped
+               where scoped.context_pack_id=cp.id and scoped.decision='included'
              ) and not exists (
                select 1 from app.context_pack_selection_items selection
                where selection.context_pack_id = cp.id
@@ -3711,7 +3853,9 @@ async fn pack_is_current(
     .bind(pack_id)
     .fetch_one(&mut **tx)
     .await?;
-    Ok(current_graph_version == graph_version && status == "current")
+    Ok(current_graph_version == graph_version
+        && status == "current"
+        && crate::scope_context::pack_current(tx, pack_id).await?)
 }
 
 fn render_coverage_assessment(assessment: &CoverageEvaluationDraft, pack: &Value) -> String {
@@ -3853,9 +3997,12 @@ async fn context_pack_by_id(
     id: i64,
 ) -> AppResult<ContextPackSummary> {
     let record = sqlx::query_as::<_, ContextPackRecord>(
-        "select id, public_id, version, status, source_graph_version, compiler_version,
+        "select id, public_id, version,
+                case when status='current' and not app.context_pack_scopes_current(id) then 'stale' else status end as status,
+                source_graph_version, compiler_version,
                 selection_mode, content_hash, token_budget, estimated_tokens, compiled_at,
-                invalidated_at, stale_reason, content
+                invalidated_at, case when status='current' and not app.context_pack_scopes_current(id)
+                  then 'An included source was revised or its scope became unavailable' else stale_reason end as stale_reason, content
          from app.context_packs where id = $1",
     )
     .bind(id)
@@ -3863,11 +4010,13 @@ async fn context_pack_by_id(
     .await?
     .ok_or(AppError::NotFound)?;
     let selection_items = sqlx::query_as::<_, ContextPackSelectionItemView>(
-        "select candidate_public_id, decision, reason_code, explanation, rank,
-                estimated_tokens, is_mandatory
-         from app.context_pack_selection_items
-         where context_pack_id = $1
-         order by decision desc, rank nulls last, id",
+        "select candidate_public_id,decision,reason_code,explanation,rank,estimated_tokens,is_mandatory from (
+            select candidate_public_id,decision,reason_code,explanation,rank,estimated_tokens,is_mandatory
+              from app.context_pack_selection_items where context_pack_id=$1
+            union all
+            select source_public_id,decision,reason_code,explanation,rank,estimated_tokens,is_mandatory
+              from app.context_pack_scope_sources where context_pack_id=$1
+          ) selections order by decision desc,rank nulls last,candidate_public_id",
     )
     .bind(record.id)
     .fetch_all(&mut *connection)
@@ -4038,7 +4187,7 @@ async fn insights_for_project(
     project_id: i64,
 ) -> AppResult<Vec<InsightSummary>> {
     Ok(sqlx::query_as::<_, InsightSummary>(
-        "select i.public_id, p.public_id as project_public_id, p.name as project_name,
+        "select i.public_id,app.steward_scope_source_status(i.steward_assessment_id) as source_status, p.public_id as project_public_id, p.name as project_name,
                 p.graph_version as project_graph_version, i.insight_type, i.status,
                 i.severity, i.confidence::double precision as confidence, i.title,
                 i.explanation, i.resolution_justification, i.detected_at, i.updated_at

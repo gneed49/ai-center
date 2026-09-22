@@ -96,12 +96,12 @@ test("crée une nouvelle commande message après édition d’un échec", async 
   await composer.fill("Premier contenu");
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(composer).toBeDisabled();
-  await expect(page.getByText("Le message n’a pas été envoyé")).toBeVisible();
+  await expect(page.getByText("La réponse n’a pas pu être confirmée")).toBeVisible();
   await expect(composer).toBeEnabled();
   await expect(composer).toHaveValue("Premier contenu");
 
   await composer.fill("Contenu corrigé");
-  await expect(page.getByText("Le message n’a pas été envoyé")).toHaveCount(0);
+  await expect(page.getByText("La réponse n’a pas pu être confirmée")).toHaveCount(0);
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(composer).toHaveValue("");
 

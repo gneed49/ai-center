@@ -76,7 +76,7 @@ pub(super) async fn validate_pack(
     }
     let pack: Option<(i64, i64, String, bool)> = sqlx::query_as(
         "select pack.id, contract.id, pack.content_hash,
-                pack.status = 'current' and pack.source_graph_version = project.graph_version
+                pack.status = 'current' and app.context_pack_scopes_current(pack.id)
          from app.context_packs pack
          join app.projects project on project.id=pack.project_id and project.workspace_id=pack.workspace_id
          join app.deliverable_contracts contract on contract.contract_key=pack.task_kind and contract.template_id=project.template_id
@@ -262,7 +262,7 @@ pub(super) async fn validate_artifact(
         return Ok(None);
     };
     let artifact: Option<(i64, bool)> = sqlx::query_as("select artifact.id,
-        coalesce(pack.status='current' and pack.source_graph_version=project.graph_version and artifact.metadata->>'head_sha'=$5
+        coalesce(pack.status='current' and app.context_pack_scopes_current(pack.id) and artifact.metadata->>'head_sha'=$5
         and artifact.metadata->>'sync_status'='current' and deliverable.source_context_pack_id=pack.id,false)
         from app.artifacts artifact join app.executions execution on execution.id=artifact.execution_id and execution.project_id=artifact.project_id and execution.workspace_id=artifact.workspace_id
         join app.tasks task on task.id=execution.task_id and task.project_id=execution.project_id and task.workspace_id=execution.workspace_id
@@ -304,7 +304,7 @@ pub(super) async fn load(
 ) -> AppResult<Vec<ExternalTrackingView>> {
     let rows: Vec<TrackingRow> = sqlx::query_as("select execution.id execution_id,task.public_id task_public_id,execution.public_id execution_public_id,
         pack.public_id context_pack_public_id,pack.version context_pack_version,pack.content_hash context_pack_hash,
-        pack.status='current' and pack.source_graph_version=project.graph_version context_pack_current,
+        pack.status='current' and app.context_pack_scopes_current(pack.id) context_pack_current,
         execution.status,coalesce(execution.result,'{}'::jsonb) observed_result
         from app.edges edge join app.tasks task on task.public_id=edge.target_public_id and task.project_id=edge.project_id and task.workspace_id=edge.workspace_id
         join app.executions execution on execution.task_id=task.id and execution.project_id=task.project_id and execution.workspace_id=task.workspace_id

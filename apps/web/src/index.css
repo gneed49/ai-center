@@ -7,23 +7,23 @@
 
 :root {
   font-family: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  color: #0f172a;
-  background: #f7f8fb;
+  color: #15172b;
+  background: #ffffff;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --background: oklch(0.98 0.004 264);
+  --background: #ffffff;
   --foreground: oklch(0.16 0.025 264);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.16 0.025 264);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.16 0.025 264);
-  --primary: oklch(0.54 0.22 274);
+  --primary: #3036d3;
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.95 0.01 264);
   --secondary-foreground: oklch(0.22 0.03 264);
   --muted: oklch(0.96 0.006 264);
-  --muted-foreground: oklch(0.5 0.025 264);
+  --muted-foreground: #626982;
   --accent: oklch(0.94 0.025 274);
   --accent-foreground: oklch(0.4 0.18 274);
   --destructive: oklch(0.58 0.22 27);
@@ -35,15 +35,15 @@
   --chart-3: oklch(0.72 0.15 76);
   --chart-4: oklch(0.6 0.19 26);
   --chart-5: oklch(0.5 0.12 315);
-  --radius: 0.35rem;
-  --sidebar: oklch(0.18 0.035 264);
-  --sidebar-foreground: oklch(0.9 0.01 264);
-  --sidebar-primary: oklch(0.64 0.2 274);
+  --radius: 0.45rem;
+  --sidebar: #f7f8fc;
+  --sidebar-foreground: #454d70;
+  --sidebar-primary: #3036d3;
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.25 0.04 264);
-  --sidebar-accent-foreground: oklch(1 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.64 0.2 274);
+  --sidebar-accent: #e9eaff;
+  --sidebar-accent-foreground: #282fcb;
+  --sidebar-border: #e7e9f2;
+  --sidebar-ring: #3036d3;
 }
 
 @theme inline {
@@ -100,6 +100,10 @@
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+  :where(a, button, input, textarea, select):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
   }
   ::selection {
     @apply bg-indigo-200 text-indigo-950;

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { providersApi } from "@/api/providers";
 import type {
@@ -93,6 +94,11 @@ function ScopedSettings({ scope }: { scope: string }) {
       <PageHeader
         eyebrow="Personnel · par espace de travail"
         title="Réglages IA"
+        actions={
+          <Button asChild variant="outline">
+            <Link to="/settings/tools">Outils de l’équipe</Link>
+          </Button>
+        }
         description="Rassemblez vos fournisseurs et choisissez la connexion utilisée pour vos prochaines demandes."
       />
       {settings.isPending ? (

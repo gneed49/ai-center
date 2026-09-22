@@ -10,6 +10,12 @@ declare
   unexpected_sequence text;
   unexpected_function text;
   expected_select_tables constant text[] := array[
+    'github_code_corpora', 'github_code_file_observations',
+    'workspace_automation_controls', 'ai_call_reservations',
+    'work_tool_connections', 'publication_jobs', 'publication_observations',
+    'workspace_invitations', 'steward_scope_sources',
+    'context_pack_scope_versions', 'context_pack_scope_sources',
+    'artifact_documents', 'artifact_document_versions', 'artifact_version_sources', 'artifact_destination_settings',
     'provider_connections', 'provider_selections',
     'workspaces', 'workspace_members', 'project_templates', 'agent_profiles',
     'deliverable_contracts', 'projects', 'context_nodes',
@@ -24,6 +30,12 @@ declare
     'insight_resolutions', 'domain_events', 'audit_events'
   ];
   expected_insert_tables constant text[] := array[
+    'github_code_corpora', 'github_code_file_observations',
+    'workspace_automation_controls', 'ai_call_reservations',
+    'work_tool_connections', 'publication_jobs', 'publication_observations',
+    'workspace_invitations', 'steward_scope_sources',
+    'context_pack_scope_versions', 'context_pack_scope_sources',
+    'artifact_documents', 'artifact_document_versions', 'artifact_version_sources', 'artifact_destination_settings',
     'provider_connections', 'provider_selections',
     'workspace_members', 'projects', 'context_nodes', 'knowledge_entries',
     'knowledge_entry_versions', 'edges', 'context_packs',
@@ -36,6 +48,7 @@ declare
     'insight_sources', 'insight_resolutions', 'domain_events', 'audit_events'
   ];
   expected_update_tables constant text[] := array[
+    'artifact_destination_settings',
     'provider_connections', 'provider_selections',
     'workspace_members', 'projects', 'sessions', 'idempotency_records', 'mutation_proposals',
     'context_packs', 'gates', 'model_runs', 'deliverables',
@@ -43,6 +56,18 @@ declare
     'knowledge_entries', 'domain_events', 'tasks', 'executions'
   ];
   allowed_function_oids constant oid[] := array[
+    'app.finish_ai_call_reservation(uuid,text)'::regprocedure::oid,
+    'app.claim_publication_job()'::regprocedure::oid,
+    'app.finish_publication_job(uuid,uuid,text,text,jsonb)'::regprocedure::oid,
+    'app.preview_workspace_invitation(uuid,text)'::regprocedure::oid,
+    'app.accept_workspace_invitation(uuid,text,text)'::regprocedure::oid,
+    'app.set_member_display_name(text)'::regprocedure::oid,
+    'app.steward_scope_sources_current(bigint)'::regprocedure::oid,
+    'app.steward_scope_source_status(bigint)'::regprocedure::oid,
+    'app.context_pack_scopes_current(bigint)'::regprocedure::oid,
+    'app.ensure_scope_agents(uuid)'::regprocedure::oid,
+    'app.create_company_workspace(uuid,text,text,text)'::regprocedure::oid,
+    'app.graph_endpoint_exists(text,uuid,bigint,bigint)'::regprocedure::oid,
     'app.current_actor_id()'::regprocedure::oid,
     'app.current_workspace_id()'::regprocedure::oid,
     'app.current_workspace_role()'::regprocedure::oid,

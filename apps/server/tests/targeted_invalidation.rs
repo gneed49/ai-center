@@ -206,9 +206,8 @@ async fn resolution_invalidates_only_version_dependencies_and_traces_missing_pro
             .contains(&json!(pack_b.public_id))
     );
 
-    // An unchanged historical branch still cannot authorize new work against
-    // a different project graph. A fresh compilation is mandatory.
-    let stale_handoff = service::create_handoff(
+    // Unchanged exact dependencies remain usable after an unrelated revision.
+    let unchanged_handoff = service::create_handoff(
         &fixture.state,
         fixture.project_public_id,
         CreateHandoff {
@@ -216,21 +215,22 @@ async fn resolution_invalidates_only_version_dependencies_and_traces_missing_pro
             context_pack_id: pack_b.public_id,
         },
     )
-    .await;
-    ensure!(matches!(stale_handoff, Err(AppError::Conflict(_))));
-    let stale_generation = service::generate_technical_plan(
+    .await?;
+    ensure!(unchanged_handoff.public_id == handoff_b.public_id);
+    let unchanged_generation = service::generate_technical_plan(
         &fixture.state,
         fixture.project_public_id,
         GenerateTechnicalPlan {
             session_id: handoff_b.target_session_public_id,
         },
     )
-    .await;
-    ensure!(matches!(stale_generation, Err(AppError::Conflict(_))));
+    .await?;
+    ensure!(unchanged_generation.status == "committed");
     let recompiled = service::compile_context_pack(
         &fixture.state,
         fixture.project_public_id,
         CompileContextPack {
+            target_node_key: None,
             source_session_id: fixture.session_public_id,
             task_kind: "technical-delivery-plan".into(),
             token_budget: None,

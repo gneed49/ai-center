@@ -310,6 +310,7 @@ async fn compile_pack(
         state,
         project_id,
         CompileContextPack {
+            target_node_key: None,
             source_session_id,
             task_kind: "technical-delivery-plan".into(),
             token_budget: Some(12_000),

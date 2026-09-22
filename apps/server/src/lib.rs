@@ -42,7 +42,10 @@ struct RuntimeRolePosture {
 }
 
 pub mod agent;
+pub mod artifacts;
 pub mod auth;
+pub mod automation;
+pub mod company;
 pub mod config;
 pub mod context;
 pub mod error;
@@ -54,8 +57,11 @@ pub mod outbox;
 pub mod provider_subscriptions;
 pub mod providers;
 pub mod routes;
+mod scope_context;
 pub mod service;
 pub mod steward;
+pub mod team;
+pub mod work_tools;
 
 // Keep the catalog inspection in one statement so every property describes the
 // same connected PostgreSQL session and role snapshot.
@@ -255,6 +261,41 @@ fn validate_supabase_runtime_role(posture: &RuntimeRolePosture) -> Result<()> {
     Ok(())
 }
 
+async fn verify_company_schema(pool: &PgPool) -> Result<()> {
+    let compatible: bool = sqlx::query_scalar(
+        "select not exists (
+           select 1 from unnest(array[
+             'app.projects','app.workspace_invitations','app.artifact_documents',
+             'app.artifact_document_versions','app.context_pack_scope_sources',
+             'app.work_tool_connections','app.publication_jobs','app.publication_observations',
+             'app.steward_scope_sources','app.workspace_automation_controls','app.ai_call_reservations'
+             ,'app.github_code_corpora','app.github_code_file_observations'
+           ]) required(name) where to_regclass(name) is null
+         ) and not exists (
+           select 1 from unnest(array[
+             'app.ensure_scope_agents(uuid)',
+             'app.accept_workspace_invitation(uuid,text,text)',
+             'app.context_pack_scopes_current(bigint)',
+             'app.claim_publication_job()',
+             'app.steward_scope_source_status(bigint)'
+           ]) required(name) where to_regprocedure(name) is null
+         ) and not exists (
+           select 1 from (values ('messages','author_actor_id'),('messages','command_public_id'),
+             ('messages','submitted_content'),('domain_events','deferred_count')) required(table_name,column_name)
+           where not exists (select 1 from information_schema.columns c where c.table_schema='app'
+             and c.table_name=required.table_name and c.column_name=required.column_name)
+         )",
+    )
+    .fetch_one(pool)
+    .await
+    .context("failed to inspect the application schema")?;
+    anyhow::ensure!(
+        compatible,
+        "Company Context database migration required before server startup"
+    );
+    Ok(())
+}
+
 /// Connects the application services and returns the configured HTTP router.
 ///
 /// # Errors
@@ -270,12 +311,14 @@ pub async fn build(
 )> {
     let pool = PgPoolOptions::new()
         .max_connections(10)
+        .acquire_timeout(std::time::Duration::from_secs(5))
         .connect(config.database_url.expose_secret())
         .await
         .context("failed to connect to PostgreSQL")?;
     if config.auth_mode == config::AuthMode::Supabase {
         verify_supabase_runtime_role(&pool).await?;
     }
+    verify_company_schema(&pool).await?;
     let cipher = if let Some(key) = &config.credential_encryption_key {
         providers::encryption::CredentialCipher::from_hex(key).ok()
     } else if let Some(directory) = &config.credential_directory {
@@ -336,7 +379,7 @@ pub async fn build(
         (None, None, None) => None,
         _ => unreachable!("GitHub configuration is validated by Config::from_env"),
     };
-    let mut application_state = AppState {
+    let application_state = AppState {
         pool,
         engine,
         providers,
@@ -347,21 +390,32 @@ pub async fn build(
         agent_mode,
         steward_trigger: None,
     };
-    let steward_supervisor =
-        if application_state.providers.is_some() || config.agent_mode == AgentMode::OpenAi {
-            let (trigger, supervisor) = StewardDrainSupervisor::start(application_state.clone())
-                .context("failed to initialize the Steward outbox supervisor")?;
-            application_state.steward_trigger = Some(trigger);
-            Some(supervisor)
-        } else {
-            None
-        };
-    let state = Arc::new(application_state);
+    let (state, steward_supervisor) =
+        start_background_workers(application_state, config.agent_mode)?;
     Ok((
         bind,
         routes::router(state, auth, github, config.cors_origins),
         steward_supervisor,
     ))
+}
+
+fn start_background_workers(
+    mut application_state: AppState,
+    mode: AgentMode,
+) -> Result<(Arc<AppState>, Option<StewardDrainSupervisor>)> {
+    let mut supervisor = if application_state.providers.is_some() || mode == AgentMode::OpenAi {
+        let (trigger, supervisor) = StewardDrainSupervisor::start(application_state.clone())
+            .context("failed to initialize the Steward outbox supervisor")?;
+        application_state.steward_trigger = Some(trigger);
+        Some(supervisor)
+    } else {
+        None
+    };
+    let state = Arc::new(application_state);
+    if let Some(supervisor) = supervisor.as_mut() {
+        supervisor.attach_background_task(work_tools::worker::start(state.clone()));
+    }
+    Ok((state, supervisor))
 }
 
 #[cfg(test)]

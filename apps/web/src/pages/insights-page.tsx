@@ -15,6 +15,7 @@ import {
   LoadingState,
   PageHeader,
 } from "@/components/app/page";
+import { SourceStatusBadge } from "@/components/app/source-status";
 import { StatusPill } from "@/components/app/status-pill";
 import { formatDate } from "@/lib/format";
 
@@ -54,11 +55,11 @@ export function InsightsPage() {
       </section>
       {items.length ? (
         <section className="border border-slate-200 bg-white">
-          <div className="grid grid-cols-[1fr_auto] border-b border-slate-200 px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 sm:grid-cols-[140px_150px_1fr_110px_120px] sm:px-6">
+          <div className="grid grid-cols-[1fr_auto] border-b border-slate-200 px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 xl:grid-cols-[140px_150px_minmax(0,1fr)_90px_185px] sm:px-6">
             <span>Signal</span>
-            <span className="hidden sm:block">Projet</span>
-            <span className="hidden sm:block">Explication</span>
-            <span className="hidden sm:block">Confiance</span>
+            <span className="hidden xl:block">Projet</span>
+            <span className="hidden xl:block">Explication</span>
+            <span className="hidden xl:block">Confiance</span>
             <span>État</span>
           </div>
           <div className="divide-y divide-slate-100">
@@ -70,7 +71,7 @@ export function InsightsPage() {
                     ? `/projects/${item.project_public_id}/insights/${item.public_id}`
                     : `/insights/${item.public_id}`
                 }
-                className="group grid grid-cols-[1fr_auto] gap-4 px-5 py-5 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-600 sm:grid-cols-[140px_150px_1fr_110px_120px] sm:items-center sm:px-6"
+                className="group grid grid-cols-[1fr_auto] gap-4 px-5 py-5 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-600 xl:grid-cols-[140px_150px_minmax(0,1fr)_90px_185px] xl:items-center sm:px-6"
               >
                 <div>
                   <span className="flex items-center gap-2 text-xs font-semibold text-slate-700">
@@ -81,15 +82,19 @@ export function InsightsPage() {
                           : "size-4 text-amber-500"
                       }
                     />
-                    {item.insight_type === "contradiction"
-                      ? "Contradiction"
-                      : "Trou de preuve"}
+                    {
+                      {
+                        contradiction: "Contradiction",
+                        coverage_gap: "Trou de preuve",
+                        context_gap: "Contexte à compléter",
+                      }[item.insight_type]
+                    }
                   </span>
                   <span className="mt-1 block text-[10px] text-slate-500">
                     {formatDate(item.detected_at, true)}
                   </span>
                 </div>
-                <div className="hidden min-w-0 sm:block">
+                <div className="hidden min-w-0 xl:block">
                   <p className="truncate text-xs font-semibold text-slate-700">
                     {item.project_name || "Projet non attribué"}
                   </p>
@@ -97,13 +102,13 @@ export function InsightsPage() {
                     {item.project_public_id}
                   </p>
                 </div>
-                <div className="col-span-2 sm:col-span-1">
+                <div className="col-span-2 xl:col-span-1">
                   <p className="text-sm font-semibold">{item.title}</p>
                   <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-500">
                     {item.explanation}
                   </p>
                 </div>
-                <div className="hidden sm:block">
+                <div className="hidden xl:block">
                   <strong className="text-lg">
                     {Math.round(item.confidence * 100)}%
                   </strong>
@@ -112,7 +117,10 @@ export function InsightsPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-end gap-3">
-                  <StatusPill status={item.status} />
+                  <div className="flex flex-col items-end gap-2">
+                    <StatusPill status={item.status} />
+                    <SourceStatusBadge status={item.source_status} plural />
+                  </div>
                   <ArrowRight className="size-4 text-slate-400 transition group-hover:translate-x-1" />
                 </div>
               </Link>

@@ -26,6 +26,7 @@ import type {
 import { ErrorState } from "@/components/app/page";
 import { StatusPill } from "@/components/app/status-pill";
 import { Button } from "@/components/ui/button";
+import { isContextPackCurrent } from "@/lib/context-pack";
 import { formatDate, shortId } from "@/lib/format";
 
 interface ExternalProofPanelProps {
@@ -68,13 +69,7 @@ export function ExternalProofPanel({
     queryFn: () => api.latestHandoff(projectId),
   });
   const availablePack = handoff.data?.context_pack;
-  const snapshot = useQuery({
-    queryKey: ["snapshot", projectId],
-    queryFn: () => api.snapshot(projectId),
-  });
-  const packCurrent =
-    availablePack?.status === "current" &&
-    availablePack.source_graph_version === snapshot.data?.project.graph_version;
+  const packCurrent = isContextPackCurrent(availablePack);
   const references = useQuery({
     queryKey: ["external-references", projectId],
     queryFn: () => api.externalReferences(projectId),

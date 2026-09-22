@@ -269,6 +269,7 @@ exec env DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL}" \
   AI_CENTER_BIND="${alpha_bind}" \
   AI_CENTER_AGENT_MODE=deterministic \
   AI_CENTER_AUTH_MODE=supabase \
+  AI_CENTER_COMPANY_CREATORS= \
   SUPABASE_URL="${alpha_supabase_url}" \
   RUST_LOG=ai_center_server=warn,tower_http=warn \
   "${CARGO_TARGET_DIR:-${alpha_repo_dir}/target}/debug/ai-center-server") >"${alpha_server_log}" 2>&1 &
@@ -367,6 +368,16 @@ alpha_access_token="$(
 )"
 unset alpha_email_otp alpha_verify_payload
 
+app_request GET /api/workspaces/capabilities "${alpha_access_token}"
+expect_status 200 'capacités privées authentifiées'
+python3 -c 'import json,sys; assert json.load(sys.stdin)["can_create_company"] is False' \
+  <<< "${alpha_http_body}"
+alpha_company_public_id="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+app_request POST /api/workspaces "${alpha_access_token}" '' \
+  "{\"public_id\":\"${alpha_company_public_id}\",\"name\":\"[FICTIF] Création non autorisée\",\"description\":\"Qualification privée\"}" \
+  "${alpha_company_public_id}"
+expect_status 403 'création société non autorisée refusée'
+
 app_request GET /api/workspaces "${alpha_access_token}"
 expect_status 200 'GET /api/workspaces authentifié'
 WORKSPACE_ID="${alpha_workspace_id}" python3 -c '
@@ -390,7 +401,16 @@ expect_status 403 'mutation viewer refusée'
 app_request GET /api/projects "${alpha_access_token}" "${alpha_forged_workspace_id}"
 expect_status 403 'workspace forgé refusé'
 
+run_admin_sql --set="actor_id=${alpha_actor_id}" \
+  --set="workspace_public_id=${alpha_workspace_id}" >/dev/null <<'SQL'
+update app.workspace_members member set invitation_status='revoked', updated_at=now()
+from app.workspaces workspace where member.workspace_id=workspace.id
+and workspace.public_id=:'workspace_public_id'::uuid and member.actor_id=:'actor_id'::uuid;
+SQL
+app_request GET /api/projects "${alpha_access_token}" "${alpha_workspace_id}"
+expect_status 403 'ancien JWT refusé après retrait'
+
 app_request GET /api/workspaces
 expect_status 401 'absence de bearer refusée'
 
-printf 'Certification Supabase magic-link desktop réussie; nettoyage Auth et membership en cours.\n'
+printf 'Qualification Supabase locale réussie; nettoyage Auth et membership en cours. SMTP externe non testé.\n'

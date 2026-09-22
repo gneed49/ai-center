@@ -6,6 +6,7 @@ import {
   Bot,
   Check,
   Database,
+  FilePlus2,
   Send,
   Sparkles,
   User,
@@ -18,6 +19,7 @@ import { toast } from "sonner";
 
 import { ApiError, api, createIdempotencyKey } from "@/api/client";
 import type { ProposalView } from "@/api/types";
+import { MessageRecovery } from "@/components/sessions/message-recovery";
 import { ContextPackSummaryCard } from "@/components/app/context-pack-summary";
 import { ErrorState, LoadingState, NotFoundState } from "@/components/app/page";
 import { StatusPill } from "@/components/app/status-pill";
@@ -30,6 +32,7 @@ import { cn } from "@/lib/utils";
 type SendMessageCommand = Readonly<{
   content: string;
   idempotencyKey: string;
+  clientMessageId?: string;
 }>;
 
 export function SessionPage() {
@@ -38,10 +41,23 @@ export function SessionPage() {
   const [content, setContent] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const lastMessageCommand = useRef<{
+    projectId: string;
+    sessionId: string;
+    command: SendMessageCommand;
+  } | null>(null);
   const session = useQuery({
     queryKey: ["session", projectId, sessionId],
     queryFn: () => api.session(projectId, sessionId),
     enabled: Boolean(projectId && sessionId),
+    refetchInterval: (query) =>
+      query.state.data?.message_commands?.some(
+        (command) =>
+          command.status === "processing" ||
+          (command.retry_after_seconds ?? 0) > 0,
+      )
+        ? 3000
+        : false,
   });
   const snapshot = useQuery({
     queryKey: ["snapshot", projectId],
@@ -67,15 +83,30 @@ export function SessionPage() {
         sessionId,
         command.content,
         command.idempotencyKey,
+        command.clientMessageId,
       ),
-    onSuccess: () => {
-      setContent("");
+    onSuccess: (_result, command) => {
+      if (
+        lastMessageCommand.current?.command.idempotencyKey ===
+        command.idempotencyKey
+      )
+        lastMessageCommand.current = null;
+      setContent((current) =>
+        current.trim() === command.content.trim() ? "" : current,
+      );
       setSelected([]);
       refresh();
       requestAnimationFrame(() => composer.current?.focus());
     },
-    onError: notifyRequestError,
+    onError: (error) => {
+      notifyRequestError(error);
+      refresh();
+    },
   });
+  const currentReceipt = session.data?.message_commands?.find(
+    (command) => command.idempotency_key === send.variables?.idempotencyKey,
+  );
+  const receiptCompleted = currentReceipt?.status === "completed";
   const decide = useMutation({
     mutationFn: (command: {
       decision: "confirm" | "reject";
@@ -105,10 +136,19 @@ export function SessionPage() {
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!content.trim() || send.isPending) return;
-    send.mutate({
-      content,
-      idempotencyKey: createIdempotencyKey(),
-    });
+    const previous = lastMessageCommand.current;
+    const command =
+      previous?.projectId === projectId &&
+      previous.sessionId === sessionId &&
+      previous.command.content.trim() === content.trim()
+        ? previous.command
+        : { content, idempotencyKey: createIdempotencyKey() };
+    lastMessageCommand.current = { projectId, sessionId, command };
+    const receipt = session.data?.message_commands?.find(
+      (item) => item.idempotency_key === command.idempotencyKey,
+    );
+    if (receipt && !receipt.can_retry) return;
+    send.mutate(command);
   }
   function toggle(id: string) {
     if (decide.isError) decide.reset();
@@ -160,10 +200,11 @@ export function SessionPage() {
     data.context_pack?.source_graph_version ??
     0;
   const techSessionBlocked =
-    data.session.node_key === "tech" &&
-    !isContextPackCurrent(data.context_pack, graphVersion);
+    ["tech", "dev"].includes(data.session.node_key) &&
+    !isContextPackCurrent(data.context_pack);
 
-  if (techSessionBlocked) {
+  const archived = snapshot.data?.project.status === "archived";
+  if (techSessionBlocked && !archived) {
     return (
       <div className="space-y-6">
         <Button variant="ghost" asChild>
@@ -203,7 +244,7 @@ export function SessionPage() {
     );
   }
   return (
-    <div className="-mx-4 -my-7 flex min-h-[calc(100dvh-4rem)] flex-col bg-white sm:-mx-7 lg:-mx-10 lg:-my-10 lg:min-h-dvh">
+    <div className="-mx-4 -my-6 flex min-h-[calc(100dvh-4rem)] flex-col bg-white sm:-mx-7 lg:-mx-8 lg:-my-8 lg:min-h-dvh">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-4 py-4 sm:px-7 lg:px-8">
         <div className="flex min-w-0 items-center gap-4">
           <Button variant="ghost" size="icon" asChild>
@@ -228,13 +269,28 @@ export function SessionPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {!archived ? (
+            <Button variant="outline" size="sm" asChild>
+              <Link
+                to={`/artifacts?project=${projectId}&create=1&session=${sessionId}`}
+              >
+                <FilePlus2 /> Préparer un livrable
+              </Link>
+            </Button>
+          ) : null}
           <StatusPill status={data.session.status} />
           <span className="hidden font-mono text-xs text-slate-500 sm:inline">
             {shortId(data.session.public_id)}
           </span>
         </div>
       </header>
+      {archived ? (
+        <p role="status" className="border-b bg-muted px-8 py-4 text-sm">
+          Projet archivé : cette conversation et ses sources restent
+          consultables en lecture seule.
+        </p>
+      ) : null}
       <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_410px]">
         <section className="flex min-h-[65dvh] flex-col border-r border-slate-200">
           <div className="flex-1 space-y-6 overflow-y-auto px-4 py-7 sm:px-8 lg:px-10">
@@ -267,9 +323,24 @@ export function SessionPage() {
                     content={message.content}
                     date={message.created_at}
                     sources={message.metadata.sources}
+                    authorName={message.author_name}
+                    isOwn={message.is_own}
                   />
                 ))
               )}
+              <MessageRecovery
+                commands={data.message_commands ?? []}
+                busy={send.isPending}
+                readOnly={archived || techSessionBlocked}
+                onRefresh={refresh}
+                onRetry={(command) =>
+                  send.mutate({
+                    content: command.submitted_content,
+                    idempotencyKey: command.idempotency_key,
+                    clientMessageId: command.client_message_id,
+                  })
+                }
+              />
               {send.isPending ? (
                 <div
                   className="flex items-center gap-3 text-sm text-slate-500"
@@ -282,60 +353,114 @@ export function SessionPage() {
               ) : null}
             </div>
           </div>
-          <form
-            onSubmit={submit}
-            className="border-t border-slate-200 bg-white p-4 sm:p-6"
-            aria-busy={send.isPending}
-          >
-            <div className="mx-auto max-w-3xl">
-              <label htmlFor="session-message" className="sr-only">
-                Message à l’agent {data.session.node_key}
-              </label>
-              <Textarea
-                ref={composer}
-                id="session-message"
-                value={content}
-                onChange={(event) => {
-                  if (send.isError) send.reset();
-                  setContent(event.target.value);
-                }}
-                placeholder={
-                  data.session.node_key === "product"
-                    ? "Décrivez une intention, une règle ou un cas limite…"
-                    : "Décidez une approche technique à partir du ContextPack…"
-                }
-                className="min-h-24 resize-none border-slate-300 bg-slate-50 focus:bg-white"
-                aria-describedby="session-message-help"
-                disabled={send.isPending}
-              />
-              {send.error ? (
-                <div className="mt-3">
-                  <ErrorState
-                    error={send.error}
-                    title="Le message n’a pas été envoyé"
-                    retry={() => {
-                      if (send.variables) send.mutate(send.variables);
-                    }}
-                  />
+          {!archived ? (
+            <form
+              onSubmit={submit}
+              className="border-t border-slate-200 bg-white p-4 sm:p-6"
+              aria-busy={send.isPending}
+            >
+              <div className="mx-auto max-w-3xl">
+                <label htmlFor="session-message" className="sr-only">
+                  Message à l’agent {data.session.node_key}
+                </label>
+                <Textarea
+                  ref={composer}
+                  id="session-message"
+                  value={content}
+                  onChange={(event) => {
+                    if (send.isError) send.reset();
+                    setContent(event.target.value);
+                  }}
+                  placeholder={
+                    data.session.node_key === "product"
+                      ? "Décrivez une intention, une règle ou un cas limite…"
+                      : data.session.node_key === "tech"
+                        ? "Décidez une approche technique à partir du ContextPack…"
+                        : "Décrivez votre idée ou posez une question sur ce contexte…"
+                  }
+                  className="min-h-24 resize-none border-slate-300 bg-slate-50 focus:bg-white"
+                  aria-describedby="session-message-help"
+                  disabled={send.isPending}
+                />
+                {send.error && receiptCompleted ? (
+                  <div
+                    role="status"
+                    className="mt-3 space-y-2 text-sm text-emerald-800"
+                  >
+                    <p>La réponse a été retrouvée dans la conversation.</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        if (
+                          send.variables &&
+                          content.trim() === send.variables.content.trim()
+                        )
+                          setContent("");
+                        lastMessageCommand.current = null;
+                        send.reset();
+                      }}
+                    >
+                      Fermer le suivi de cette demande
+                    </Button>
+                  </div>
+                ) : null}
+                {send.error && !receiptCompleted ? (
+                  <div className="mt-3">
+                    <ErrorState
+                      error={send.error}
+                      title="La réponse n’a pas pu être confirmée"
+                      retry={
+                        !currentReceipt || currentReceipt.can_retry
+                          ? () => {
+                              if (send.variables) send.mutate(send.variables);
+                            }
+                          : undefined
+                      }
+                    />
+                    <p className="mt-2 text-sm text-slate-600">
+                      Le message peut déjà être enregistré. Réessayer le même
+                      texte reprend la même demande. Vous pouvez aussi
+                      actualiser la conversation pour vérifier son résultat.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="mt-2"
+                      onClick={refresh}
+                    >
+                      Actualiser la conversation
+                    </Button>
+                  </div>
+                ) : null}
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <p
+                    id="session-message-help"
+                    className="hidden text-xs text-slate-500 sm:block"
+                  >
+                    Les réponses ne modifient jamais le graphe sans
+                    confirmation.
+                  </p>
+                  <Button
+                    type="submit"
+                    disabled={
+                      !content.trim() ||
+                      send.isPending ||
+                      Boolean(
+                        currentReceipt &&
+                        !currentReceipt.can_retry &&
+                        currentReceipt.submitted_content.trim() ===
+                          content.trim(),
+                      )
+                    }
+                  >
+                    Envoyer
+                    <Send />
+                  </Button>
                 </div>
-              ) : null}
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <p
-                  id="session-message-help"
-                  className="hidden text-xs text-slate-500 sm:block"
-                >
-                  Les réponses ne modifient jamais le graphe sans confirmation.
-                </p>
-                <Button
-                  type="submit"
-                  disabled={!content.trim() || send.isPending}
-                >
-                  Envoyer
-                  <Send />
-                </Button>
               </div>
-            </div>
-          </form>
+            </form>
+          ) : null}
         </section>
         <aside className="bg-[#f7f8fb] p-4 sm:p-6">
           <div className="flex items-start justify-between gap-4">
@@ -370,7 +495,7 @@ export function SessionPage() {
               </div>
             )}
           </div>
-          {pending.length ? (
+          {pending.length && !archived ? (
             <div className="sticky bottom-0 mt-5 space-y-3 bg-[#f7f8fb] pt-3">
               {decide.error ? (
                 <ErrorState
@@ -435,7 +560,11 @@ function Message({
   content,
   date,
   sources,
+  authorName,
+  isOwn,
 }: {
+  authorName?: string | null;
+  isOwn?: boolean;
   role: string;
   content: string;
   date: string;
@@ -461,7 +590,16 @@ function Message({
               : "border-slate-200 bg-white text-slate-700",
           )}
         >
-          {content}
+          <p className="mb-2 text-xs font-semibold">
+            {user
+              ? isOwn
+                ? "Vous"
+                : authorName || "Membre non identifié"
+              : role === "system"
+                ? "Système"
+                : "Agent"}
+          </p>
+          <p className="whitespace-pre-wrap break-words">{content}</p>
         </div>
         <div
           className={cn(

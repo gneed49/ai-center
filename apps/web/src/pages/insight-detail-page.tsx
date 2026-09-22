@@ -21,6 +21,7 @@ import {
   NotFoundState,
   PageHeader,
 } from "@/components/app/page";
+import { SourceStatusBadge } from "@/components/app/source-status";
 import { StatusPill } from "@/components/app/status-pill";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -76,6 +77,7 @@ export function InsightDetailPage() {
     onError: notifyRequestError,
   });
   const act = (decision: "accept" | "dismiss") => {
+    if (decision === "accept" && sourcesStale) return;
     const previous = action.variables;
     const sameCommand =
       action.isError &&
@@ -140,13 +142,26 @@ export function InsightDetailPage() {
   const data = insight.data;
   const ownerProjectId = projectId || data.insight.project_public_id;
   const open = ["candidate", "open", "accepted"].includes(data.insight.status);
+  const sourcesStale =
+    data.insight.source_status === "stale" ||
+    data.sources.some((source) => source.source_status === "stale");
   const resolvableSources = data.sources.filter(
-    (source) => source.knowledge_public_id && source.version_public_id,
+    (source) =>
+      source.knowledge_public_id &&
+      source.version_public_id &&
+      source.source_status !== "stale" &&
+      (!source.source_project_public_id ||
+        source.source_project_public_id === ownerProjectId),
   );
   function submitResolution() {
-    if (resolve.isPending || resolutionNeedsRefresh || refreshingResolution)
+    if (
+      sourcesStale ||
+      resolve.isPending ||
+      resolutionNeedsRefresh ||
+      refreshingResolution
+    )
       return;
-    const source = data.sources.find(
+    const source = resolvableSources.find(
       (item) => item.knowledge_public_id === selectedSourceId,
     );
     if (!source?.knowledge_public_id || !source.version_public_id) return;
@@ -246,14 +261,17 @@ export function InsightDetailPage() {
         <div className="space-y-6">
           <section
             className={
-              data.insight.severity === "blocking"
-                ? "border border-red-200 bg-red-50 p-5 sm:p-7"
-                : "border border-amber-200 bg-amber-50 p-5 sm:p-7"
+              data.insight.insight_type === "context_gap"
+                ? "border border-slate-200 bg-slate-50 p-5 sm:p-7"
+                : data.insight.severity === "blocking"
+                  ? "border border-red-200 bg-red-50 p-5 sm:p-7"
+                  : "border border-amber-200 bg-amber-50 p-5 sm:p-7"
             }
           >
             <div className="flex flex-wrap items-center gap-2">
               <StatusPill status={data.insight.severity} />
               <StatusPill status={data.insight.status} />
+              <SourceStatusBadge status={data.insight.source_status} plural />
             </div>
             <div className="mt-6 grid gap-5 sm:grid-cols-3">
               <Fact
@@ -264,8 +282,40 @@ export function InsightDetailPage() {
                 label="Détecté"
                 value={formatDate(data.insight.detected_at, true)}
               />
-              <Fact label="Type" value={humanize(data.insight.insight_type)} />
+              <Fact
+                label="Type"
+                value={
+                  {
+                    contradiction: "Contradiction",
+                    coverage_gap: "Trou de preuve",
+                    context_gap: "Contexte à compléter",
+                  }[data.insight.insight_type]
+                }
+              />
             </div>
+            {data.insight.insight_type === "context_gap" ? (
+              <p className="mt-5 text-sm leading-6 text-slate-700">
+                Les éléments disponibles ne suffisent pas à conclure. Ce signal
+                demande du contexte complémentaire ; il ne prouve pas une
+                contradiction.
+              </p>
+            ) : null}
+            {sourcesStale ? (
+              <div className="mt-5 space-y-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                <p>
+                  Une source a évolué depuis la détection. Consultez les sources
+                  actuelles avant de prendre une nouvelle décision. Ce signal
+                  peut encore être écarté, mais pas accepté ni résolu sur ses
+                  anciennes sources.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => void insight.refetch()}
+                >
+                  Actualiser les sources
+                </Button>
+              </div>
+            ) : null}
             {data.insight.resolution_justification ? (
               <div className="mt-6 border-t border-current/10 pt-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em]">
@@ -296,16 +346,56 @@ export function InsightDetailPage() {
                   <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-indigo-600">
                     {humanize(source.source_role)}
                   </p>
-                  <h3 className="mt-3 font-semibold">
+                  <div className="mt-3">
+                    <SourceStatusBadge status={source.source_status} />
+                  </div>
+                  <h3 className="mt-3 break-words font-semibold">
                     {source.version_title ?? "Source"}
                   </h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
                     {source.version_statement}
                   </p>
+                  {source.provenance?.repository_coverage ===
+                  "selected_file_only" ? (
+                    <p className="mt-3 rounded-md bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+                      Cette preuve concerne uniquement le fichier et les lignes
+                      observés. Elle ne démontre pas la conformité de l’ensemble
+                      du dépôt.
+                    </p>
+                  ) : null}
                   <p className="mt-5 flex items-center gap-2 font-mono text-[10px] text-slate-500">
                     <Link2 className="size-3" />
                     {shortId(source.object_public_id)}
                   </p>
+                  <details className="mt-3 text-xs text-muted-foreground">
+                    <summary>Provenance exacte</summary>
+                    <dl className="mt-2 space-y-2 break-all">
+                      <div>
+                        <dt>Objet</dt>
+                        <dd>
+                          {source.object_kind} · {source.object_public_id}
+                        </dd>
+                      </div>
+                      {source.version_public_id ? (
+                        <div>
+                          <dt>Version</dt>
+                          <dd>{source.version_public_id}</dd>
+                        </div>
+                      ) : null}
+                      {source.source_project_public_id ? (
+                        <div>
+                          <dt>Contexte d’origine</dt>
+                          <dd>{source.source_project_public_id}</dd>
+                        </div>
+                      ) : null}
+                    </dl>
+                    {source.provenance &&
+                    Object.keys(source.provenance).length ? (
+                      <pre className="mt-3 overflow-auto whitespace-pre-wrap break-words text-xs">
+                        {JSON.stringify(source.provenance, null, 2)}
+                      </pre>
+                    ) : null}
+                  </details>
                 </article>
               ))}
             </div>
@@ -343,6 +433,7 @@ export function InsightDetailPage() {
               <div className="mt-4 grid gap-2">
                 <Button
                   disabled={
+                    sourcesStale ||
                     !justification.trim() ||
                     action.isPending ||
                     resolve.isPending ||
@@ -356,6 +447,7 @@ export function InsightDetailPage() {
                 <Button
                   variant="outline"
                   disabled={
+                    sourcesStale ||
                     !justification.trim() ||
                     action.isPending ||
                     resolve.isPending ||
@@ -387,9 +479,14 @@ export function InsightDetailPage() {
                   <ErrorState
                     error={action.error}
                     title="La décision n’a pas été enregistrée"
-                    retry={() => {
-                      if (action.variables) action.mutate(action.variables);
-                    }}
+                    retry={
+                      action.variables?.decision === "accept" && sourcesStale
+                        ? undefined
+                        : () => {
+                            if (action.variables)
+                              action.mutate(action.variables);
+                          }
+                    }
                   />
                 </div>
               ) : null}
@@ -503,6 +600,7 @@ export function InsightDetailPage() {
                     <Button
                       type="submit"
                       disabled={
+                        sourcesStale ||
                         resolve.isPending ||
                         resolutionNeedsRefresh ||
                         refreshingResolution ||

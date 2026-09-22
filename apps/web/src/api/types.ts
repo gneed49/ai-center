@@ -19,7 +19,7 @@ export interface ProjectSummary {
 
 export interface ContextNode {
   public_id: UUID;
-  node_key: "product" | "tech";
+  node_key: string;
   title: string;
   description: string;
   summary: string;
@@ -32,7 +32,7 @@ export interface SessionSummary {
   public_id: UUID;
   title: string;
   status: string;
-  node_key: "product" | "tech";
+  node_key: string;
   scope_kind: string;
   created_at: string;
   updated_at: string;
@@ -62,12 +62,15 @@ export interface DeliverableSummary {
   updated_at: string;
 }
 
+export type SourceStatus = "current" | "stale" | "unknown";
+
 export interface InsightSummary {
   public_id: UUID;
   project_public_id: UUID;
   project_name: string;
   project_graph_version: number;
-  insight_type: "contradiction" | "coverage_gap";
+  insight_type: "contradiction" | "coverage_gap" | "context_gap";
+  source_status?: SourceStatus | null;
   status: string;
   severity: "notice" | "warning" | "blocking";
   confidence: number;
@@ -103,7 +106,31 @@ export interface ProjectSnapshot {
   latest_handoff: HandoffView | null;
 }
 
+export interface MessageCommandView {
+  message_public_id: UUID;
+  client_message_id: UUID;
+  idempotency_key: string;
+  submitted_content: string;
+  status:
+    | "processing"
+    | "interrupted"
+    | "retryable"
+    | "failed"
+    | "completed"
+    | "expired";
+  can_retry: boolean;
+  locked_until: string | null;
+  retry_after_seconds: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  updated_at: string;
+}
+
 export interface MessageView {
+  client_message_id?: UUID | null;
+  author_actor_id?: UUID | null;
+  author_name?: string | null;
+  is_own?: boolean;
   public_id: UUID;
   role: "user" | "assistant" | "system";
   content: string;
@@ -124,6 +151,7 @@ export interface ProposalView {
 }
 
 export interface SessionView {
+  message_commands?: MessageCommandView[];
   session: SessionSummary;
   messages: MessageView[];
   proposals: ProposalView[];
@@ -213,6 +241,7 @@ export interface CompileContextPackInput {
   source_session_id: UUID;
   task_kind: "technical-delivery-plan";
   token_budget?: number;
+  target_node_key?: "tech" | "dev";
 }
 
 export interface CoverageItem {
@@ -330,6 +359,9 @@ export interface InsightDetail {
   insight: InsightSummary;
   sources: Array<{
     source_role: string;
+    source_status?: SourceStatus | null;
+    provenance?: Record<string, unknown> | null;
+    source_project_public_id?: UUID | null;
     object_kind: string;
     object_public_id: UUID;
     knowledge_public_id: UUID | null;

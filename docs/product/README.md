@@ -1,6 +1,10 @@
 # Documentation produit consolidée
 
-Ordre de lecture recommandé :
+Commencer par [Travail partagé et contexte d’entreprise](07-company-context-web.md),
+le périmètre V1 accepté le 21 septembre 2026. Il amende explicitement les limites
+du MVP mono-utilisateur.
+
+Documents de fond et décisions antérieures :
 
 1. `01-problem-and-opportunity.md`
 2. `02-product-vision.md`

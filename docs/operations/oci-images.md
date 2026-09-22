@@ -1,8 +1,10 @@
 # Images OCI portables
 
-Statut : **présentes, vérifiées statiquement, non reproduites localement**. Le
-daemon Docker n'est pas disponible dans l'environnement de développement ayant
-produit ce lot. La CI construit les deux images sans les publier.
+Statut au 21 septembre : **les deux images ont été construites localement via
+Podman** pendant la préparation de Company Context V1. Elles ne sont pas publiées
+ni déployées ; une reconstruction du candidat final et la configuration Auth
+de sa cible restent nécessaires. La CI construit les images sans les publier.
+Le [guide V1 web](company-web-v1.md) porte la procédure d'ouverture courante.
 
 ## Périmètre
 
@@ -66,3 +68,22 @@ Exécuter la vérification locale sans daemon :
 ./scripts/check-oci-packaging.sh
 git diff --check
 ```
+
+La recette locale de l’image web construite est
+`python3 scripts/oci-web-smoke.py --image localhost/ai-center-web:company-v1`.
+Elle démarre un conteneur éphémère sur un port loopback disponible, vérifie
+HTML, asset versionné, route applicative profonde, healthcheck, réponse 404
+et erreur d’API indisponible, puis supprime son propre conteneur. Elle vérifie
+aussi les en-têtes de protection et les règles de cache. Ce contrôle ne
+constitue pas une preuve d’authentification ou d’API connectée en production.
+
+Le 22 septembre, la base web a été portée de Nginx 1.29.1 à la version stable
+1.30.5 et son index multi-architecture est fixé par digest. La version ancienne
+apparaît dans les plages concernées par des avis de sécurité ultérieurs ;
+l’exploitabilité dépend des modules et de la configuration. Références :
+[avis officiels Nginx](https://nginx.org/en/security_advisories.html),
+[versions publiées](https://nginx.org/en/download.html),
+[politique de publication des images](https://github.com/nginx/docker-nginx-unprivileged).
+Un scan des paquets des deux images et une politique de mises à jour restent
+nécessaires avant qualification de l’hébergement ; ce changement ne constitue
+pas une déclaration d’absence de vulnérabilités dans tous les paquets système.

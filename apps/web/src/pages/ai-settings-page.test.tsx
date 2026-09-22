@@ -10,6 +10,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { providersApi } from "@/api/providers";
 import type { ProviderSettings } from "@/api/provider-types";
@@ -70,7 +71,9 @@ afterEach(() => {
 });
 const page = () => (
   <QueryClientProvider client={client}>
-    <AiSettingsPage />
+    <MemoryRouter>
+      <AiSettingsPage />
+    </MemoryRouter>
   </QueryClientProvider>
 );
 

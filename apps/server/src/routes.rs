@@ -1,4 +1,9 @@
+mod artifacts;
+mod automation;
+mod company;
 mod providers;
+mod team;
+mod work_tools;
 
 use std::sync::Arc;
 
@@ -66,11 +71,19 @@ pub fn router(
             header::HeaderName::from_static("x-ai-center-workspace-id"),
             header::HeaderName::from_static("idempotency-key"),
         ])
-        .expose_headers([request_id_header.clone()]);
+        .expose_headers([request_id_header.clone(), header::RETRY_AFTER]);
 
     let protected = Router::new()
         .merge(providers::router())
-        .route("/api/workspaces", get(list_workspaces))
+        .merge(company::router())
+        .merge(artifacts::router())
+        .merge(automation::router())
+        .merge(team::router())
+        .merge(work_tools::router())
+        .route(
+            "/api/workspaces",
+            get(list_workspaces).post(company::create_workspace),
+        )
         .route("/api/projects", get(list_projects).post(create_project))
         .route("/api/projects/{project_id}/snapshot", get(project_snapshot))
         .route("/api/projects/{project_id}/sessions", post(create_session))
@@ -122,16 +135,7 @@ pub fn router(
             "/api/projects/{project_id}/knowledge/{knowledge_id}",
             patch(revise_knowledge),
         )
-        .route("/api/insights", get(list_insights))
-        .route("/api/insights/{insight_id}", get(get_insight))
-        .route(
-            "/api/projects/{project_id}/insights/{insight_id}",
-            get(get_project_insight).patch(act_on_project_insight),
-        )
-        .route(
-            "/api/projects/{project_id}/insights/{insight_id}/resolve",
-            post(resolve_insight),
-        )
+        .merge(insight_routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_context,
@@ -150,7 +154,7 @@ pub fn router(
 }
 
 async fn no_store_private_provider_responses(request: Request, next: Next) -> Response {
-    let private = request.uri().path().starts_with("/api/ai/");
+    let private = request.uri().path().starts_with("/api/");
     let mut response = next.run(request).await;
     if private {
         response
@@ -161,6 +165,20 @@ async fn no_store_private_provider_responses(request: Request, next: Next) -> Re
             .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
     }
     response
+}
+
+fn insight_routes() -> Router<ApiState> {
+    Router::new()
+        .route("/api/insights", get(list_insights))
+        .route("/api/insights/{insight_id}", get(get_insight))
+        .route(
+            "/api/projects/{project_id}/insights/{insight_id}",
+            get(get_project_insight).patch(act_on_project_insight),
+        )
+        .route(
+            "/api/projects/{project_id}/insights/{insight_id}/resolve",
+            post(resolve_insight),
+        )
 }
 
 fn external_reference_routes() -> Router<ApiState> {
@@ -193,7 +211,18 @@ async fn require_context(
     mut request: Request,
     next: Next,
 ) -> AppResult<Response> {
-    let context = if request.uri().path() == "/api/workspaces" {
+    let link_operation = team::link_operation(request.uri().path());
+    let actor_only = request.uri().path() == "/api/workspaces"
+        || request.uri().path() == "/api/workspaces/capabilities"
+        || link_operation == Some(team::LinkOperation::Accept);
+    let context = if link_operation == Some(team::LinkOperation::Preview) {
+        RequestContext {
+            actor_id: Uuid::nil(),
+            workspace_id: Uuid::nil(),
+            workspace_internal_id: None,
+            workspace_role: "viewer".into(),
+        }
+    } else if actor_only {
         RequestContext {
             actor_id: state.auth.authenticate_actor(&headers).await?,
             workspace_id: Uuid::nil(),
@@ -206,8 +235,11 @@ async fn require_context(
             .authenticate(&headers, &state.service.pool)
             .await?
     };
-    if matches!(request.method(), &Method::POST | &Method::PATCH) {
-        if context.workspace_role == "viewer" {
+    if matches!(request.method(), &Method::POST | &Method::PATCH) && link_operation.is_none() {
+        if context.workspace_role == "viewer"
+            && !actor_only
+            && request.uri().path() != "/api/team/profile"
+        {
             return Err(crate::error::AppError::Forbidden);
         }
         let idempotency_key = headers
@@ -330,13 +362,50 @@ async fn finish_idempotent(
                 error.status_code().as_u16(),
                 error.public_code(),
                 failure_disposition(error),
-                json!({"code": error.public_code(), "message": error.public_message()}),
+                durable_error_body(error),
             )
             .await?
         }
     };
     tx.commit().await?;
     Ok(response)
+}
+
+fn durable_error_body(error: &AppError) -> Value {
+    let mut body = json!({"code": error.public_code(), "message": error.public_message()});
+    if let AppError::Capacity {
+        retry_after_seconds,
+    }
+    | AppError::ConnectorRateLimited {
+        retry_after_seconds,
+    } = error
+    {
+        body["retry_after_seconds"] = json!(retry_after_seconds);
+    }
+    body
+}
+
+fn stored_response(response: idempotency::StoredResponse) -> AppResult<Response> {
+    let status = StatusCode::from_u16(response.status_code)
+        .map_err(|_| AppError::Internal("stored status is invalid".into()))?;
+    let retry_after = matches!(
+        status,
+        StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE
+    )
+    .then(|| {
+        response
+            .body
+            .get("retry_after_seconds")
+            .and_then(Value::as_u64)
+    })
+    .flatten();
+    let mut result = (status, Json(response.body)).into_response();
+    if let Some(seconds) = retry_after
+        && let Ok(value) = seconds.to_string().parse()
+    {
+        result.headers_mut().insert(header::RETRY_AFTER, value);
+    }
+    Ok(result)
 }
 
 fn failure_disposition(error: &AppError) -> FailureDisposition {
@@ -347,11 +416,14 @@ fn failure_disposition(error: &AppError) -> FailureDisposition {
             FailureDisposition::Retryable
         }
         // Connector classification remains connector-owned.
-        AppError::Connector(_) | AppError::ConnectorRateLimited { .. } => {
-            FailureDisposition::Retryable
-        }
+        AppError::Connector(_)
+        | AppError::ConnectorRateLimited { .. }
+        | AppError::Capacity { .. }
+        | AppError::AutomationPaused
+        | AppError::AutomationInterrupted => FailureDisposition::Retryable,
         AppError::Unauthorized
         | AppError::Forbidden
+        | AppError::CompanyCreationNotAllowed
         | AppError::NotFound
         | AppError::Invalid(_)
         | AppError::Conflict(_)
@@ -364,12 +436,85 @@ fn failure_disposition(error: &AppError) -> FailureDisposition {
 
 #[cfg(test)]
 mod provider_failure_tests {
-    use super::failure_disposition;
+    use super::{
+        MutationStart, durable_error_body, failure_disposition, mutation_start, stored_response,
+    };
     use crate::{
         error::{AppError, ProviderError, ProviderErrorClass},
-        idempotency::FailureDisposition,
+        idempotency::{BeginOutcome, FailureDisposition, StoredResponse},
     };
-    use axum::http::StatusCode;
+    use axum::{
+        body::to_bytes,
+        http::{StatusCode, header},
+    };
+    use serde_json::{Value, json};
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn capacity_delay_survives_durable_storage_and_response_replay() {
+        for error in [
+            AppError::Capacity {
+                retry_after_seconds: 60,
+            },
+            AppError::ConnectorRateLimited {
+                retry_after_seconds: 30,
+            },
+        ] {
+            let body = durable_error_body(&error);
+            let expected_delay = body["retry_after_seconds"].as_u64().unwrap();
+            let stored = StoredResponse {
+                status_code: error.status_code().as_u16(),
+                body,
+                failed: true,
+                retryable: true,
+                error_code: Some(error.public_code().into()),
+            };
+            let first = stored_response(stored.clone()).unwrap();
+            let MutationStart::Respond(replay) = mutation_start(BeginOutcome::Replay {
+                record_public_id: Uuid::new_v4(),
+                response: stored,
+                expires_at: chrono::Utc::now(),
+            })
+            .unwrap() else {
+                panic!("a stored response must not execute the command again");
+            };
+            for response in [first, replay] {
+                assert_eq!(response.status(), error.status_code());
+                assert_eq!(
+                    response.headers()[header::RETRY_AFTER],
+                    expected_delay.to_string()
+                );
+                let bytes = to_bytes(response.into_body(), 2048).await.unwrap();
+                let output: Value = serde_json::from_slice(&bytes).unwrap();
+                assert_eq!(output["retry_after_seconds"], expected_delay);
+                assert_eq!(output["code"], error.public_code());
+            }
+        }
+    }
+
+    #[test]
+    fn ordinary_or_historical_responses_do_not_invent_a_retry_delay() {
+        for (status_code, body) in [
+            (429, json!({"code":"capacity_exceeded"})),
+            (429, json!({"retry_after_seconds":"untrusted text"})),
+            (200, json!({"retry_after_seconds":30})),
+        ] {
+            let response = stored_response(StoredResponse {
+                status_code,
+                body,
+                failed: status_code != 200,
+                retryable: false,
+                error_code: None,
+            })
+            .unwrap();
+            assert!(!response.headers().contains_key(header::RETRY_AFTER));
+        }
+        assert!(
+            durable_error_body(&AppError::AutomationPaused)
+                .get("retry_after_seconds")
+                .is_none()
+        );
+    }
 
     #[test]
     fn only_explicit_transient_provider_classes_resume_durable_commands() {
@@ -417,11 +562,7 @@ fn mutation_start(outcome: BeginOutcome) -> AppResult<MutationStart> {
             format!("operation is still processing until {locked_until}"),
         )),
         BeginOutcome::Replay { response, .. } => {
-            let status = StatusCode::from_u16(response.status_code)
-                .map_err(|_| crate::error::AppError::Internal("stored status is invalid".into()))?;
-            Ok(MutationStart::Respond(
-                (status, Json(response.body)).into_response(),
-            ))
+            Ok(MutationStart::Respond(stored_response(response)?))
         }
     }
 }
@@ -438,9 +579,7 @@ async fn finalize_mutation<T: Serialize>(
         Err(error) => Err(error),
     };
     let response = finish_idempotent(state, context, lease, &recorded).await?;
-    let status = StatusCode::from_u16(response.status_code)
-        .map_err(|_| crate::error::AppError::Internal("stored status is invalid".into()))?;
-    Ok((status, Json(response.body)).into_response())
+    stored_response(response)
 }
 
 async fn get_health(State(state): State<ApiState>) -> AppResult<Json<Health>> {

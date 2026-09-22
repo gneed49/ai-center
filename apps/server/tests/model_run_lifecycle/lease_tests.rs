@@ -87,7 +87,7 @@ async fn active_provider_renews_lease_and_lost_ownership_cancels_with_terminal_r
         )
         .await
     });
-    pause.started.notified().await;
+    tokio::time::timeout(Duration::from_secs(10), pause.started.notified()).await?;
     tokio::time::sleep(Duration::from_secs(31)).await;
     let concurrent = claim(&state, project_id, key, &hash).await?;
     assert!(
@@ -129,7 +129,7 @@ async fn active_provider_renews_lease_and_lost_ownership_cancels_with_terminal_r
         )
         .await
     });
-    pause.started.notified().await;
+    tokio::time::timeout(Duration::from_secs(10), pause.started.notified()).await?;
     let mut tx = scoped(&state).await?;
     sqlx::query("update app.idempotency_records set locked_until=now()-interval '1 second' where public_id=$1")
         .bind(second_lease.record_public_id).execute(&mut *tx).await?;

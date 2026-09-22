@@ -107,6 +107,24 @@ async function installIdentityApi(
           },
         ],
       });
+    if (path === "/api/company")
+      return route.fulfill({
+        json: {
+          workspace: {
+            public_id: beta ? workspaceB : workspaceA,
+            name: beta
+              ? "[FICTIF] Entreprise Beta"
+              : "[FICTIF] Entreprise Alpha",
+            description: "Recette isolation",
+            role: "owner",
+          },
+          company_scope: null,
+          projects: [],
+          members: [],
+          agents: [],
+          setup_complete: false,
+        },
+      });
     if (path === "/api/projects") {
       if (request.method() === "POST") await options.delayedMutation?.promise;
       else if (!beta) await options.delayedProjects?.promise;
@@ -139,11 +157,11 @@ test("change de compte sans réutiliser son cache ni son workspace", async ({
   const requests = await installIdentityApi(context);
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Projet Alpha confidentiel" }),
+    page.getByRole("link", { name: "Projet Alpha confidentiel", exact: true }),
   ).toBeVisible();
   await publishSession(page, actorB);
   await expect(
-    page.getByRole("heading", { name: "Choisir le contexte partagé" }),
+    page.getByRole("heading", { name: "Choisir votre entreprise" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Workspace Beta/ }),
@@ -161,11 +179,13 @@ test("change de compte sans réutiliser son cache ni son workspace", async ({
   await page.screenshot({ path: testInfo.outputPath("identity-picker.png") });
   await page.getByRole("button", { name: /Workspace Beta/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Projet Beta" }),
+    page.getByRole("link", { name: "Projet Beta", exact: true }),
   ).toBeVisible();
   expect(
     requests
-      .filter((request) => request.path === "/api/projects")
+      .filter((request) =>
+        ["/api/projects", "/api/company"].includes(request.path),
+      )
       .every(
         (request) =>
           (request.token === `Bearer fixture-${actorA}` &&
@@ -199,7 +219,7 @@ test("annule une lecture de l’ancien compte et ignore sa réponse tardive", as
   delayedProjects.resolve();
   await page.getByRole("button", { name: /Workspace Beta/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Projet Beta" }),
+    page.getByRole("link", { name: "Projet Beta", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Projet Alpha confidentiel")).toHaveCount(0);
   expect(errors).toEqual([]);
@@ -226,7 +246,7 @@ test("change simultanément les onglets et retire les drafts de l’ancien compt
   }
   await page.getByRole("button", { name: /Workspace Beta/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Projet Beta" }),
+    page.getByRole("link", { name: "Projet Beta", exact: true }),
   ).toBeVisible();
   await expect(other.getByLabel("Nom du projet")).toHaveValue("");
   await expect(other.getByLabel("Objectif initial")).toHaveValue("");
@@ -252,7 +272,7 @@ test("préserve le draft et la sélection pendant le renouvellement du même com
     "Objectif conservé",
   );
   await expect(
-    page.getByRole("heading", { name: "Choisir le contexte partagé" }),
+    page.getByRole("heading", { name: "Choisir votre entreprise" }),
   ).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -281,7 +301,7 @@ test("une création terminée sous l’ancien compte ne redirige pas le nouveau"
   delayedMutation.resolve();
   await page.getByRole("button", { name: /Workspace Beta/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Projet Beta" }),
+    page.getByRole("link", { name: "Projet Beta", exact: true }),
   ).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
   await expect(

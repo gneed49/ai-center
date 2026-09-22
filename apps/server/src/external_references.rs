@@ -514,6 +514,7 @@ pub async fn refresh(
     match provider_result {
         Ok(GitHubObserveResult::NotModified) => {
             let mut tx = begin_scoped_transaction(state, context).await?;
+            crate::company::data::require_active(&mut tx, reference.project_id).await?;
             if reference.sync_status != "current" {
                 append_recovery_observation(&mut tx, &reference).await?;
             }
@@ -553,6 +554,7 @@ pub async fn refresh(
                 return Err(error);
             }
             let mut tx = begin_scoped_transaction(state, context).await?;
+            crate::company::data::require_active(&mut tx, reference.project_id).await?;
             let connection = ConnectionRecord { id: connection_id };
             let scope = ProjectScope {
                 project_id: reference.project_id,
@@ -585,6 +587,7 @@ pub async fn refresh(
             // A rate limit says nothing about source availability. Preserve the
             // last observation, reference state, evidence, and coverage.
             let mut tx = begin_scoped_transaction(state, context).await?;
+            crate::company::data::require_active(&mut tx, reference.project_id).await?;
             let current = load_reference_for_update(&mut tx, state, reference_public_id).await?;
             tracking::observe(
                 &mut tx,
@@ -599,6 +602,7 @@ pub async fn refresh(
         }
         Err(error) if is_unavailable(&error) => {
             let mut tx = begin_scoped_transaction(state, context).await?;
+            crate::company::data::require_active(&mut tx, reference.project_id).await?;
             persist_unavailable(&mut tx, &reference).await?;
             let current = load_reference_by_internal(
                 &mut tx,
@@ -621,6 +625,7 @@ pub async fn refresh(
         }
         Err(error) => {
             let mut tx = begin_scoped_transaction(state, context).await?;
+            crate::company::data::require_active(&mut tx, reference.project_id).await?;
             sqlx::query(
                 "update app.external_references
                  set sync_status = 'error', last_synced_at = now(),
@@ -1127,6 +1132,7 @@ async fn persist_observed_reference(
     observation: &GitHubReferenceObservation,
     etag: Option<String>,
 ) -> AppResult<ExternalReferenceView> {
+    crate::company::data::require_active(tx, scope.project_id).await?;
     let reference_id: i64 = sqlx::query_scalar(
         "insert into app.external_references (
            workspace_id, project_id, tool_connection_id, provider, object_kind,
@@ -1449,12 +1455,15 @@ async fn load_reference_for_update(
     state: &AppState,
     reference_public_id: Uuid,
 ) -> AppResult<ReferenceRecord> {
-    sqlx::query_as::<_, ReferenceRecord>(REFERENCE_SELECT_BY_PUBLIC_ID_FOR_UPDATE)
+    let scope = load_reference(tx, state, reference_public_id).await?;
+    crate::company::data::require_active(tx, scope.project_id).await?;
+    let reference = sqlx::query_as::<_, ReferenceRecord>(REFERENCE_SELECT_BY_PUBLIC_ID_FOR_UPDATE)
         .bind(state.workspace_id)
         .bind(reference_public_id)
         .fetch_optional(&mut **tx)
         .await?
-        .ok_or(AppError::NotFound)
+        .ok_or(AppError::NotFound)?;
+    Ok(reference)
 }
 
 async fn load_reference_by_internal(

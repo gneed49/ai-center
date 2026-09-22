@@ -1,111 +1,119 @@
 ---
 project: AI Center
-status_schema: 1
-last_reviewed: 2026-09-08
-stage: candidate-alpha
+status_schema: 2
+last_reviewed: 2026-09-22
+stage: company-context-v1-integration
 health: amber
-publication_status: public_baseline_pr_open_local_changes_release_gates_pending
-canonical_path: /home/gneed49/Documents/projects/AICenter
-audit_base_commit: a22335cd1849c9b8c5f317eb94905fa3489a51a8
-verified_consolidation_commit: b20d36fa9dd95b0a5b2fad8266b81ca9e31acb64
-verified_synthetic_cases_commit: 5e0e98d82f4f538bbf83060001141a2dd3729d09
-verified_public_commit: 91dc76b95b798ec6adc22480a86db9e9e09da200
+publication_status: local_candidate_in_progress_not_deployed
+canonical_path: /home/gneed49/.codex/.chatgpt-projects/g-p-6a777a349e208191a064f18e7f93230d/ai-center
+preserved_previous_checkout: /home/gneed49/Documents/projects/AICenter
+branch: feat/company-context-v1
+audit_base_commit: 966ce9bbb597327e0ebbc3084836c6dedd759eca
+implementation_committed: true
+push_effectue: false
+deployment_effectue: false
 tracking_commit: resolve-with-git-log--1---PROJECT_STATUS.md
 ---
 
 # État du projet — AI Center
 
-## Résumé
+## Décision et objectif actifs
 
-AI Center est une application desktop/web de contrôle du contexte et de la
-cohérence. La branche locale `feat/alpha-context-proof` du projet ChatGPT
-contient les connexions IA personnelles du 7 septembre et les corrections
-ACP-T11/T12/T13 du 8 septembre, ainsi que les tests des deux projets fictifs
-Médiathèque Partagée et Atelier Réparable. Le checkout canonique ci-dessus
-reste intact.
+Le 21 septembre, le propriétaire a autorisé tous les lots de développement,
+tests, revue et préparation à la production. La cible est une application web
+pour une société et ses équipes : projets partagés, agents métier, artefacts
+versionnés, outils existants reliés, graphes projet fédérés et contrôle de
+cohérence asynchrone. [La spécification active](specs/company-context-v1/spec.md)
+et [les tickets](specs/company-context-v1/tickets.md) remplacent les limites
+mono-utilisateur de l'ancien MVP. Le code de production des projets clients
+reste produit dans les outils externes.
 
-La [PR n°1](https://github.com/gneed49/ai-center/pull/1), « feat: consolider la
-boucle Alpha Context Proof », est ouverte et prête pour revue au point public
-`91dc76b`, vérifié en lecture seule le 8 septembre. Les ajouts suivants restent
-locaux ; aucun nouveau push, déploiement ou lancement de CI n'a eu lieu.
+La réalisation est locale sur le checkout indiqué en métadonnées. L'ancien
+checkout est préservé. Aucun changement de cette V1 n'est encore commité, poussé,
+déployé ou publié. Aucun fournisseur IA facturant ni compte Notion/Linear/GitHub
+réel n'a été appelé pour qualifier ces nouveaux chemins.
 
-## Ce qui est en place
+## Réalisation présente
 
-- Context Compiler, ContextPacks immuables, provenance, plans et couverture.
-- Workspaces, JWT Supabase, rôle PostgreSQL runtime et RLS forcée.
-- Steward, contradictions, résolution et recompilation ciblée.
-- Sessions techniques, preuves, outbox/reprise et GitHub en lecture seule.
-- Plusieurs profils OpenAI, Anthropic, Kimi, DeepSeek et OpenRouter ; clés
-  personnelles chiffrées côté serveur et sélection dans **Réglages IA**.
-- Abonnement Claude via le client officiel Linux 2.1.220, comptes personnels
-  Pro/Max admissibles. ChatGPT/Codex reste indisponible dans cette version.
-- Upgrade sur toutes les migrations, conflit explicite quand une identité de
-  message est réutilisée avec un autre contenu, transport d'évaluation borné.
-- React/Vite, Rust/Axum/SQLx, Tauri, images OCI et sauvegarde/restauration SQL.
+- Société/workspace, membres et invitations, accès owner/editor/viewer,
+  espace général et cinq profils métier ; projets partagés par société.
+- Conversations et artefacts par projet ; versions, validation, historique,
+  exports Markdown/JSON, destinations héritées ou remplacées.
+- Connecteurs Notion, Linear et GitHub : secrets chiffrés côté serveur,
+  publications explicites, jobs durables et réconciliation des résultats ambigus.
+- Graphes persistés projet/entreprise avec provenance, interface graphique et
+  liste accessible ; contexte autorisé, borné et versionné ; invalidation ciblée.
+- Steward asynchrone alimenté par connaissances, artefacts, observations externes
+  et lectures GitHub ciblées à un commit/fichier ; états incomplet/inconnu explicites.
+- Suspension et quotas persistants des appels et publications ; coûts absents
+  distingués de zéro ; admission privée à la création de société.
+- Export de société, archivage/restauration, effacement opérateur en qualification,
+  préparation des images et du déploiement. Reprise des conversations et contrôles
+  de rétention en cours de recette intégrée.
 
-## Preuves datées
+Ces fonctionnalités présentes ne valent pas une acceptation automatique de
+chaque exigence. Le registre de preuve du candidat indique leurs contrôles.
 
-- **8 septembre, SYN-T01/T02 — `Vérifié` logiciel :** les deux projets
-  fictifs parcourent les services et PostgreSQL dans un même workspace.
-  3 nouveaux contrats du compilateur et 1 intégration couplée réussis :
-  confirmation, sélection/provenance, isolation, contradiction, révision et
-  recompilation avec historique conservé et atelier inchangé. Également
-  reproduits : 125 unités serveur (1 ignorée), 32 pgTAP, 41 tests Alpha et
-  17 gardes. Les [preuves et limites](specs/synthetic-context-cases/validation-2026-09-08.md)
-  et les [deux revues sans constat](specs/synthetic-context-cases/review-2026-09-08.md)
-  sont consignées. Base jetable, volumes et worktree nettoyés ; aucun E2E.
-- **8 septembre, ACP-T14 — `Vérifié` documentaire :** la
-  [vue FigJam Alpha Context Proof](https://www.figma.com/board/gn5z1F1tnQpQ23580fQ5QC?node-id=7-213)
-  ajoute les 14 nœuds et 18 connecteurs du flow à côté du dessin historique
-  conservé. Lecture API et inspection visuelle sont consignées dans la
-  [note du schéma](docs/architecture/diagram-validation-2026-09-08.md).
-  Mermaid et les exports sont inchangés ; les liens et le suivi Git restent
-  locaux. Cette preuve ne valide aucun parcours fonctionnel supplémentaire.
-- **8 septembre, sources intégrées à `b20d36f` sans retouche** : 7 intégrations
-  PostgreSQL ciblées, 7 unités de migration, 17 unités de garde de cible,
-  upgrade réel sur les 5 migrations et restauration de 41 tables/98 policies.
-  Données logiques, objets, grants et RLS concordants ; le déchiffrement des
-  clés après restauration avec la clé maîtresse séparée n'a pas été rejoué.
-- **8 septembre** : 41 tests du harness Alpha, dont 14 nouveaux tests de
-  transport ; Clippy serveur tous targets, formatage et syntaxe réussis.
-  La stack et les volumes de test exclusifs ont été supprimés.
-- **7 septembre, `5ea7ce3` intégré à `e8b0541`** : 125 unités Rust, 49 tests
-  web, 32 pgTAP et 11 intégrations PostgreSQL ; revues Standards/Spec clôturées.
-  Ces nombres ne désignent pas une nouvelle exécution le 8 septembre.
-- **CI publique du 5 septembre à `91dc76b`, relue le 8 septembre** : chacun des
-  deux déclenchements push/PR a réussi ses 5 contrôles Desktop CI et 3 OCI.
-  Ces résultats ne certifient pas les changements locaux ultérieurs.
-- Rapports : [reprise du 8 septembre](specs/alpha-context-proof/review-2026-09-08.md),
-  [connexions du 7 septembre](specs/provider-connections/validation-2026-09-07.md),
-  [historique du 5 septembre](specs/alpha-context-proof/review-2026-09-05.md).
+## Preuves courantes
 
-## Preuves encore attendues
+Le [rapport du 22 septembre](specs/company-context-v1/candidate-validation-2026-09-22.md)
+précise les validations reproduites et les écarts ouverts. Il prévaut sur la
+photo intermédiaire ci-dessous. Les deux parcours API/DB réelles et les 20 scénarios société passent après
+l’extension du graphe. Un jalon local est enregistré, avec les écarts restants
+explicitement ouverts ; aucune publication distante ou production n’est annoncée.
 
-- Les E2E, l'exploration UI, le smoke Tauri et les essais avec les comptes réels
-  sont confiés au propriétaire depuis sa consigne du 7 septembre. Aucun de
-  ces parcours n'a été exécuté pendant les livraisons des 7/8 septembre.
-- Campagne comparative et annotations humaines pour une preuve de valeur
-  réelle. Pour la validation logicielle demandée le 8 septembre, le propriétaire
-  autorise [deux projets fictifs](specs/synthetic-context-cases/spec.md) choisis
-  et testés par l'agent ; aucun choix de projets réels n'est attendu pour ce lot.
-- GitHub App privée en lecture seule et boucle réelle d'export jusqu'à la
-  couverture ; dix boucles propriétaires sur trois projets pendant une semaine.
-- Hébergement HTTPS privé, deux à trois invités, alertes et sauvegardes actives,
-  restauration dans cet environnement et deux semaines d'observation.
-- Schéma et serveur doivent être mis à niveau ensemble. Android reste hors
-  périmètre. Aucun tag `v0.2.0-alpha.1` tant que les gates réels restent ouverts.
+## Preuves intermédiaires du 21 septembre
 
-## Prochaine étape
+- Une première photo qualité passe : formatage, lint, compilation web/serveur,
+  Clippy workspace, 144 tests unitaires Rust, 122 tests web, 69 contrôles Python.
+  Des corrections ultérieures demandent une nouvelle photo commune.
+- Frontend élargi : 133 tests web dans 36 fichiers passent, ainsi que les suites
+  ciblées invitations/arrêt, publication et preuves GitHub. Les mocks de ces
+  tests ne prouvent pas un accès fournisseur réel.
+- Intégration PostgreSQL isolée : migration depuis la baseline, 32 pgTAP,
+  vérification des privilèges runtime/RLS ; modules société (9 tests), artefacts
+  (2), invitations (3), outils (5) et quotas (2) passés dans une première photo.
+  Deux régressions de reprise/fixture ont été corrigées ; nouvelle recette globale
+  requise avec les tests ajoutés et les dernières migrations.
+- Sauvegarde/restauration locale réussie sur 56 tables et 132 politiques ; cette
+  photo précède les dernières colonnes/politiques de reprise et d'effacement.
+- Supabase Auth réel local : création d'identité éphémère, magic-link/OTP,
+  sélection de société, rôle viewer, refus des mutations et des accès forgés.
+  Aucune délivrabilité SMTP externe prouvée.
+- Navigateur avec vrai serveur et PostgreSQL : parcours Produit → contexte →
+  plan technique/couverture/historique passé. Nouveau parcours artefact/graphe
+  en reprise après correction d'une URL de test ; aucun défaut de rendu déduit
+  de ce seul échec.
+- Deux images construites localement via Podman, sans publication. Elles devront
+  être reconstruites sur le candidat final et configurées pour la cible Auth.
 
-Le propriétaire suit la [recette manuelle](specs/provider-connections/manual-verification.md)
-et le [guide de démarrage](docs/development.md). Le
-[registre de semaine propriétaire](specs/alpha-context-proof/owner-proof-template.md)
-et le [dossier d'alpha privée](docs/operations/private-alpha-handoff.md) sont
-prêts à renseigner ; ils ne constituent ni des résultats ni des services activés.
+## Ce qui reste ouvert
+
+1. Terminer la recette intégrée et la revue corrective sur un même état de code,
+   puis commit, PR et CI du candidat exact (CC-G1).
+2. Compte/modèle IA et budget explicitement autorisés ; destinations de
+   qualification Notion/Linear/GitHub (CC-G2). Une question de budget est en attente.
+3. Hébergement/domaine, configuration Auth/SMTP, secrets, restauration séparée,
+   alertes et ouverture contrôlée sur la cible identifiée (CC-G3). Les noms/liens
+   des ressources sont demandés sans leurs secrets.
+4. Usage réel par le propriétaire et une première équipe, analyse des incidents
+   et de l'utilité sur la durée prévue (CC-G4). Ce temps ne peut être simulé.
+
+L'autonomie de développement reste active. Une ressource externe manquante ne
+suspend pas les autres lots. Aucune production n'est annoncée sur la seule base
+d'une compilation, d'un test synthétique ou d'une configuration écrite.
+
+## Repères historiques
+
+Le socle du 8 septembre contenait Alpha Context Proof, les connexions IA
+personnelles et les deux projets fictifs de preuve. Ses résultats restent
+consultables dans [le rapport du 8 septembre](specs/synthetic-context-cases/validation-2026-09-08.md)
+et [la revue Alpha](specs/alpha-context-proof/review-2026-09-08.md).
+La PR historique n°1 et ses CI antérieures ne qualifient pas cette V1 locale.
 
 ## Mise à jour par un agent
 
-Lire `AGENTS.md`, les spécifications actives et les registres de preuve.
-Vérifier branche, HEAD, PR/CI et gates. Séparer contrôle local, CI distante,
-usage réel, publication et exploitation. Préserver les sources originales et
-les secrets ; actualiser ce fichier dans le même commit que la nouvelle preuve.
+Lire AGENTS.md, la spécification active et les preuves ; vérifier branche,
+HEAD, PR/CI et gates. Séparer logiciel local, comptes réels, publication et
+exploitation. Préserver sources et secrets ; actualiser ce statut avec les
+preuves du candidat effectivement livré.

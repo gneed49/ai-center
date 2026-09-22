@@ -1,5 +1,10 @@
 # AI Center — Périmètre du MVP
 
+> Les limites de cette version du 24 août sont amendées par le
+> [périmètre web entreprise du 21 septembre](07-company-context-web.md).
+> Utilisateur unique, fédération différée et connecteur unique ne sont plus
+> le périmètre de livraison courant. Les contrats historiques restent la base.
+
 > Statut : scope consolidé — version 0.3
 >
 > Date : 24 août 2026

@@ -48,7 +48,8 @@ apply_role() {
   run_psql \
     --single-transaction \
     --file="${runtime_repo_dir}/supabase/roles.sql" \
-    --file="${runtime_repo_dir}/supabase/schemas/02_runtime_access.sql"
+    --file="${runtime_repo_dir}/supabase/schemas/02_runtime_access.sql" \
+    --file="${runtime_repo_dir}/supabase/schemas/99_runtime_extensions.sql"
 
   if [[ -n "${AI_CENTER_RUNTIME_DB_PASSWORD:-}" ]]; then
     run_psql --quiet <<'SQL'

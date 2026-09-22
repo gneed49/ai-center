@@ -11,9 +11,10 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-struct RecordingEngine {
-    fail_next: AtomicBool,
-    messages: Mutex<Vec<String>>,
+pub(super) struct RecordingEngine {
+    pub(super) fail_next: AtomicBool,
+    pub(super) messages: Mutex<Vec<String>>,
+    pub(super) failure_class: ProviderErrorClass,
 }
 
 #[async_trait::async_trait]
@@ -30,13 +31,9 @@ impl AgentEngine for RecordingEngine {
             .unwrap()
             .push(input.user_message.clone());
         if self.fail_next.swap(false, Ordering::SeqCst) {
-            return Err(ProviderError::new(
-                "recording-fixture",
-                ProviderErrorClass::Quota,
-                1,
-                None,
-            )
-            .into());
+            return Err(
+                ProviderError::new("recording-fixture", self.failure_class, 1, None).into(),
+            );
         }
         DeterministicEngine.respond(input).await
     }
@@ -81,6 +78,7 @@ async fn counts(admin: &PgPool, session: Uuid) -> Result<(i64, i64, i64)> {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn changed_content_is_rejected_after_failure_or_success_without_new_work() -> Result<()> {
+    super::session_recovery::guarded_urls()?;
     let pool = PgPoolOptions::new()
         .max_connections(6)
         .connect(&std::env::var("DATABASE_URL")?)
@@ -105,6 +103,7 @@ async fn changed_content_is_rejected_after_failure_or_success_without_new_work()
         let engine = Arc::new(RecordingEngine {
             fail_next: AtomicBool::new(initially_fails),
             messages: Mutex::new(Vec::new()),
+            failure_class: ProviderErrorClass::Quota,
         });
         let mut scoped = state(&pool, workspace, actor, runtime()?).await?;
         scoped.engine = engine.clone();
@@ -172,15 +171,12 @@ async fn changed_content_is_rejected_after_failure_or_success_without_new_work()
             .send()
             .await?;
         ensure!(
-            response.status().is_success(),
-            "same normalized content must resume or replay"
+            response.status().is_success() != initially_fails,
+            "a finished message may replay, but a new command cannot bypass permanent failure"
         );
         let after = counts(&admin, session).await?;
-        ensure!(after.0 == 2 && after.1 == if initially_fails { 2 } else { 1 });
-        if !initially_fails {
-            ensure!(after == before, "successful replay changed projections");
-        }
-        ensure!(engine.messages.lock().unwrap().len() == if initially_fails { 2 } else { 1 });
+        ensure!(after == before, "replay or refusal changed projections");
+        ensure!(engine.messages.lock().unwrap().len() == 1);
         let stored: String = sqlx::query_scalar(
             "select content from app.messages where client_message_id=$1 and role='user'",
         )

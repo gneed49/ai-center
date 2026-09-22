@@ -122,7 +122,7 @@ test("préserve le message et réutilise la clé lors d’un retry", async ({
   await composer.fill("Prépare le plan de preuve GitHub");
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(composer).toBeDisabled();
-  await expect(page.getByText("Le message n’a pas été envoyé")).toBeVisible();
+  await expect(page.getByText("La réponse n’a pas pu être confirmée")).toBeVisible();
   await expect(composer).toBeEnabled();
   await expect(composer).toHaveValue("Prépare le plan de preuve GitHub");
   await page.getByRole("button", { name: "Réessayer" }).click();
@@ -165,7 +165,7 @@ test("rejoue le succès sans mutation après perte de la réponse", async ({
   const composer = page.getByLabel("Message à l’agent tech");
   await composer.fill("Prépare le plan de preuve GitHub");
   await page.getByRole("button", { name: "Envoyer" }).click();
-  await expect(page.getByText("Le message n’a pas été envoyé")).toBeVisible();
+  await expect(page.getByText("La réponse n’a pas pu être confirmée")).toBeVisible();
   await expect(composer).toHaveValue("Prépare le plan de preuve GitHub");
   await page.getByRole("button", { name: "Réessayer" }).click();
   await expect(composer).toHaveValue("");
@@ -194,9 +194,9 @@ test("rejoue une erreur permanente sans réexécuter la commande", async ({
   const composer = page.getByLabel("Message à l’agent tech");
   await composer.fill("Commande invalide mais stable");
   await page.getByRole("button", { name: "Envoyer" }).click();
-  await expect(page.getByText("Le message n’a pas été envoyé")).toBeVisible();
+  await expect(page.getByText("La réponse n’a pas pu être confirmée")).toBeVisible();
   await page.getByRole("button", { name: "Réessayer" }).click();
-  await expect(page.getByText("Le message n’a pas été envoyé")).toBeVisible();
+  await expect(page.getByText("La réponse n’a pas pu être confirmée")).toBeVisible();
   await expect(composer).toHaveValue("Commande invalide mais stable");
 
   const attempts = state.requests.filter(

@@ -432,7 +432,7 @@ pub(crate) async fn resolve_engine_in_transaction(
                 return Ok(EngineResolution {
                     provider: connection.provider,
                     model: connection.model,
-                    engine,
+                    engine: engine.map(|engine| crate::automation::wrap(state, engine)),
                 });
             }
             _ => {
@@ -445,7 +445,7 @@ pub(crate) async fn resolve_engine_in_transaction(
     Ok(EngineResolution {
         provider: engine.provider_name().into(),
         model: engine.requested_model().into(),
-        engine: Ok(engine),
+        engine: Ok(crate::automation::wrap(state, engine)),
     })
 }
 

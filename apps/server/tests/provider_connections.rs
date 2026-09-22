@@ -26,6 +26,8 @@ use uuid::Uuid;
 
 #[path = "provider_connections/message_identity.rs"]
 mod message_identity;
+#[path = "provider_connections/session_recovery.rs"]
+mod session_recovery;
 
 // A non-network failing default proves that personal choices are honored even
 // when the application's default cannot produce any business output.
@@ -209,7 +211,8 @@ async fn assert_failed_message_retained(state: &AppState, admin: &PgPool) -> Res
         .bind(state.actor_id).bind(command.to_string()).fetch_one(admin).await?;
     ensure!(record.0 == "failed" && record.1["retryable"] == false);
 
-    // Only an explicit settings change and a new command may resume this intent.
+    // A terminal command stays terminal even after a settings change. A fresh
+    // message is an explicit new intent; eligible retries keep both old IDs.
     providers::select(
         state,
         Selection {
@@ -227,22 +230,36 @@ async fn assert_failed_message_retained(state: &AppState, admin: &PgPool) -> Res
         .await?;
     ensure!(replay.status() == response.as_ref().unwrap().0);
     ensure!(replay.json::<Value>().await? == response.unwrap().1);
-    let recovered = client
+    let changed_command = client
         .post(&endpoint)
         .header("Idempotency-Key", Uuid::new_v4().to_string())
         .json(&input)
         .send()
         .await?;
     ensure!(
-        recovered.status().is_success(),
-        "explicit deterministic recovery failed"
+        changed_command.status() == reqwest::StatusCode::CONFLICT,
+        "a fresh command must not bypass a terminal message outcome"
     );
     let counts: (i64, i64) = sqlx::query_as("select count(*) filter (where role='user'),count(*) filter (where role='assistant') from app.messages where client_message_id=$1")
         .bind(client_message_id).fetch_one(admin).await?;
     ensure!(
-        counts == (1, 1),
-        "recovery must reuse the retained intent exactly once"
+        counts == (1, 0),
+        "terminal intent must remain unchanged after a new command is refused"
     );
+    let replacement_message_id = Uuid::new_v4();
+    let recovered = client
+        .post(&endpoint)
+        .header("Idempotency-Key", Uuid::new_v4().to_string())
+        .json(&json!({"client_message_id":replacement_message_id,"content":input["content"]}))
+        .send()
+        .await?;
+    ensure!(
+        recovered.status().is_success(),
+        "explicit new deterministic message failed"
+    );
+    let replacement_counts: (i64, i64) = sqlx::query_as("select count(*) filter (where role='user'),count(*) filter (where role='assistant') from app.messages where client_message_id=$1")
+        .bind(replacement_message_id).fetch_one(admin).await?;
+    ensure!(replacement_counts == (1, 1));
     let runs: Vec<(String, String)> = sqlx::query_as("select run.provider,run.status from app.model_runs run join app.sessions session on session.id=run.session_id where session.public_id=$1 order by run.id")
         .bind(session_id).fetch_all(admin).await?;
     ensure!(
@@ -250,7 +267,7 @@ async fn assert_failed_message_retained(state: &AppState, admin: &PgPool) -> Res
             ("openai".into(), "failed".into()),
             ("deterministic".into(), "completed".into())
         ],
-        "recovery must retain both attempts with their explicit identities"
+        "the old failure and explicit new message must retain their separate runs"
     );
     providers::select(state, selection, None).await?;
     task.abort();
@@ -260,6 +277,7 @@ async fn assert_failed_message_retained(state: &AppState, admin: &PgPool) -> Res
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn private_credentials_http_idempotency_selection_and_rls() -> Result<()> {
+    session_recovery::guarded_urls()?;
     let pool = PgPoolOptions::new()
         .max_connections(8)
         .connect(&std::env::var("DATABASE_URL")?)

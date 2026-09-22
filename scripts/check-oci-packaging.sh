@@ -9,6 +9,7 @@ required_files=(
   deploy/oci/server.Dockerfile
   deploy/oci/web.Dockerfile
   deploy/oci/nginx/default.conf.template
+  deploy/oci/nginx/security-headers.conf
 )
 
 for file in "${required_files[@]}"; do

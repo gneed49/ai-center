@@ -54,12 +54,8 @@ export function DeliverablesPage() {
   });
   const plan = useMutation({
     mutationFn: async (idempotencyKey: string) => {
-      const currentGraphVersion = snapshot.data?.project.graph_version ?? 0;
       const currentHandoff = latestHandoff.data;
-      if (
-        !currentHandoff ||
-        !isContextPackCurrent(currentHandoff.context_pack, currentGraphVersion)
-      )
+      if (!currentHandoff || !isContextPackCurrent(currentHandoff.context_pack))
         throw new Error("Recompilez d’abord un ContextPack courant.");
       return api.technicalPlan(
         projectId,
@@ -92,11 +88,7 @@ export function DeliverablesPage() {
   const data = snapshot.data;
   const currentHandoff = latestHandoff.data;
   const canGeneratePlan = Boolean(
-    currentHandoff &&
-    isContextPackCurrent(
-      currentHandoff.context_pack,
-      data.project.graph_version,
-    ),
+    currentHandoff && isContextPackCurrent(currentHandoff.context_pack),
   );
   return (
     <div className="space-y-8">

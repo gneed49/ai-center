@@ -67,6 +67,12 @@ pub enum FailureDisposition {
     DeadLettered,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum AdmissionDeferral {
+    Capacity(Duration),
+    AutomationPaused,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ReclaimSummary {
     pub retry_scheduled: i64,
@@ -223,17 +229,17 @@ impl Outbox {
              ), reclaimed as (
                update app.domain_events event
                set status = case
-                     when event.attempt_count >= $2 then 'dead_letter'
+                     when event.attempt_count - event.deferred_count >= $2 then 'dead_letter'
                      else 'pending'
                    end,
                    available_at = case
-                     when event.attempt_count >= $2 then event.available_at
+                     when event.attempt_count - event.deferred_count >= $2 then event.available_at
                      else clock_timestamp() + make_interval(
                        secs => least(
                          $4::double precision,
                          $3::double precision * power(
                            2::double precision,
-                           least(greatest(event.attempt_count - 1, 0), 62)::double precision
+                           least(greatest(event.attempt_count - event.deferred_count - 1, 0), 62)::double precision
                          )
                        ) / 1000.0
                      )
@@ -245,7 +251,7 @@ impl Outbox {
                    last_error_message = 'worker lease expired before acknowledgement',
                    processed_at = null,
                    failed_at = case
-                     when event.attempt_count >= $2 then clock_timestamp()
+                     when event.attempt_count - event.deferred_count >= $2 then clock_timestamp()
                      else null
                    end
                from candidates
@@ -376,7 +382,18 @@ impl Outbox {
             MAX_ERROR_MESSAGE_LENGTH,
             "event processing failed",
         );
-        let attempt_count = u32::try_from(lease_attempt).unwrap_or_default();
+        let effective_attempt: i32 = sqlx::query_scalar(
+            "select attempt_count-deferred_count from app.domain_events
+             where public_id=$1 and status='processing' and locked_by=$2
+               and attempt_count=$3 and locked_until>clock_timestamp() for update",
+        )
+        .bind(event_public_id)
+        .bind(worker_id)
+        .bind(lease_attempt)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(OutboxError::LeaseLost { event_public_id })?;
+        let attempt_count = u32::try_from(effective_attempt).unwrap_or_default();
         let disposition = transition_after_failure(attempt_count, &self.policy);
 
         let result = match disposition {
@@ -442,7 +459,63 @@ impl Outbox {
             Err(OutboxError::LeaseLost { event_public_id })
         }
     }
+
+    /// Defers admission without counting a quota refusal as a processing failure.
+    /// The monotonic claim attempt remains unchanged, preserving stale-worker
+    /// fencing even when a subsequent claim reuses the same worker identifier.
+    ///
+    /// # Errors
+    /// Returns a validation/database error or `LeaseLost` for an expired or
+    /// replaced claim. The caller owns transaction commit or rollback.
+    pub async fn defer_for_admission(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        event_public_id: Uuid,
+        worker_id: &str,
+        lease_attempt: i32,
+        reason: AdmissionDeferral,
+    ) -> Result<(), OutboxError> {
+        let worker_id = validate_worker_id(worker_id)?;
+        let (retry_after, code, message) = match reason {
+            AdmissionDeferral::Capacity(delay) => (
+                delay,
+                "capacity_exceeded",
+                "Company activity limit; waiting for admission",
+            ),
+            AdmissionDeferral::AutomationPaused => (
+                Duration::from_secs(30),
+                "automation_paused",
+                "Company automation paused; awaiting explicit resume",
+            ),
+        };
+        let delay = duration_milliseconds(retry_after.max(Duration::from_secs(1)))?;
+        let result = sqlx::query(
+            "update app.domain_events set status='pending',deferred_count=deferred_count+1,
+             available_at=clock_timestamp()+make_interval(secs=>$4::double precision/1000.0),
+             locked_at=null,locked_until=null,locked_by=null,processed_at=null,failed_at=null,
+             last_error_code=$5,last_error_message=$6
+             where public_id=$1 and status='processing' and locked_by=$2
+               and attempt_count=$3 and locked_until>clock_timestamp()",
+        )
+        .bind(event_public_id)
+        .bind(worker_id)
+        .bind(lease_attempt)
+        .bind(delay)
+        .bind(code)
+        .bind(message)
+        .execute(&mut **tx)
+        .await?;
+        if result.rows_affected() == 1 {
+            Ok(())
+        } else {
+            Err(OutboxError::LeaseLost { event_public_id })
+        }
+    }
 }
+
+#[cfg(test)]
+#[path = "outbox/capacity_tests.rs"]
+mod capacity_tests;
 
 /// Pure retry decision used by both the worker and unit tests.
 #[must_use]

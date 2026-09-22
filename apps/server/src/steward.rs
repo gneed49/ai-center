@@ -43,7 +43,16 @@ const DEFAULT_STEWARD_SCAN_WORKSPACE_LIMIT: u32 = 16;
 const MIN_STEWARD_SCAN_INTERVAL: Duration = Duration::from_secs(1);
 const MAX_STEWARD_SCAN_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const MAX_STEWARD_SCAN_WORKSPACE_LIMIT: u32 = 128;
-const STEWARD_EVENT_TYPES: [&str; 2] = ["knowledge.committed", "knowledge.revised"];
+const STEWARD_EVENT_TYPES: [&str; 7] = [
+    "knowledge.committed",
+    "knowledge.revised",
+    "artifact.validated",
+    "graph.relationship_confirmed",
+    "external_reference.observed",
+    "publication.observed",
+    "github_code.observed",
+];
+mod company;
 
 /// Bounded inputs for one Steward run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +172,15 @@ pub struct StewardDrainTrigger {
 /// then waits for the currently supervised drain and exits naturally.
 pub struct StewardDrainSupervisor {
     task: JoinHandle<()>,
+    background_tasks: Vec<JoinHandle<()>>,
+}
+impl Drop for StewardDrainSupervisor {
+    fn drop(&mut self) {
+        self.task.abort();
+        for task in &self.background_tasks {
+            task.abort();
+        }
+    }
 }
 
 impl StewardDrainTrigger {
@@ -215,13 +233,27 @@ impl StewardDrainSupervisor {
             scanner_state,
             supervisor_policy,
         ));
-        Ok((StewardDrainTrigger { sender }, Self { task }))
+        Ok((
+            StewardDrainTrigger { sender },
+            Self {
+                task,
+                background_tasks: Vec::new(),
+            },
+        ))
     }
 
     /// Waits for channel closure and the active drain. No infinite polling task
     /// remains after the HTTP server has released all trigger handles.
-    pub async fn shutdown(self) {
-        if let Err(error) = self.task.await {
+    /// Attaches a worker to this server lifetime; shutdown or drop aborts it.
+    pub fn attach_background_task(&mut self, handle: JoinHandle<()>) {
+        self.background_tasks.push(handle);
+    }
+
+    pub async fn shutdown(mut self) {
+        for task in &self.background_tasks {
+            task.abort();
+        }
+        if let Err(error) = (&mut self.task).await {
             tracing::error!(%error, "Steward outbox supervisor stopped unexpectedly");
         }
     }
@@ -231,8 +263,6 @@ impl StewardDrainSupervisor {
 struct CurrentKnowledgeVersion {
     #[serde(skip)]
     version_id: i64,
-    #[serde(skip)]
-    knowledge_entry_id: i64,
     version_public_id: Uuid,
     knowledge_public_id: Uuid,
     node_key: String,
@@ -268,6 +298,7 @@ struct ProjectSnapshot {
     candidates: Vec<CandidatePair>,
     model_run_id: i64,
     model_run_public_id: Uuid,
+    company: Option<company::Snapshot>,
 }
 
 #[derive(Debug, Clone, FromRow)]
@@ -338,7 +369,7 @@ pub async fn analyze_project(
 
     let raw_output = serde_json::to_value(&generated.output)
         .map_err(|error| AppError::Internal(error.to_string()))?;
-    let assessments =
+    let mut assessments =
         match validate_assessments(&snapshot.candidates, &generated.output.assessments) {
             Ok(assessments) => assessments,
             Err(reason) => {
@@ -355,6 +386,9 @@ pub async fn analyze_project(
             }
         };
 
+    if let Some(company) = &snapshot.company {
+        company::enforce_observed_evidence(company, &mut assessments);
+    }
     persist_completed_run(state, snapshot, generated, raw_output, assessments).await
 }
 
@@ -384,6 +418,18 @@ pub async fn process_claimed_event(
     let project_id = event
         .project_id
         .ok_or_else(|| AppError::Invalid("Steward event has no project".into()))?;
+    let mut scope_tx = state.begin_request().await?;
+    let archived: bool = sqlx::query_scalar(
+        "select exists(select 1 from app.projects where id=$1 and workspace_id=app.current_workspace_id() and status='archived')",
+    )
+    .bind(project_id)
+    .fetch_one(&mut *scope_tx)
+    .await?;
+    scope_tx.commit().await?;
+    if archived {
+        acknowledge_event(state, outbox, event, worker_id).await?;
+        return Ok(StewardEventOutcome::Ignored);
+    }
     let project_public_id = project_public_id_by_internal(state, project_id).await?;
 
     let heartbeat_state = state.clone();
@@ -482,6 +528,10 @@ async fn drain_steward_outbox_with(
     let mut summary = StewardDrainSummary::default();
 
     loop {
+        // Pausing must not claim queued work or consume its retry allowance.
+        if !crate::automation::enabled(state).await? {
+            break;
+        }
         let mut claim_tx = state.begin_request().await?;
         let reclaimed = outbox
             .reclaim_expired_leases(
@@ -715,9 +765,14 @@ async fn prepare_run(
     .fetch_optional(&mut *tx)
     .await?;
     let (project_id, workspace_id, graph_version) = project.ok_or(AppError::NotFound)?;
+    crate::company::data::require_active(&mut tx, project_id).await?;
 
-    let versions = sqlx::query_as::<_, CurrentKnowledgeVersion>(
-        "select version.id as version_id, entry.id as knowledge_entry_id,
+    let company_context = company::load(&mut tx, project_id, config.max_versions).await?;
+    let (versions, mut company) = if let Some((versions, snapshot)) = company_context {
+        (versions, Some(snapshot))
+    } else {
+        let versions = sqlx::query_as::<_, CurrentKnowledgeVersion>(
+            "select version.id as version_id, entry.id as knowledge_entry_id,
                 version.public_id as version_public_id,
                 entry.public_id as knowledge_public_id,
                 node.node_key, version.entry_type, version.title,
@@ -737,13 +792,25 @@ async fn prepare_run(
            and version.entry_type <> 'open_question'
          order by version.created_at desc, version.id desc
          limit $3",
-    )
-    .bind(project_id)
-    .bind(workspace_id)
-    .bind(i64::from(config.max_versions))
-    .fetch_all(&mut *tx)
-    .await?;
-    let candidates = build_candidate_pairs(&versions, config.max_candidate_pairs);
+        )
+        .bind(project_id)
+        .bind(workspace_id)
+        .bind(i64::from(config.max_versions))
+        .fetch_all(&mut *tx)
+        .await?;
+        (versions, None)
+    };
+    let mut candidates = build_candidate_pairs(&versions, config.max_candidate_pairs);
+    if let Some(company) = company.as_mut() {
+        while serde_json::to_vec(&candidates)
+            .map_err(|error| AppError::Internal(error.to_string()))?
+            .len()
+            > 160_000
+        {
+            candidates.pop();
+            company.truncated = true;
+        }
+    }
     if candidates.is_empty() {
         tx.commit().await?;
         return Ok(None);
@@ -764,6 +831,7 @@ async fn prepare_run(
         "project_public_id": project_public_id,
         "source_graph_version": graph_version,
         "candidate_pairs": candidates,
+        "company_scan":company.as_ref().map(|snapshot|json!({"bounded":true,"truncated":snapshot.truncated,"scopes":snapshot.scopes})),
     }))?;
     let (model_run_id, model_run_public_id): (i64, Uuid) = sqlx::query_as(
         "insert into app.model_runs (
@@ -795,6 +863,7 @@ async fn prepare_run(
         candidates,
         model_run_id,
         model_run_public_id,
+        company,
     }))
 }
 
@@ -806,6 +875,10 @@ async fn persist_completed_run(
     assessments: Vec<ValidatedAssessment>,
 ) -> AppResult<StewardRunResult> {
     let mut tx = state.begin_request().await?;
+    let scopes_current = match &snapshot.company {
+        Some(company) => crate::scope_context::verify_snapshot(&mut tx, &company.scopes).await?,
+        None => true,
+    };
     let current_graph_version: Option<i64> = sqlx::query_scalar(
         "select graph_version from app.projects
          where id = $1 and workspace_id = $2
@@ -817,7 +890,7 @@ async fn persist_completed_run(
     .await?;
     let current_graph_version = current_graph_version.ok_or(AppError::NotFound)?;
 
-    if current_graph_version != snapshot.graph_version {
+    if current_graph_version != snapshot.graph_version || !scopes_current {
         complete_cancelled_run(
             &mut tx,
             snapshot.model_run_id,
@@ -850,6 +923,20 @@ async fn persist_completed_run(
     let mut contradiction_count = 0_usize;
 
     for assessment in &assessments {
+        // Exact immutable pairs already assessed in this company do not
+        // reopen a human disposition when a neighboring graph changes.
+        if snapshot.company.is_some() {
+            let existing:Option<Option<Uuid>>=sqlx::query_scalar(
+                "select i.public_id from app.steward_assessments a left join app.insights i on i.steward_assessment_id=a.id
+                 where a.workspace_id=$1 and a.fingerprint=$2 order by a.id desc limit 1")
+                .bind(snapshot.workspace_id).bind(&assessment.fingerprint).fetch_optional(&mut *tx).await?;
+            if let Some(insight) = existing {
+                if let Some(id) = insight {
+                    insight_public_ids.push(id);
+                }
+                continue;
+            }
+        }
         let confidence = format!("{:.3}", assessment.confidence);
         let assessment_id: Option<i64> = sqlx::query_scalar(
             "insert into app.steward_assessments (
@@ -890,6 +977,19 @@ async fn persist_completed_run(
             ("left", assessment.left_public_id),
             ("right", assessment.right_public_id),
         ] {
+            if let Some(company) = &snapshot.company {
+                let source = company
+                    .sources
+                    .get(&source_public_id)
+                    .ok_or_else(|| AppError::Internal("Steward source missing".into()))?;
+                company::persist_source(&mut tx, snapshot.project_id, assessment_id, role, source)
+                    .await?;
+                if source.source_kind != "knowledge_entry_version"
+                    || source.source_project_id != snapshot.project_id
+                {
+                    continue;
+                }
+            }
             let version_id = version_map.get(&source_public_id).copied().ok_or_else(|| {
                 AppError::Internal("validated Steward source disappeared from snapshot".into())
             })?;
@@ -909,19 +1009,24 @@ async fn persist_completed_run(
             .await?;
         }
 
-        if assessment.classification != "contradiction" {
+        let context_gap = snapshot.company.is_some() && assessment.classification == "ambiguous";
+        if assessment.classification != "contradiction" && !context_gap {
             continue;
         }
-        contradiction_count += 1;
-        let severity = assessment
-            .severity
-            .as_deref()
-            .ok_or_else(|| AppError::Internal("validated contradiction has no severity".into()))?;
+        if !context_gap {
+            contradiction_count += 1;
+        }
+        let severity = assessment.severity.as_deref().unwrap_or("notice");
+        let insight_type = if context_gap {
+            "context_gap"
+        } else {
+            "contradiction"
+        };
         let insight_id: Option<(i64, Uuid)> = sqlx::query_as(
             "insert into app.insights (
                workspace_id, project_id, steward_assessment_id, insight_type,
                status, severity, confidence, title, explanation
-             ) values ($1,$2,$3,'contradiction','open',$4,$5::numeric,$6,$7)
+             ) values ($1,$2,$3,$8,'open',$4,$5::numeric,$6,$7)
              on conflict (steward_assessment_id)
                where steward_assessment_id is not null do nothing
              returning id, public_id",
@@ -933,6 +1038,7 @@ async fn persist_completed_run(
         .bind(&confidence)
         .bind(&assessment.title)
         .bind(&assessment.explanation)
+        .bind(insight_type)
         .fetch_optional(&mut *tx)
         .await?;
         let (insight_id, insight_public_id) = match insight_id {
@@ -953,6 +1059,14 @@ async fn persist_completed_run(
             ("left", assessment.left_public_id),
             ("right", assessment.right_public_id),
         ] {
+            if let Some(company) = &snapshot.company {
+                let source = &company.sources[&source_public_id];
+                if source.source_kind != "knowledge_entry_version"
+                    || source.source_project_id != snapshot.project_id
+                {
+                    continue;
+                }
+            }
             let version_id = version_map[&source_public_id];
             sqlx::query(
                 "insert into app.insight_sources (
@@ -1258,7 +1372,7 @@ fn build_candidate_pairs(
     let mut pairs = Vec::new();
     for (left_index, left) in versions.iter().enumerate() {
         for right in versions.iter().skip(left_index + 1) {
-            if left.knowledge_entry_id == right.knowledge_entry_id {
+            if left.knowledge_public_id == right.knowledge_public_id {
                 continue;
             }
             let left_terms = subject_terms(&format!("{} {}", left.title, left.statement));
@@ -1276,7 +1390,12 @@ fn build_candidate_pairs(
 
             let score = i32::try_from(shared_subject_terms.len()).unwrap_or(i32::MAX) * 10
                 + i32::from(cross_scope) * 5
-                + type_affinity;
+                + type_affinity
+                + if left.node_key.starts_with("focus/") || right.node_key.starts_with("focus/") {
+                    30
+                } else {
+                    0
+                };
             let mut reason_codes = Vec::new();
             if !shared_subject_terms.is_empty() {
                 reason_codes.push("shared_subject");
@@ -1408,7 +1527,7 @@ async fn project_public_id_by_internal(state: &AppState, project_id: i64) -> App
 }
 
 fn is_steward_event(event_type: &str) -> bool {
-    matches!(event_type, "knowledge.committed" | "knowledge.revised")
+    STEWARD_EVENT_TYPES.contains(&event_type)
 }
 
 fn heartbeat_period(lease_duration: Duration) -> Duration {
@@ -1454,6 +1573,29 @@ async fn fail_event(
     error: &AppError,
 ) -> AppResult<()> {
     let mut tx = state.begin_request().await?;
+    let deferral = match error {
+        AppError::Capacity {
+            retry_after_seconds,
+        } => Some(crate::outbox::AdmissionDeferral::Capacity(
+            Duration::from_secs(*retry_after_seconds),
+        )),
+        AppError::AutomationPaused => Some(crate::outbox::AdmissionDeferral::AutomationPaused),
+        _ => None,
+    };
+    if let Some(reason) = deferral {
+        outbox
+            .defer_for_admission(
+                &mut tx,
+                event.public_id,
+                worker_id,
+                event.lease_attempt,
+                reason,
+            )
+            .await
+            .map_err(|error| map_outbox_error(&error))?;
+        tx.commit().await?;
+        return Ok(());
+    }
     outbox
         .mark_failed(
             &mut tx,
@@ -1519,7 +1661,6 @@ mod tests {
         let uuid_seed = u128::try_from(id).expect("test version id must be positive");
         CurrentKnowledgeVersion {
             version_id: id,
-            knowledge_entry_id: id,
             version_public_id: public_id,
             knowledge_public_id: Uuid::from_u128(10_000 + uuid_seed),
             node_key: node_key.into(),

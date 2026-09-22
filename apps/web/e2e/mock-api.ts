@@ -1,4 +1,5 @@
 import type { Page, Request } from "@playwright/test";
+import { companyMockHandler } from "./company-mock-api";
 import type { ExternalTracking } from "../src/api/types";
 
 const now = "2026-08-25T10:00:00.000Z";
@@ -22,6 +23,7 @@ export const ids = {
 };
 
 export type MockApiOptions = {
+  companySuite?: boolean;
   packStatus?: "current" | "stale";
   packGraphVersion?: number;
   graphVersion?: number;
@@ -441,6 +443,10 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   let insightStatus = "open";
   const messageResults = new Map<string, { body: unknown; status: number }>();
 
+  const companyRoutes = companyMockHandler(
+    buildSnapshot(graphVersion).project,
+    options.companySuite ?? false,
+  );
   await page.route("http://127.0.0.1:4317/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -453,6 +459,51 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
         contentType: "application/json",
         body: JSON.stringify(body),
       });
+
+    if (await companyRoutes(route)) return;
+
+    if (path === "/api/workspaces" && request.method() === "GET")
+      return json([
+        {
+          public_id: "01000000-0000-4000-8000-000000000001",
+          name: "[FICTIF] Atelier",
+          role: "owner",
+        },
+      ]);
+
+    if (path === "/api/company" && request.method() === "GET")
+      return json({
+        workspace: {
+          public_id: "01000000-0000-4000-8000-000000000001",
+          name: "[FICTIF] Atelier",
+          description: "Scénario de recette synthétique",
+          role: "owner",
+        },
+        company_scope: {
+          kind: "company",
+          project_public_id: "01000000-0000-4000-8000-000000000002",
+        },
+        projects: [],
+        members: [],
+        agents: [],
+        setup_complete: true,
+      });
+
+    if (path === `/api/context-packs/${ids.pack}` && request.method() === "GET")
+      return json(initialPack);
+
+    if (
+      path === `/api/context-packs/${ids.pack}/export` &&
+      request.method() === "GET"
+    ) {
+      if (url.searchParams.get("format") === "markdown")
+        return route.fulfill({
+          status: 200,
+          contentType: "text/markdown",
+          body: `# [FICTIF] ContextPack ${ids.pack}\n\nVersion ${initialPack.version}\n\n${initialPack.content.knowledge[0].statement}\n`,
+        });
+      return json(initialPack);
+    }
 
     if (path === "/api/projects" && request.method() === "GET") return json([]);
 
@@ -645,9 +696,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
           context_pack_public_id: body.tracking.context_pack_id,
           context_pack_version: initialPack.version,
           context_pack_hash: initialPack.content_hash,
-          context_pack_current:
-            initialPack.status === "current" &&
-            initialPack.source_graph_version === graphVersion,
+          context_pack_current: initialPack.status === "current",
           status: "running",
           observed_result: {
             mode: "external_observation",

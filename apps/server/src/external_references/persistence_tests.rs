@@ -161,6 +161,7 @@ async fn github_persistence_preserves_proofs_under_rate_limits_and_binds_idempot
         &state,
         project.public_id,
         CompileContextPack {
+            target_node_key: None,
             source_session_id: session.session.public_id,
             task_kind: "technical-delivery-plan".into(),
             token_budget: Some(12_000),
@@ -341,6 +342,19 @@ async fn github_persistence_preserves_proofs_under_rate_limits_and_binds_idempot
         "missing"
     );
     mode.store(200, Ordering::Relaxed);
+    // Observation cycles need the still-committed deliverable. The final
+    // tracking scenario revises an included source and deliberately stales it.
+    observation_cycles::exercise_cycles(
+        &state,
+        &context,
+        &github,
+        &mode,
+        project.public_id,
+        connection,
+        input.clone(),
+    )
+    .await?;
+    mode.store(200, Ordering::Relaxed);
     tracking_tests::exercise_tracking(
         &state,
         &context,
@@ -353,16 +367,24 @@ async fn github_persistence_preserves_proofs_under_rate_limits_and_binds_idempot
         input.clone(),
     )
     .await?;
-    observation_cycles::exercise_cycles(
+    crate::company::data::archive(
         &state,
-        &context,
-        &github,
-        &mode,
         project.public_id,
-        connection,
-        input,
+        crate::company::data::ArchiveProject { archived: true },
+        None,
     )
     .await?;
+    assert!(
+        matches!(
+            refresh(&state, &context, &github, reference_id, Uuid::new_v4()).await,
+            Err(AppError::Conflict(_))
+        ),
+        "archived history cannot start another GitHub observation"
+    );
+    assert!(
+        get(&state, &context, reference_id).await.is_ok(),
+        "archived GitHub history stays readable"
+    );
     server.abort();
     Ok(())
 }

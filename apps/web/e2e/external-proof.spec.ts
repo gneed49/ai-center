@@ -200,9 +200,9 @@ test("déclare le pack transmis et conserve la chaîne après réponse perdue et
 
 for (const stale of [
   { packStatus: "stale" as const },
-  { packGraphVersion: 3, graphVersion: 4 },
+  { packStatus: "stale" as const, packGraphVersion: 4, graphVersion: 4 },
 ]) {
-  test(`refuse un pack ${"packStatus" in stale ? "marqué obsolète" : "d’une ancienne révision"} dans la déclaration`, async ({
+  test(`refuse un pack marqué obsolète ${"packGraphVersion" in stale ? "avec compteur inchangé" : "après révision"} dans la déclaration`, async ({
     page,
   }) => {
     await installMockApi(page, { externalProof: true, ...stale });
@@ -214,3 +214,18 @@ for (const stale of [
     await expect(pack.locator(`option[value="${ids.pack}"]`)).toBeDisabled();
   });
 }
+
+test("conserve un pack courant après une révision indépendante du graphe", async ({
+  page,
+}) => {
+  await installMockApi(page, {
+    externalProof: true,
+    packGraphVersion: 3,
+    graphVersion: 4,
+  });
+  await page.goto(`/projects/${ids.project}/deliverables/${ids.deliverable}`);
+  const pack = page.getByLabel(
+    "ContextPack que j’ai transmis à l’outil externe",
+  );
+  await expect(pack.locator(`option[value="${ids.pack}"]`)).toBeEnabled();
+});

@@ -78,6 +78,9 @@ PY
       exit 1
     fi
     integration_require_stack
+    # Subsets such as auth-smoke/real-e2e also need the ephemeral runtime login.
+    # The integration phase rechecks this after its own guarded database reset.
+    ./scripts/runtime-db-role.sh apply >"${AI_CENTER_INTEGRATION_WORKDIR}/runtime-role.log" 2>&1
     for integration_phase in "$@"; do
       ./scripts/ci-desktop.sh "${integration_phase}"
     done

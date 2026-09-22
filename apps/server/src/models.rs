@@ -90,6 +90,8 @@ pub struct DeliverableSummary {
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct InsightSummary {
+    #[sqlx(default)]
+    pub source_status: Option<String>,
     pub public_id: Uuid,
     pub project_public_id: Uuid,
     pub project_name: String,
@@ -149,11 +151,30 @@ pub struct AgentTurn {
 #[derive(Debug, Serialize, FromRow)]
 pub struct MessageView {
     pub public_id: Uuid,
+    pub client_message_id: Option<Uuid>,
+    pub author_actor_id: Option<Uuid>,
+    pub author_name: Option<String>,
+    pub is_own: bool,
     pub role: String,
     pub content: String,
     pub agent_scope: Option<String>,
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MessageCommandView {
+    pub message_public_id: Uuid,
+    pub client_message_id: Uuid,
+    pub idempotency_key: Uuid,
+    pub submitted_content: String,
+    pub status: String,
+    pub can_retry: bool,
+    pub locked_until: Option<DateTime<Utc>>,
+    pub retry_after_seconds: Option<u64>,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -174,6 +195,7 @@ pub struct SessionView {
     pub messages: Vec<MessageView>,
     pub proposals: Vec<ProposalView>,
     pub context_pack: Option<ContextPackSummary>,
+    pub message_commands: Vec<MessageCommandView>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -260,6 +282,8 @@ pub struct CompileContextPack {
     pub source_session_id: Uuid,
     pub task_kind: String,
     #[serde(default)]
+    pub target_node_key: Option<String>,
+    #[serde(default)]
     pub token_budget: Option<i32>,
 }
 
@@ -321,6 +345,12 @@ pub struct CoverageView {
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct InsightSourceView {
+    #[sqlx(default)]
+    pub provenance: Option<Value>,
+    #[sqlx(default)]
+    pub source_project_public_id: Option<Uuid>,
+    #[sqlx(default)]
+    pub source_status: Option<String>,
     pub source_role: String,
     pub object_kind: String,
     pub object_public_id: Uuid,

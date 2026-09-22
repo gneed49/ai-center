@@ -232,6 +232,18 @@ pub(super) async fn exercise_tracking(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    assert!(
+        get(state, context, reference_id).await?.tracking[0].context_pack_current,
+        "an unrelated graph counter change must not invalidate exact pack sources"
+    );
+    let mut tx = begin_scoped_transaction(state, context).await?;
+    let source:Uuid=sqlx::query_scalar("select k.public_id from app.context_pack_sources s join app.context_packs p on p.id=s.context_pack_id
+        join app.knowledge_entries k on k.id=s.knowledge_entry_id where p.public_id=$1 order by k.id limit 1")
+        .bind(pack_id).fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+    service::revise_knowledge_for_project(state,project_id,source,crate::models::ReviseKnowledge{
+        title:None,rationale:None,statement:"[FICTIF] Source incluse révisée : demander un nouvel accord humain avant livraison.".into()
+    }).await?;
     let obsolete = get(state, context, reference_id).await?;
     assert!(!obsolete.tracking[0].context_pack_current);
     assert_eq!(

@@ -271,6 +271,7 @@ async fn command_result_is_atomic_with_every_representative_domain_mutation() ->
     )?;
 
     let pack_input = CompileContextPack {
+        target_node_key: None,
         source_session_id: product_session.session.public_id,
         task_kind: "technical-delivery-plan".into(),
         token_budget: Some(12_000),

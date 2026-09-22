@@ -93,7 +93,7 @@ pub enum BeginOutcome {
         /// reclaimed.
         reclaimed: bool,
         /// `true` only for an atomic `failed -> processing` transition after
-        /// an explicitly retryable 502/503/gateway-timeout failure.
+        /// an explicitly retryable capacity or 502/503/gateway-timeout failure.
         retrying_transient_failure: bool,
     },
     /// Another worker still owns the same request.
@@ -405,7 +405,7 @@ pub async fn complete(
 /// explicit same-command retry.
 ///
 /// A permanent failure is always replayed. A retryable failure may only use a
-/// 502, 503 or 504 status; its durable marker allows `begin` to atomically
+/// 429, 502, 503 or 504 status; its durable marker allows `begin` to atomically
 /// transition the same record back to `processing`. Ambiguous provider
 /// failures are never allowed to switch silently to another engine.
 ///
@@ -426,10 +426,10 @@ pub async fn fail(
     validate_error_code(error_code)?;
     let retryable = match disposition {
         FailureDisposition::Permanent => false,
-        FailureDisposition::Retryable if is_transient_gateway_status(status_code) => true,
+        FailureDisposition::Retryable if is_transient_status(status_code) => true,
         FailureDisposition::Retryable => {
             return Err(AppError::Invalid(
-                "retryable idempotency failures require status 502, 503 or 504".into(),
+                "retryable idempotency failures require status 429, 502, 503 or 504".into(),
             ));
         }
     };
@@ -532,7 +532,7 @@ async fn retry_failed(
              updated_at = now()
          where id = $1
            and status = 'failed'
-           and response_status in (502, 503, 504)
+           and response_status in (429, 502, 503, 504)
            and response_body ->> 'retryable' = 'true'
          returning id, public_id, workspace_id, project_id, actor_id,
                    operation_key, idempotency_key, request_hash, status,
@@ -762,8 +762,8 @@ fn validate_status_code(status_code: u16) -> AppResult<()> {
     Ok(())
 }
 
-fn is_transient_gateway_status(status_code: u16) -> bool {
-    matches!(status_code, 502..=504)
+fn is_transient_status(status_code: u16) -> bool {
+    matches!(status_code, 429 | 502..=504)
 }
 
 fn mark_failure_retryability(mut body: Value, retryable: bool) -> Value {
@@ -776,7 +776,11 @@ fn mark_failure_retryability(mut body: Value, retryable: bool) -> Value {
 }
 
 fn classify_existing(record: &IdempotencyRecord, request: BeginRequest<'_>) -> ExistingDecision {
-    if record.expired {
+    // Offline maintenance closes an uncertain operation permanently. Expiry
+    // must never turn its old command identity into another provider call.
+    let maintenance_closed = record.status == "failed"
+        && record.error_code.as_deref() == Some("operator_abandoned_closed");
+    if record.expired && !maintenance_closed {
         return ExistingDecision::ResetExpired;
     }
     if record.project_id != request.project_id {
@@ -784,6 +788,9 @@ fn classify_existing(record: &IdempotencyRecord, request: BeginRequest<'_>) -> E
     }
     if record.request_hash != request.request_hash {
         return ExistingDecision::HashConflict;
+    }
+    if maintenance_closed {
+        return ExistingDecision::Replay;
     }
     match record.status.as_str() {
         "processing" if record.reclaimable => ExistingDecision::Reclaim,
@@ -856,7 +863,7 @@ impl IdempotencyRecord {
             && self
                 .response_status
                 .and_then(|status| u16::try_from(status).ok())
-                .is_some_and(is_transient_gateway_status)
+                .is_some_and(is_transient_status)
             && self
                 .response_body
                 .as_ref()
@@ -1019,8 +1026,26 @@ mod tests {
     }
 
     #[test]
+    fn maintenance_closed_commands_remain_terminal_after_expiry() {
+        let mut closed = record("failed", HASH_A, Some(2), true, false);
+        closed.error_code = Some("operator_abandoned_closed".into());
+        assert_eq!(
+            classify_existing(&closed, request(HASH_A, Some(2))),
+            ExistingDecision::Replay
+        );
+        assert_eq!(
+            classify_existing(&closed, request(HASH_B, Some(2))),
+            ExistingDecision::HashConflict
+        );
+        assert_eq!(
+            classify_existing(&closed, request(HASH_A, Some(3))),
+            ExistingDecision::ScopeConflict
+        );
+    }
+
+    #[test]
     fn only_explicit_transient_gateway_failures_resume_the_same_command() {
-        for status in [502, 503, 504] {
+        for status in [429, 502, 503, 504] {
             let mut retryable = record("failed", HASH_A, Some(2), false, false);
             retryable.response_status = Some(status);
             retryable.response_body = Some(json!({

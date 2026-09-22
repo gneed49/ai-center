@@ -127,12 +127,28 @@ pub enum AppError {
     Unauthorized,
     #[error("insufficient workspace permissions")]
     Forbidden,
+    #[error(
+        "Ce compte peut rejoindre une entreprise avec son invitation. La création d’une entreprise nécessite un accès autorisé."
+    )]
+    CompanyCreationNotAllowed,
     #[error("resource not found")]
     NotFound,
     #[error("invalid request: {0}")]
     Invalid(String),
     #[error("conflict: {0}")]
     Conflict(String),
+    #[error(
+        "Une limite d’activité de votre entreprise ou de votre compte est atteinte. Réessayez dans {retry_after_seconds} secondes."
+    )]
+    Capacity { retry_after_seconds: u64 },
+    #[error(
+        "L’automatisation est suspendue pour cette entreprise. Un propriétaire peut la réactiver."
+    )]
+    AutomationPaused,
+    #[error(
+        "Le traitement a été interrompu après une attente trop longue. Vous pouvez reprendre cette opération."
+    )]
+    AutomationInterrupted,
     #[error("agent provider unavailable: {0}")]
     Agent(String),
     #[error(transparent)]
@@ -158,12 +174,20 @@ impl IntoResponse for AppError {
         let retry_after = match &self {
             Self::ConnectorRateLimited {
                 retry_after_seconds,
+            }
+            | Self::Capacity {
+                retry_after_seconds,
             } => Some(*retry_after_seconds),
             _ => None,
         };
         let (status, code, message) = match self {
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", self.to_string()),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),
+            Self::CompanyCreationNotAllowed => (
+                StatusCode::FORBIDDEN,
+                "company_creation_not_allowed",
+                self.to_string(),
+            ),
             Self::NotFound => (StatusCode::NOT_FOUND, "not_found", self.to_string()),
             Self::Invalid(_) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
@@ -171,6 +195,21 @@ impl IntoResponse for AppError {
                 self.to_string(),
             ),
             Self::Conflict(_) => (StatusCode::CONFLICT, "conflict", self.to_string()),
+            Self::Capacity { .. } => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "capacity_exceeded",
+                self.to_string(),
+            ),
+            Self::AutomationPaused => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "automation_paused",
+                self.to_string(),
+            ),
+            Self::AutomationInterrupted => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "automation_interrupted",
+                self.to_string(),
+            ),
             Self::Agent(_) => (
                 StatusCode::BAD_GATEWAY,
                 "agent_unavailable",
@@ -196,15 +235,24 @@ impl IntoResponse for AppError {
                 self.to_string(),
             ),
             Self::Database(error) => {
-                tracing::error!(?error, "database operation failed");
+                let sqlstate = error
+                    .as_database_error()
+                    .and_then(sqlx::error::DatabaseError::code)
+                    .map(std::borrow::Cow::into_owned);
+                // PostgreSQL diagnostics can contain the complete failing row.
+                // Keep only a stable error class, never SQL values or row detail.
+                tracing::error!(
+                    sqlstate = sqlstate.as_deref().unwrap_or("unavailable"),
+                    "database operation failed"
+                );
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "database_error",
                     "database operation failed".into(),
                 )
             }
-            Self::Internal(message) => {
-                tracing::error!(%message, "internal operation failed");
+            Self::Internal(_) => {
+                tracing::error!("internal operation failed");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "internal_error",
@@ -229,11 +277,14 @@ impl AppError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
-            Self::Forbidden => StatusCode::FORBIDDEN,
+            Self::Forbidden | Self::CompanyCreationNotAllowed => StatusCode::FORBIDDEN,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
+            Self::Capacity { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::Invalid(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::ConnectorRateLimited { .. } => StatusCode::SERVICE_UNAVAILABLE,
+            Self::ConnectorRateLimited { .. }
+            | Self::AutomationPaused
+            | Self::AutomationInterrupted => StatusCode::SERVICE_UNAVAILABLE,
             Self::Provider(error) if error.is_retryable() => StatusCode::SERVICE_UNAVAILABLE,
             Self::Agent(_) | Self::Provider(_) | Self::Connector(_) => StatusCode::BAD_GATEWAY,
             Self::Database(_) | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -245,8 +296,12 @@ impl AppError {
         match self {
             Self::Unauthorized => "unauthorized",
             Self::Forbidden => "forbidden",
+            Self::CompanyCreationNotAllowed => "company_creation_not_allowed",
             Self::NotFound => "not_found",
             Self::Conflict(_) => "conflict",
+            Self::Capacity { .. } => "capacity_exceeded",
+            Self::AutomationPaused => "automation_paused",
+            Self::AutomationInterrupted => "automation_interrupted",
             Self::Invalid(_) => "invalid_request",
             Self::Agent(_) | Self::Provider(_) => "agent_unavailable",
             Self::Connector(_) => "connector_unavailable",
@@ -272,7 +327,10 @@ impl AppError {
     /// contract failures are final.
     #[must_use]
     pub const fn is_retryable_provider_failure(&self) -> bool {
-        matches!(self, Self::Provider(error) if error.is_retryable())
+        matches!(
+            self,
+            Self::Capacity { .. } | Self::AutomationPaused | Self::AutomationInterrupted
+        ) || matches!(self, Self::Provider(error) if error.is_retryable())
     }
 
     #[must_use]

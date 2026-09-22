@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router";
 
 import { api } from "@/api/client";
 import { Button } from "@/components/ui/button";
+import { CompanyBootstrap } from "@/components/app/company-bootstrap";
 import { useAuth } from "./auth-context";
 
 export function LoginPage() {
@@ -128,20 +129,16 @@ export function AuthCallbackPage() {
 export function WorkspacePicker() {
   const { client, selectWorkspace } = useAuth();
   const navigate = useNavigate();
+  const [creating, setCreating] = useState(false);
   const workspaces = useQuery({
     queryKey: ["workspaces"],
     queryFn: api.workspaces,
   });
 
   return (
-    <main className="grid min-h-dvh place-items-center bg-[#f7f8fb] px-6 py-12">
-      <section className="w-full max-w-xl border border-slate-200 bg-white p-8 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
-          Workspace
-        </p>
-        <h1 className="mt-3 text-2xl font-semibold">
-          Choisir le contexte partagé
-        </h1>
+    <main className="grid min-h-dvh place-items-center bg-background px-6 py-12">
+      <section className="w-full max-w-xl rounded-lg border bg-white p-8">
+        <h1 className="text-2xl font-semibold">Choisir votre entreprise</h1>
         {workspaces.isLoading ? (
           <p className="mt-6 text-sm text-slate-500" role="status">
             Chargement des accès…
@@ -167,17 +164,39 @@ export function WorkspacePicker() {
               >
                 <span className="font-medium">{workspace.name}</span>
                 <span className="text-xs uppercase tracking-wide text-slate-500">
-                  {workspace.role}
+                  {
+                    {
+                      owner: "Propriétaire",
+                      editor: "Éditeur",
+                      viewer: "Lecteur",
+                    }[workspace.role]
+                  }
                 </span>
               </button>
             ))}
           </div>
         ) : (
           <p className="mt-6 text-sm text-amber-800" role="alert">
-            Aucun workspace accepté n’est associé à ce compte. Demandez une
-            invitation au propriétaire.
+            Aucune entreprise n’est encore associée à ce compte. Vous pouvez
+            créer la vôtre ou demander une invitation à son propriétaire.
           </p>
         )}
+        {!workspaces.isPending && !workspaces.isError ? (
+          <div className="mt-6 border-t pt-6">
+            {creating || !workspaces.data?.length ? (
+              <CompanyBootstrap
+                onCreated={(workspace) => {
+                  selectWorkspace(workspace.public_id);
+                  navigate("/", { replace: true });
+                }}
+              />
+            ) : (
+              <Button variant="outline" onClick={() => setCreating(true)}>
+                Créer une entreprise
+              </Button>
+            )}
+          </div>
+        ) : null}
         <Button
           className="mt-6"
           variant="outline"

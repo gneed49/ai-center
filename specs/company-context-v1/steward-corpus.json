@@ -1,0 +1,11 @@
+{
+  "label": "[FICTIF] Corpus déterministe de non-régression, sans évaluation d'un fournisseur réel",
+  "cases": [
+    {"id":"cross-project-retention","left":"[FICTIF] Conserver les décisions sans expiration.","right":"[FICTIF] Purger les décisions après 90 jours.","expected":"contradiction","proof":"company_context::company_steward_cites_cross_project_versions_and_keeps_human_status_separate"},
+    {"id":"compatible-retention","left":"[FICTIF] Purger les décisions après 90 jours, après accord humain.","right":"[FICTIF] Purger les décisions après 90 jours.","expected":"compatible","proof":"company_context::company_steward_cites_cross_project_versions_and_keeps_human_status_separate"},
+    {"id":"ambiguous-limits","left":"[FICTIF] Purger les décisions après 30 jours.","right":"[FICTIF] Purger les décisions après 90 jours.","expected":"ambiguous","proof":"agent::tests::deterministic_steward_assesses_every_pair_with_exact_source_ids"},
+    {"id":"github-metadata-without-code","input":"[FICTIF] Titre de PR et statut vert, fichiers non lus","provider_verdict":"compatible","expected":"ambiguous","proof":"steward::company::tests::metadata_or_missing_content_cannot_authorize_a_provider_claim"},
+    {"id":"publication-incomplete","input":"[FICTIF] Reçu de publication ou lecture Notion tronquée, complete=false","provider_verdict":"contradiction","expected":"ambiguous","proof":"steward::company::tests::metadata_or_missing_content_cannot_authorize_a_provider_claim"},
+    {"id":"stale-version","input":"[FICTIF] Une règle utilisée par une alerte a été révisée","expected":"source_status=stale, disposition humaine inchangée, anciennes sources conservées","proof":"company_context::company_steward_cites_cross_project_versions_and_keeps_human_status_separate"}
+  ]
+}

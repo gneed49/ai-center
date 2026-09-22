@@ -183,6 +183,7 @@ async fn tech_response_is_rolled_back_when_its_pack_is_superseded_in_flight() ->
         &fixture.state,
         fixture.project_public_id,
         CompileContextPack {
+            target_node_key: None,
             source_session_id: fixture.product_session_id,
             task_kind: "technical-delivery-plan".into(),
             token_budget: Some(12_000),
@@ -259,6 +260,7 @@ async fn handoff_serializes_with_recompile_and_rejects_the_superseded_pack() -> 
             &recompile_state,
             project_public_id,
             CompileContextPack {
+                target_node_key: None,
                 source_session_id: product_session_id,
                 task_kind: "technical-delivery-plan".into(),
                 token_budget: Some(12_000),
@@ -362,6 +364,7 @@ async fn prepare_context_fixture() -> Result<ContextFixture> {
         &state,
         project.public_id,
         CompileContextPack {
+            target_node_key: None,
             source_session_id: product_session_id,
             task_kind: "technical-delivery-plan".into(),
             token_budget: Some(12_000),

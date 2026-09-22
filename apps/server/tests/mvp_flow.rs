@@ -128,6 +128,7 @@ async fn arbitrary_project_crosses_the_full_context_control_plane() -> Result<()
         &state,
         project.public_id,
         CompileContextPack {
+            target_node_key: None,
             source_session_id: product_session_id,
             task_kind: "technical-delivery-plan".into(),
             token_budget: Some(12_000),
@@ -258,6 +259,7 @@ async fn arbitrary_project_crosses_the_full_context_control_plane() -> Result<()
         &state,
         project.public_id,
         CompileContextPack {
+            target_node_key: None,
             source_session_id: product_session_id,
             task_kind: "technical-delivery-plan".into(),
             token_budget: Some(12_000),
@@ -298,7 +300,15 @@ async fn arbitrary_project_crosses_the_full_context_control_plane() -> Result<()
     );
 
     let resumed = service::snapshot(&state, project.public_id).await?;
-    assert_eq!(resumed.nodes.len(), 2);
+    let node_keys: std::collections::BTreeSet<_> = resumed
+        .nodes
+        .iter()
+        .map(|node| node.node_key.as_str())
+        .collect();
+    assert_eq!(
+        node_keys,
+        std::collections::BTreeSet::from(["general", "product", "sales", "tech", "dev"])
+    );
     assert_eq!(resumed.sessions.len(), 3);
     assert!(resumed.project.graph_version >= 3);
 
