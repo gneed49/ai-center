@@ -76,6 +76,11 @@ select id,kind,project_public_id,scope_kind,label,status,version_public_id,sourc
     (select '/projects/'||objects.project_public_id||'/sources/artifact/'||a.public_id from app.artifacts a where a.public_id=objects.id)
   ) when kind in ('knowledge','task') then '/projects/'||project_public_id||'/sources/'||kind||'/'||id
   when kind='session' then '/projects/'||project_public_id||'/sessions/'||id
+  when kind='external_reference' then (
+    select '/projects/'||objects.project_public_id||'/code?observation='||c.public_id||'&file='||f.public_id
+    from app.github_code_file_observations f join app.github_code_corpora c on c.id=f.corpus_id
+    where f.public_id=objects.id
+  )
   when kind='insight' then '/projects/'||project_public_id||'/insights/'||id else null end as app_path
 from objects
 order by case when project_public_id=$3::uuid then 0 else 1 end,priority,project_public_id,id limit $2

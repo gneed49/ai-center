@@ -1351,3 +1351,6 @@ mod retrieval;
 
 #[path = "company_context/graph_navigation.rs"]
 mod graph_navigation;
+
+#[path = "company_context/knowledge_library.rs"]
+mod knowledge_library;

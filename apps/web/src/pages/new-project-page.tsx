@@ -31,7 +31,7 @@ export function NewProjectPage() {
       api.createProject(command.input, command.idempotencyKey),
     onSuccess: (project) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      toast.success("Projet et scopes créés");
+      toast.success("Projet créé pour votre équipe");
       navigate(`/projects/${project.public_id}`);
     },
     onError: notifyRequestError,
@@ -50,13 +50,13 @@ export function NewProjectPage() {
     <div className="space-y-8">
       <PageHeader
         eyebrow="Nouveau projet"
-        title="Donnez une intention au control plane."
-        description="Le modèle Software Product Delivery instancie deux scopes spécialisés, leurs contrats et un chemin de handoff explicite."
+        title="Créez un projet pour votre équipe."
+        description="Retrouvez cinq agents spécialisés dans un espace partagé : généraliste, Produit, Commercial, Lead technique et Développement."
         actions={
           <Button variant="outline" asChild>
             <Link to="/">
               <ArrowLeft />
-              Center
+              Ma société
             </Link>
           </Button>
         }
@@ -83,7 +83,7 @@ export function NewProjectPage() {
                 disabled={create.isPending}
               />
               <FieldDescription>
-                Un nom court, stable et visible dans le Center.
+                Un nom que votre équipe reconnaîtra facilement.
               </FieldDescription>
             </Field>
             <Field>
@@ -102,8 +102,8 @@ export function NewProjectPage() {
                 disabled={create.isPending}
               />
               <FieldDescription>
-                L’agent Produit le challengera avant toute confirmation dans le
-                graphe.
+                Décrivez le résultat souhaité. Vous pourrez le préciser avec vos
+                agents et valider les décisions au fil du projet.
               </FieldDescription>
             </Field>
             {create.error ? (
@@ -120,7 +120,7 @@ export function NewProjectPage() {
                 <Link to="/">Annuler</Link>
               </Button>
               <Button type="submit" disabled={!name.trim() || create.isPending}>
-                {create.isPending ? "Création…" : "Créer les scopes"}
+                {create.isPending ? "Création…" : "Créer le projet"}
                 <ArrowRight />
               </Button>
             </div>
@@ -132,31 +132,36 @@ export function NewProjectPage() {
               <Network className="size-5 text-indigo-300" />
             </span>
             <div>
-              <p className="text-sm font-semibold">Software Product Delivery</p>
-              <p className="text-xs text-slate-400">Template système · v1</p>
+              <p className="text-sm font-semibold">
+                Votre équipe, un même contexte
+              </p>
+              <p className="text-xs text-slate-400">
+                Un projet partagé dans votre société
+              </p>
             </div>
           </div>
           <div className="mt-8 space-y-5">
             <TemplateStep
               number="01"
-              title="Scope Produit"
+              title="Cadrer le projet"
               description="Intention, règles, exigences et critères."
             />
             <TemplateStep
               number="02"
-              title="ProductReadyGate"
+              title="Valider les éléments produit"
               description="Manques explicites avant transmission."
             />
             <TemplateStep
               number="03"
-              title="Scope Tech"
-              description="Plan, preuves et couverture sourcée."
+              title="Transmettre le contexte"
+              description="Préparez la suite avec le Lead technique et le Développement."
             />
           </div>
           <div className="mt-8 border-t border-white/10 pt-5 text-xs leading-5 text-slate-400">
             <p className="flex gap-2">
               <Check className="mt-0.5 size-3.5 shrink-0 text-emerald-400" />
-              Chaque vérité reste proposée jusqu’à votre confirmation.
+              Les connaissances proposées par les agents attendent votre
+              validation.
             </p>
           </div>
         </aside>

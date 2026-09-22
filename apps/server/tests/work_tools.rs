@@ -635,6 +635,31 @@ async fn github_code_corpus_keeps_exact_bytes_scopes_and_insufficient_evidence()
         .expect("missing");
     assert_eq!(missing.status, "missing");
     assert!(missing.content_text.is_none());
+    let graph = ai_center_server::company::graph(
+        &f.viewer,
+        ai_center_server::company::models::GraphQuery {
+            project_id: Some(project.public_id),
+            limit: Some(100),
+        },
+    )
+    .await?;
+    for observed in [&file, &missing] {
+        let node = graph
+            .nodes
+            .iter()
+            .find(|node| node.id == observed.public_id)
+            .expect("observed file in graph");
+        assert_eq!(
+            node.app_path.as_deref(),
+            Some(
+                format!(
+                    "/projects/{}/code?observation={}&file={}",
+                    project.public_id, corpus.corpus.public_id, observed.public_id,
+                )
+                .as_str()
+            )
+        );
+    }
     assert!(
         code::detail(&f.foreign, corpus.corpus.public_id)
             .await

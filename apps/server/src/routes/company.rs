@@ -27,6 +27,7 @@ pub(super) fn router() -> Router<ApiState> {
         .route("/api/company/members", get(members))
         .route("/api/company/members/{id}", patch(update_member))
         .route("/api/company/graph", get(company_graph))
+        .route("/api/company/knowledge", get(knowledge_library))
         .route("/api/projects/{id}/graph", get(project_graph))
         .route(
             "/api/projects/{project}/sources/{kind}/{id}",
@@ -110,6 +111,16 @@ async fn graph_source(
 ) -> AppResult<Json<Value>> {
     Ok(Json(
         company::graph_source::read(&scoped(&state, &context), project, &kind, id).await?,
+    ))
+}
+
+async fn knowledge_library(
+    State(state): State<ApiState>,
+    Extension(context): Extension<RequestContext>,
+    Query(query): Query<company::knowledge_library::Query>,
+) -> AppResult<Json<Value>> {
+    Ok(Json(
+        company::knowledge_library::list(&scoped(&state, &context), query).await?,
     ))
 }
 

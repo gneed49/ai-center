@@ -2,6 +2,7 @@
 //! command records as projects. It never calls a provider or sends invitations.
 mod graph;
 pub mod graph_source;
+pub mod knowledge_library;
 pub mod models;
 
 pub mod data;

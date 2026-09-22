@@ -28,10 +28,11 @@ et [les tickets](specs/company-context-v1/tickets.md) remplacent les limites
 mono-utilisateur de l'ancien MVP. Le code de production des projets clients
 reste produit dans les outils externes.
 
-La réalisation est locale sur le checkout indiqué en métadonnées. L'ancien
-checkout est préservé. Aucun changement de cette V1 n'est encore commité, poussé,
-déployé ou publié. Aucun fournisseur IA facturant ni compte Notion/Linear/GitHub
-réel n'a été appelé pour qualifier ces nouveaux chemins.
+Le développement utilise le checkout indiqué en métadonnées ; l'ancien checkout
+est préservé. Les jalons `9be97b6` et `596cfee` sont commités et poussés dans la
+[PR de travail n°3](https://github.com/gneed49/ai-center/pull/3), avec leurs huit
+contrôles CI distincts réussis. Aucun déploiement de cette V1 ni appel facturé
+ou qualification de destinations Notion/Linear/GitHub réelles n'est déclaré.
 
 ## Réalisation présente
 
@@ -61,8 +62,10 @@ précise les validations reproduites et les écarts ouverts. Il prévaut sur la
 photo intermédiaire ci-dessous. Les deux parcours API/DB réelles et les 20 scénarios société passent après
 l’extension du graphe. Un jalon local est enregistré, avec les écarts restants
 explicitement ouverts ; le jalon `9be97b6` est poussé dans la [PR de travail n°3](https://github.com/gneed49/ai-center/pull/3).
-Ses huit contrôles CI distincts passent. Les corrections d’images/TLS suivantes
-sont en consolidation ; aucune production n’est annoncée.
+Ses huit contrôles CI distincts passent, comme ceux de `596cfee` qui ajoute
+TLS PostgreSQL vérifié et réduit les images d'exploitation. La bibliothèque
+de connaissances, les liens précis vers les fichiers du graphe et les textes
+des parcours projet/transmission sont en consolidation dans le prochain jalon.
 
 ## Preuves intermédiaires du 21 septembre
 

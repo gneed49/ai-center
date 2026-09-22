@@ -23,7 +23,7 @@ test("traverse le vrai backend déterministe jusqu’au plan, à sa couverture e
   await page
     .getByLabel("Objectif initial")
     .fill("Conserver des décisions validées, durables et traçables.");
-  await page.getByRole("button", { name: "Créer les scopes" }).click();
+  await page.getByRole("button", { name: "Créer le projet" }).click();
   await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
 
   const productScope = page
@@ -49,19 +49,21 @@ test("traverse le vrai backend déterministe jusqu’au plan, à sa couverture e
   await page.getByRole("link", { name: "Retour au projet" }).click();
   await expect(page.getByText("graphe v1").first()).toBeVisible();
   await page.getByRole("button", { name: "Évaluer maintenant" }).click();
-  await expect(page.getByText("Produit prêt pour le handoff")).toBeVisible();
-
-  await page.getByRole("link", { name: "Préparer le handoff" }).click();
-  await page
-    .getByRole("button", { name: "Compiler et ouvrir la session Tech" })
-    .click();
-  await expect(page.getByText("Handoff terminé et courant")).toBeVisible();
   await expect(
-    page.getByRole("region", { name: /ContextPack version/ }),
+    page.getByText("Éléments produit prêts à transmettre"),
+  ).toBeVisible();
+
+  await page.getByRole("link", { name: "Transmettre le contexte" }).click();
+  await page
+    .getByRole("button", { name: "Transmettre et ouvrir la session Tech" })
+    .click();
+  await expect(page.getByText("Contexte transmis et à jour")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: /Contexte transmis version/ }),
   ).toBeVisible();
 
   await page.reload();
-  await expect(page.getByText("Handoff terminé et courant")).toBeVisible();
+  await expect(page.getByText("Contexte transmis et à jour")).toBeVisible();
   await expect(page.getByText(/Contexte inclus/)).toBeVisible();
 
   const projectPath = new URL(page.url()).pathname.replace(/\/handoff$/, "");
@@ -162,6 +164,28 @@ test("traverse le vrai backend déterministe jusqu’au plan, à sa couverture e
       );
     }
   }
+  const libraryResponse = await request.get(
+    `${apiUrl}/api/company/knowledge?project_id=${projectId}`,
+  );
+  expect(libraryResponse.status()).toBe(200);
+  const library: {
+    total: number;
+    items: { public_id: string; title: string }[];
+  } = await libraryResponse.json();
+  expect(library.total).toBe(3);
+  await page.goto(`/knowledge?project=${projectId}`);
+  await page
+    .getByRole("textbox", { name: "Rechercher une connaissance" })
+    .fill(library.items[0].title);
+  await page.getByRole("button", { name: "Rechercher", exact: true }).click();
+  await page
+    .locator(
+      `a[href="/projects/${projectId}/sources/knowledge/${library.items[0].public_id}"]`,
+    )
+    .click();
+  await expect(
+    page.getByRole("heading", { name: library.items[0].title, exact: true }),
+  ).toBeVisible();
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
   expect(requestFailures).toEqual([]);

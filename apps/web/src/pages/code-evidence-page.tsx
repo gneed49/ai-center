@@ -342,8 +342,15 @@ function ProjectCodeEvidence({ projectId }: { projectId: string }) {
               <NotFoundState title="Observation hors de ce projet" />
             ) : (
               <CodeObservationView
-                key={detail.data.corpus.public_id}
+                key={`${detail.data.corpus.public_id}:${params.get("file") ?? ""}`}
                 detail={detail.data}
+                initialFileId={params.get("file") ?? undefined}
+                onSelectFile={(fileId) =>
+                  setParams({
+                    observation: detail.data.corpus.public_id,
+                    file: fileId,
+                  })
+                }
               />
             )
           ) : (

@@ -44,11 +44,15 @@ describe("knowledge graph projection", () => {
     const id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     const app_path = `/artifacts/${id}?version=${id}`;
     expect(internalSourceLink({ ...rule, app_path })).toBe(app_path);
+    const codePath = `/projects/${id}/code?observation=${id}&file=${id}`;
+    expect(internalSourceLink({ app_path: codePath })).toBe(codePath);
     for (const invalid of [
       "//outside.invalid",
       "https://outside.invalid",
       "/settings/ai",
       `${app_path}&next=https://outside.invalid`,
+      `${codePath}&next=https://outside.invalid`,
+      `/projects/${id}/code?observation=${id}&file=missing`,
     ]) {
       expect(internalSourceLink({ ...rule, app_path: invalid })).toBeNull();
     }

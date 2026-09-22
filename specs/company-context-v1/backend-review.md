@@ -39,3 +39,15 @@ fournisseur réelle.
 
 Les corrections et résultats de tests doivent être ajoutés au registre de
 validation du candidat ; ce document conserve le constat initial et ses limites.
+
+## Résolution — 22 septembre 2026
+
+Coordination : les correctifs sont enregistrés dans `9be97b6`, dont la CI
+PostgreSQL passe. `concurrent_graph_relationships_lock_scopes_in_one_order`
+exerce les verrous ordonnés ; les tests de citations vérifient le newline final
+et les extraits bornés. `steward_code_sources_keep_exact_commit_lines_and_mark_partial_evidence_unknown`
+vérifie maintenant la jonction observation → steward et son incertitude.
+L'effacement opérateur de société/projet est implémenté et exercé sur fixtures,
+y compris le rollback si une relation inattendue risque d'affecter un autre
+projet. Les contraintes de pause, dépendances et sauvegardes restent explicites
+dans la procédure. L'exercice sur une cible hébergée relève toujours de G3.

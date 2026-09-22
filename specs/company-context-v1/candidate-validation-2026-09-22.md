@@ -73,10 +73,10 @@ indépendante exhaustive des derniers ajouts.
 
 | Gate / exigence | Travail restant |
 | --- | --- |
-| CC-022 | Consultation/recherche de toutes les connaissances au-delà de l'aperçu projet et de la limite de projection du graphe ; vérifier les anciens éléments |
-| CC-031/033 | Navigation exacte vers les fichiers GitHub observés ; complément compact/clavier des nouveaux objets, preuve navigateur tâche |
-| CC-053 | Remplacer les libellés techniques résiduels des écrans hérités dans les parcours principaux |
-| CC-055/057, G1 | Consolider commit, revue corrective, CI distante et images reconstruites sur un état identifié ; scan complet des images et reconstruction API encore requis |
+| CC-022 | Complément bibliothèque implémenté et vérifié localement ; commit/CI communs à rattacher ci-dessous |
+| CC-031/033 | Navigation fichier/tâche et parcours clavier/compact vérifiés ; commit/CI communs à rattacher ci-dessous |
+| CC-053 | Création et transmission en langage métier corrigées ; nouveaux libellés passés dans les 147 scénarios navigateur existants |
+| CC-055/057, G1 | Rattacher le complément courant à un commit, sa CI et ses images reconstruites ; conserver les limites de revue et les preuves externes séparées |
 | CC-014/026/027/041, G2 | Compte/modèle IA et budget autorisés ; destinations de test Notion/Linear/GitHub ; preuve de valeur des analyses par modèle réel |
 | CC-055/056, G3 | Hébergeur/domaine, Auth/SMTP, configuration secrète, HTTPS, sauvegardes automatiques, restauration/alertes et responsable d'exploitation sur la cible |
 | G4 | Projets et utilisateurs réels sur la durée prévue ; utilité des contradictions, coût et frictions effectivement mesurés |
@@ -112,5 +112,41 @@ images minimisées. 155 unités Rust passent (10 tests DB ignorés dans cette
 commande), Clippy passe ; le test TLS réel, les deux recettes d'images, Auth
 local et les deux parcours navigateur passent. Le
 [rapport de qualification des images](../../docs/operations/image-security-2026-09-22.md)
-conserve les résidus et les identités exactes. Cette correction doit obtenir sa
-propre CI après commit ; les huit contrôles ci-dessus ne la qualifient pas.
+conserve les résidus et les identités exactes. La correction est poussée au commit `596cfee`. Ses huit contrôles CI
+distincts passent également ([CI](https://github.com/gneed49/ai-center/actions/runs/35706108325),
+[images](https://github.com/gneed49/ai-center/actions/runs/35706108145)).
+
+
+## Complément bibliothèque, navigation et langage métier
+
+Le jalon suivant ajoute `/knowledge`, pagination/recherche, sélection des versions
+historiques et consultation des projets archivés. La recette de 31 connaissances
+vérifie la dernière page, les révisions, la recherche littérale, le lecteur et
+le refus inter-sociétés. Un fichier du graphe ouvre son corpus et son UUID exact ;
+une référence absente ne sélectionne jamais silencieusement un autre fichier.
+Les actions de création et transmission décrivent désormais les cinq agents et
+les étapes métier réelles.
+
+- Qualité : **157 tests web / 41 fichiers**, **155 unités Rust / 10 tests DB
+  ignorés dans cette commande**, 3 contrats synthétiques, 77 tests Python,
+  formatage/lint/Clippy et builds passent (`company-library-navigation-quality-final.log`).
+- PostgreSQL : **21 scénarios société** et les suites intégrées passent, dont
+  bibliothèque et liens exacts des fichiers ; **2/2 parcours navigateur réels**
+  passent avec recherche → connaissance et nouveaux libellés
+  (`company-library-navigation-integrated.log`).
+- Navigateur avec doubles HTTP : **147/147** scénarios existants passent sur
+  Chromium desktop/compact et Firefox ; **3/3** compléments graphe → tâche/fichier
+  passent, avec clavier, reload, référence absente, axe et largeur 390 px.
+  Journaux `company-library-navigation-browser.log` et `company-exact-source-browser.log`.
+- Contrôle visuel de la capture 390 px : contenu et actions lisibles, code avec
+  défilement interne, pas de débordement de page. Capture locale
+  `.run/company-exact-source-mobile.png`.
+- Revue ciblée de coordination : RLS et filtres/compteurs cohérents, identité
+  de version et route interne contrôlée, aucune écriture ou requête fournisseur
+  déclenchée par la bibliothèque. Les deux constats de fiabilité précédents ont
+  une résolution documentée ; aucune seconde revue indépendante des ajouts
+  courants n'est revendiquée.
+
+Les journaux non qualifiés par un chemin complet ci-dessus sont dans `.run/`.
+Les tests restent synthétiques : aucune écriture dans un espace client, aucun
+appel IA facturé et aucune preuve de valeur par des utilisateurs réels.

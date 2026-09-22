@@ -290,7 +290,7 @@ test("une création terminée sous l’ancien compte ne redirige pas le nouveau"
   await page
     .getByLabel("Objectif initial")
     .fill("Ne doit pas apparaître sous Beta");
-  await page.getByRole("button", { name: "Créer les scopes" }).click();
+  await page.getByRole("button", { name: "Créer le projet" }).click();
   await expect
     .poll(() => requests.some((item) => item.method === "POST"))
     .toBe(true);

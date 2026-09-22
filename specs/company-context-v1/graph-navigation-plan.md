@@ -44,3 +44,10 @@ intégration société 20/20 dont sources historiques, tâche/pack, viewer et de
 sociétés ; deux parcours navigateur réels passent, dont source connaissance,
 pack et conversation depuis le graphe. Restent dans CC-031/033 : navigation
 précise des fichiers observés et complément navigateur compact/clavier/tâche.
+
+Complément CC-031 : chaque nœud de fichier GitHub doit ouvrir l'observation
+immuable et le fichier exact, avec leur UUID. Un fichier absent de l'observation
+affiche une erreur explicite, jamais le premier fichier à sa place. Le lien
+reste interne, limité aux routes autorisées ; aucun téléchargement ou appel
+GitHub n'est déclenché à la lecture. Preuves : sélection du second fichier,
+refus de substitution, lien issu du vrai graphe en PostgreSQL pour un lecteur.

@@ -74,3 +74,19 @@ distinctes. Les [tickets](../../specs/company-context-v1/tickets.md) et
 [le statut](../../PROJECT_STATUS.md) indiquent l'état effectivement qualifié.
 Le [guide opérateur](../operations/company-web-v1.md) décrit l'ouverture privée,
 les quotas et l'arrêt, les secrets, la sauvegarde et les preuves encore requises.
+
+
+## Retrouver les sources au-delà du graphe
+
+La page Connaissances recherche les titres et textes de toute la société ou
+un projet, par pages de 25. Les versions courantes sont présentées par défaut ;
+les versions historiques et projets archivés restent consultables. Chaque
+résultat ouvre sa version exacte. La recherche textuelle n'est pas une promesse
+de recherche sémantique exhaustive.
+
+Les nœuds du graphe ouvrent les conversations, connaissances, contextes transmis,
+livrables, tâches et fichiers observés. Pour un fichier, le lien conserve
+l'observation et le fichier sélectionnés ; une identité absente est signalée
+sans substituer un contenu différent. Lire une observation ne relance pas GitHub.
+La création d'un projet décrit les cinq agents ; le parcours Produit vers Lead
+ou Développement présente validation et transmission en langage métier.

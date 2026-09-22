@@ -16,7 +16,7 @@ test("fige la création et rejoue exactement la même commande", async ({
   const objective = page.getByLabel("Objectif initial");
   await name.fill("Context Proof");
   await objective.fill("Prouver le contexte de bout en bout");
-  await page.getByRole("button", { name: "Créer les scopes" }).click();
+  await page.getByRole("button", { name: "Créer le projet" }).click();
 
   await expect(name).toBeDisabled();
   await expect(objective).toBeDisabled();
@@ -54,12 +54,12 @@ test("crée une nouvelle commande après édition d’une création échouée", 
   const objective = page.getByLabel("Objectif initial");
   await name.fill("Context Proof");
   await objective.fill("Objectif initial");
-  await page.getByRole("button", { name: "Créer les scopes" }).click();
+  await page.getByRole("button", { name: "Créer le projet" }).click();
   await expect(page.getByText("Le projet n’a pas été créé")).toBeVisible();
 
   await objective.fill("Objectif corrigé");
   await expect(page.getByText("Le projet n’a pas été créé")).toHaveCount(0);
-  await page.getByRole("button", { name: "Créer les scopes" }).click();
+  await page.getByRole("button", { name: "Créer le projet" }).click();
   await expect(page).toHaveURL(`/projects/${ids.project}`);
 
   const attempts = state.requests.filter(
@@ -96,12 +96,16 @@ test("crée une nouvelle commande message après édition d’un échec", async 
   await composer.fill("Premier contenu");
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(composer).toBeDisabled();
-  await expect(page.getByText("La réponse n’a pas pu être confirmée")).toBeVisible();
+  await expect(
+    page.getByText("La réponse n’a pas pu être confirmée"),
+  ).toBeVisible();
   await expect(composer).toBeEnabled();
   await expect(composer).toHaveValue("Premier contenu");
 
   await composer.fill("Contenu corrigé");
-  await expect(page.getByText("La réponse n’a pas pu être confirmée")).toHaveCount(0);
+  await expect(
+    page.getByText("La réponse n’a pas pu être confirmée"),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(composer).toHaveValue("");
 

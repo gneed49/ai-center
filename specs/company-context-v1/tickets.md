@@ -22,9 +22,9 @@ coordinateur ; ils n'introduisent pas de nouvelles attentes d'approbation.
 | CC-T05 | Artefacts, bibliothèque et destinations — backend + web    | CC-020 à 024                     | T02                                        | review       |
 | CC-T06 | Transport et jobs de destination — backend                 | CC-025 à 027                     | T02, T05                                   | review       |
 | CC-T07 | Adapters Notion/Linear/GitHub — intégrations               | CC-025 à 027,043                 | T06                                        | review       |
-| CC-T08 | Graphes projet et société — backend/données                | CC-030 à 034                     | T02                                        | in_progress  |
+| CC-T08 | Graphes projet et société — backend/données                | CC-030 à 034                     | T02                                        | review       |
 | CC-T09 | Steward et écarts sourcés — backend                        | CC-040 à 045                     | T04, T05, T07, T08                         | review       |
-| CC-T10 | Parcours web et graphe interactif — frontend               | CC-004,022,033,044,053           | T03, T04, T05, T08 ; T09 pour inbox finale | in_progress  |
+| CC-T10 | Parcours web et graphe interactif — frontend               | CC-004,022,033,044,053           | T03, T04, T05, T08 ; T09 pour inbox finale | review       |
 | CC-T11 | Reprise, quotas, arrêt et usage — backend + frontend       | CC-050 à 053                     | T02 ; intégration avec T04/T06/T09         | review       |
 | CC-T12 | Données et préparation exploitation — backend/Ops          | CC-054 à 056                     | T03, T05, T06, T11                         | review       |
 | CC-T13 | Candidate intégrée, revue et publication — QA/coordination | CC-057, CC-G1                    | T03 à T12                                  | in_progress  |
@@ -250,3 +250,11 @@ navigation vers une connaissance historique ou un pack exact. Le complément
 intégrée est en cours. T10 conserve aussi la consultation de grandes bibliothèques
 de connaissances et le vocabulaire des anciens écrans comme travaux de finition.
 Les qualifications fournisseur/outils, hébergement et pilote restent ouvertes.
+
+
+Le complément du 22 septembre ferme les défauts locaux identifiés de navigation
+fichier/tâche, de bibliothèque de connaissances et de vocabulaire projet.
+157 unités web, 155 unités Rust, 21 scénarios société, 150 scénarios navigateur
+avec doubles HTTP et deux parcours API/DB réelles passent. T08/T10 passent en
+revue ; T13 doit rattacher images et CI au commit courant. T14/T15 restent
+conditionnés aux ressources et usages réels, sans assimilation aux fixtures.

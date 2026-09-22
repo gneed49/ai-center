@@ -70,3 +70,15 @@ métier n'a été modifié dans ce cadre.
 
 Total : Standards 0 nouveau constat ; Spec 2 constats P2, dont le filtre est
 pris en correction et la clôture opérateur d'abandons reste à traiter.
+
+## Résolution des constats — 22 septembre 2026
+
+Ajout de la coordination, distinct de la revue indépendante ci-dessus : les
+correctifs sont enregistrés dans `9be97b6`. Le filtre utilise le premier
+séparateur et ses tests de régression passent. La migration de maintenance
+`16_abandoned_maintenance.sql` ferme uniquement les travaux abandonnés sous
+pause, arrêt des workers et acquittement opérateur. Elle clôt les réservations,
+baux et commandes sans requalifier un résultat distant ambigu en absence
+d'effet. Le scénario `company_context/abandoned.rs` passe, ainsi que les
+scénarios d'effacement et de rollback. Ces deux constats sont corrigés et
+vérifiés localement ; aucune nouvelle revue indépendante n'est revendiquée.

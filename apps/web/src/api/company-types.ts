@@ -99,3 +99,23 @@ export interface GraphSourceView {
   content: Record<string, unknown>;
   links: { label: string; app_path: string }[];
 }
+
+export interface KnowledgeLibraryItem {
+  public_id: string;
+  project_public_id: string;
+  project_name: string;
+  project_status: string;
+  scope_kind: "company" | "project";
+  title: string;
+  excerpt: string;
+  entry_type: string;
+  status: string;
+  version_number: number;
+  recorded_at: string;
+}
+export interface KnowledgeLibrary {
+  items: KnowledgeLibraryItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}

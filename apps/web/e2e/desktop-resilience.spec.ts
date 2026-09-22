@@ -115,7 +115,7 @@ const routes = [
     name: "Handoff",
     page: `/projects/${ids.project}/handoff`,
     resource: `/api/projects/${ids.project}/handoffs/latest`,
-    ready: "Handoff Produit → Tech",
+    ready: "Transmission Produit → Tech",
   },
   {
     name: "Inbox",

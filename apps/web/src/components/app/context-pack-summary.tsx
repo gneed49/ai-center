@@ -31,21 +31,21 @@ export function ContextPackSummaryCard({
 
   return (
     <section
-      aria-label={`ContextPack version ${pack.version}`}
+      aria-label={`Contexte transmis version ${pack.version}`}
       className="border border-slate-200 bg-white"
     >
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 p-4 sm:p-5">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <PackageCheck className="size-4 text-indigo-600" />
-            <h2 className="font-semibold">ContextPack v{pack.version}</h2>
+            <h2 className="font-semibold">Contexte transmis v{pack.version}</h2>
             <StatusPill
               status={current ? "current" : "stale"}
               label={current ? "Courant" : "Obsolète"}
             />
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Compilé {formatDate(pack.compiled_at, true)} · sélection{" "}
+            Préparé {formatDate(pack.compiled_at, true)} · sélection{" "}
             {humanize(pack.selection_mode)} · graphe actuel v{graphVersion}
           </p>
         </div>
@@ -57,7 +57,7 @@ export function ContextPackSummaryCard({
       {!current ? (
         <div role="alert" className="border-b border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-semibold text-amber-950">
-            Ce pack n’est plus utilisable selon l’état de ses sources.
+            Les sources ont changé : ce contexte doit être actualisé.
           </p>
           <p className="mt-1 text-xs leading-5 text-amber-800">
             {pack.stale_reason

@@ -103,7 +103,7 @@ export function internalSourceLink(
 ): string | null {
   const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
   const route = new RegExp(
-    `^/(?:artifacts/${uuid}\\?version=${uuid}|projects/${uuid}/(?:(?:deliverables|insights|sessions)/${uuid}|sources/(?:knowledge|context_pack|task|artifact)/${uuid}))$`,
+    `^/(?:artifacts/${uuid}\\?version=${uuid}|projects/${uuid}/(?:(?:deliverables|insights|sessions)/${uuid}|sources/(?:knowledge|context_pack|task|artifact)/${uuid}|code\\?observation=${uuid}&file=${uuid}))$`,
   );
   return node.app_path && route.test(node.app_path) ? node.app_path : null;
 }

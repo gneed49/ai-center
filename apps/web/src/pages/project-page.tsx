@@ -73,7 +73,7 @@ export function ProjectPage() {
       toast[result.status === "blocked" ? "warning" : "success"](
         result.status === "blocked"
           ? "Gate incomplet"
-          : "Produit prêt pour le handoff",
+          : "Éléments produit prêts à transmettre",
       );
     },
     onError: notifyRequestError,
@@ -118,7 +118,7 @@ export function ProjectPage() {
             <Button asChild>
               <Link to={`/projects/${projectId}/handoff`}>
                 <Send />
-                Préparer le handoff
+                Transmettre le contexte
               </Link>
             </Button>
           </>
@@ -222,6 +222,14 @@ export function ProjectPage() {
                 {data.knowledge.length} entrées
               </span>
             </div>
+            <div className="border-b border-slate-100 px-5 py-3">
+              <Link
+                className="text-sm text-primary underline underline-offset-4"
+                to={`/knowledge?project=${data.project.public_id}`}
+              >
+                Rechercher toutes les connaissances du projet
+              </Link>
+            </div>
             {data.knowledge.length ? (
               <div className="divide-y divide-slate-100">
                 {data.knowledge
@@ -246,7 +254,7 @@ export function ProjectPage() {
           <section className="border border-slate-200 bg-white p-5 sm:p-6">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                ProductReadyGate
+                Éléments produit à valider
               </p>
               {data.gate && gateCurrent ? (
                 <StatusPill status={data.gate.status} />
@@ -276,8 +284,8 @@ export function ProjectPage() {
                 className="mt-4 text-sm leading-6 text-amber-700"
                 role="status"
               >
-                Le gate a été évalué sur le graphe v{data.gate.graph_version}.
-                Le projet est maintenant en v{data.project.graph_version}.
+                La validation porte sur le graphe v{data.gate.graph_version}. Le
+                projet est maintenant en v{data.project.graph_version}.
               </p>
             ) : data.gate?.missing.length ? (
               <ul className="mt-4 space-y-2 text-xs leading-5 text-red-700">
@@ -287,7 +295,8 @@ export function ProjectPage() {
               </ul>
             ) : (
               <p className="mt-4 text-sm leading-6 text-slate-600">
-                Le gate vérifie le minimum Produit et explique chaque manque.
+                Vérifiez les règles, exigences et critères nécessaires avant de
+                transmettre le projet.
               </p>
             )}
             <Button
@@ -303,7 +312,7 @@ export function ProjectPage() {
               <div className="mt-4">
                 <ErrorState
                   error={gate.error}
-                  title="Le gate n’a pas pu être évalué"
+                  title="La validation n’a pas pu être effectuée"
                   retry={() => gate.mutate()}
                 />
               </div>
@@ -324,7 +333,7 @@ export function ProjectPage() {
                 value={`v${data.project.graph_version}`}
               />
               <FlowLine
-                label="Dernier ContextPack"
+                label="Dernier contexte transmis"
                 value={
                   data.latest_handoff
                     ? `v${data.latest_handoff.context_pack.version} · ${
@@ -465,7 +474,7 @@ function NodeCard({
         <Button asChild className="mt-4 w-full" variant="outline">
           <Link to={`/projects/${projectId}/handoff`}>
             <Send />
-            Préparer via handoff
+            Préparer la transmission
           </Link>
         </Button>
       ) : (

@@ -10,18 +10,18 @@ test("restaure le dernier handoff et son ContextPack après reload", async ({
 
   await page.goto(`/projects/${ids.project}/handoff`);
   await expect(
-    page.getByRole("heading", { name: "Handoff Produit → Tech" }),
+    page.getByRole("heading", { name: "Transmission Produit → Tech" }),
   ).toBeVisible();
-  await expect(page.getByText("Handoff terminé et courant")).toBeVisible();
+  await expect(page.getByText("Contexte transmis et à jour")).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "ContextPack version 2" }),
+    page.getByRole("region", { name: "Contexte transmis version 2" }),
   ).toBeVisible();
   await expect(
     page.getByText("GitHub reste la source canonique"),
   ).toBeVisible();
 
   await page.reload();
-  await expect(page.getByText("Handoff terminé et courant")).toBeVisible();
+  await expect(page.getByText("Contexte transmis et à jour")).toBeVisible();
   expect(
     state.requests.filter((request) =>
       request.url().endsWith(`/projects/${ids.project}/handoffs/latest`),
@@ -40,10 +40,10 @@ test("recompile un pack stale avant de créer le handoff", async ({ page }) => {
   await page.goto(`/projects/${ids.project}/handoff`);
   await expect(page.getByText("Obsolète").first()).toBeVisible();
   await page
-    .getByRole("button", { name: "Recompiler et ouvrir une session Tech" })
+    .getByRole("button", { name: "Actualiser et ouvrir une session Tech" })
     .click();
 
-  await expect(page.getByText("Handoff terminé et courant")).toBeVisible();
+  await expect(page.getByText("Contexte transmis et à jour")).toBeVisible();
   const mutations = state.requests.filter(
     (request) => request.method() === "POST",
   );
@@ -100,10 +100,10 @@ test("refuse un gate passé sur une ancienne version du graphe", async ({
   await page.goto(`/projects/${ids.project}/handoff`);
   await expect(page.getByText("À réévaluer")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Évaluer le gate" }),
+    page.getByRole("button", { name: "Vérifier les éléments produit" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /Compiler et ouvrir/ }),
+    page.getByRole("button", { name: /Transmettre et ouvrir/ }),
   ).toHaveCount(0);
   expect(errors.every((error) => error.includes("404 (Not Found)"))).toBe(true);
 });
@@ -122,7 +122,9 @@ test("préserve le message et réutilise la clé lors d’un retry", async ({
   await composer.fill("Prépare le plan de preuve GitHub");
   await page.getByRole("button", { name: "Envoyer" }).click();
   await expect(composer).toBeDisabled();
-  await expect(page.getByText("La réponse n’a pas pu être confirmée")).toBeVisible();
+  await expect(
+    page.getByText("La réponse n’a pas pu être confirmée"),
+  ).toBeVisible();
   await expect(composer).toBeEnabled();
   await expect(composer).toHaveValue("Prépare le plan de preuve GitHub");
   await page.getByRole("button", { name: "Réessayer" }).click();
@@ -165,7 +167,9 @@ test("rejoue le succès sans mutation après perte de la réponse", async ({
   const composer = page.getByLabel("Message à l’agent tech");
   await composer.fill("Prépare le plan de preuve GitHub");
   await page.getByRole("button", { name: "Envoyer" }).click();
-  await expect(page.getByText("La réponse n’a pas pu être confirmée")).toBeVisible();
+  await expect(
+    page.getByText("La réponse n’a pas pu être confirmée"),
+  ).toBeVisible();
   await expect(composer).toHaveValue("Prépare le plan de preuve GitHub");
   await page.getByRole("button", { name: "Réessayer" }).click();
   await expect(composer).toHaveValue("");
@@ -194,9 +198,13 @@ test("rejoue une erreur permanente sans réexécuter la commande", async ({
   const composer = page.getByLabel("Message à l’agent tech");
   await composer.fill("Commande invalide mais stable");
   await page.getByRole("button", { name: "Envoyer" }).click();
-  await expect(page.getByText("La réponse n’a pas pu être confirmée")).toBeVisible();
+  await expect(
+    page.getByText("La réponse n’a pas pu être confirmée"),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Réessayer" }).click();
-  await expect(page.getByText("La réponse n’a pas pu être confirmée")).toBeVisible();
+  await expect(
+    page.getByText("La réponse n’a pas pu être confirmée"),
+  ).toBeVisible();
   await expect(composer).toHaveValue("Commande invalide mais stable");
 
   const attempts = state.requests.filter(
@@ -221,9 +229,13 @@ test("réutilise la clé du gate après une erreur transitoire", async ({
   await page.goto(`/projects/${ids.project}`);
 
   await page.getByRole("button", { name: "Évaluer maintenant" }).click();
-  await expect(page.getByText("Le gate n’a pas pu être évalué")).toBeVisible();
+  await expect(
+    page.getByText("La validation n’a pas pu être effectuée"),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Réessayer" }).click();
-  await expect(page.getByText("Le gate n’a pas pu être évalué")).toHaveCount(0);
+  await expect(
+    page.getByText("La validation n’a pas pu être effectuée"),
+  ).toHaveCount(0);
 
   const attempts = state.requests.filter(
     (request) =>

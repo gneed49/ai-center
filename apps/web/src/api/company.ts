@@ -6,6 +6,7 @@ import type {
   CreateGraphEdge,
   GraphEdge,
   GraphView,
+  KnowledgeLibrary,
   GraphSourceView,
 } from "./company-types";
 import type { WorkspaceSummary } from "./types";
@@ -41,6 +42,17 @@ export const companyApi = {
       `/api/company/members/${encodeURIComponent(id)}`,
       command("PATCH", input, key),
     ),
+  knowledge: (filters: {
+    project_id?: string;
+    q?: string;
+    history?: boolean;
+    offset?: number;
+  }) => {
+    const params = new URLSearchParams({ limit: "25" });
+    for (const [key, value] of Object.entries(filters))
+      if (value !== undefined && value !== "") params.set(key, String(value));
+    return request<KnowledgeLibrary>(`/api/company/knowledge?${params}`);
+  },
   source: (project: string, kind: string, id: string) =>
     request<GraphSourceView>(
       `/api/projects/${encodeURIComponent(project)}/sources/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`,

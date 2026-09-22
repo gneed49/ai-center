@@ -25,6 +25,11 @@ const CompanyPage = lazy(() =>
     default: module.CompanyPage,
   })),
 );
+const KnowledgeLibraryPage = lazy(() =>
+  import("@/pages/knowledge-library-page").then((module) => ({
+    default: module.KnowledgeLibraryPage,
+  })),
+);
 const GraphSourcePage = lazy(() =>
   import("@/pages/graph-source-page").then((module) => ({
     default: module.GraphSourcePage,
@@ -148,6 +153,7 @@ export default function App() {
         <Route path="projects" element={<CenterPage />} />
         <Route path="company" element={<CompanyPage />} />
         <Route path="graph" element={<GraphPage />} />
+        <Route path="knowledge" element={<KnowledgeLibraryPage />} />
         <Route
           path="projects/:projectId/sources/:kind/:sourceId"
           element={<GraphSourcePage />}

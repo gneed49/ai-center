@@ -4,6 +4,42 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { fixtureCode } from "@/test-fixtures/code-evidence";
 import { CodeObservationView } from "./observation-view";
 const writeText = vi.fn();
+it("opens the requested second file and keeps a missing identity explicit", () => {
+  const second = {
+    ...fixtureCode.files[0],
+    public_id: "second-file",
+    path: "src/second.ts",
+    content_text: "// [FICTIF] Exact second file",
+    line_count: 1,
+  };
+  const detail = { ...fixtureCode, files: [fixtureCode.files[0], second] };
+  const select = vi.fn();
+  const view = render(
+    <CodeObservationView
+      detail={detail}
+      initialFileId={second.public_id}
+      onSelectFile={select}
+    />,
+  );
+  expect(screen.getByRole("heading", { name: second.path })).toBeDefined();
+  expect(screen.getByText(second.content_text)).toBeDefined();
+  fireEvent.click(
+    screen.getByRole("button", { name: new RegExp(fixtureCode.files[0].path) }),
+  );
+  expect(select).toHaveBeenCalledWith(fixtureCode.files[0].public_id);
+  view.unmount();
+  render(
+    <CodeObservationView
+      detail={detail}
+      initialFileId="file-from-another-observation"
+    />,
+  );
+  expect(screen.getByRole("alert").textContent).toContain("Fichier absent");
+  expect(
+    screen.queryByRole("button", { name: "Copier la référence" }),
+  ).toBeNull();
+  expect(screen.queryByText(second.content_text)).toBeNull();
+});
 beforeEach(() => {
   writeText.mockReset().mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", {

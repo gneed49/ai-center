@@ -11,12 +11,17 @@ import { Input } from "@/components/ui/input";
 
 export function CodeObservationView({
   detail,
+  initialFileId,
+  onSelectFile,
 }: {
   detail: CodeObservationDetail;
+  initialFileId?: string;
+  onSelectFile?: (fileId: string) => void;
 }) {
-  const [fileId, setFileId] = useState(detail.files[0]?.public_id ?? "");
-  const file =
-    detail.files.find((item) => item.public_id === fileId) ?? detail.files[0];
+  const [fileId, setFileId] = useState(
+    initialFileId ?? detail.files[0]?.public_id ?? "",
+  );
+  const file = detail.files.find((item) => item.public_id === fileId);
   return (
     <section className="space-y-5" aria-labelledby="code-observation-title">
       <header className="rounded-lg border p-5">
@@ -45,7 +50,10 @@ export function CodeObservationView({
               <button
                 key={item.public_id}
                 className={`w-full rounded-md border p-3 text-left text-sm ${file?.public_id === item.public_id ? "border-primary/30 bg-primary/5" : "hover:bg-muted"}`}
-                onClick={() => setFileId(item.public_id)}
+                onClick={() => {
+                  setFileId(item.public_id);
+                  onSelectFile?.(item.public_id);
+                }}
                 aria-current={
                   file?.public_id === item.public_id ? "true" : undefined
                 }
@@ -64,7 +72,12 @@ export function CodeObservationView({
               repository={detail.corpus.repository}
               commit={detail.corpus.commit_sha}
             />
-          ) : null}
+          ) : (
+            <p role="alert" className="rounded-md border p-5 text-sm">
+              Fichier absent de cette observation. Choisissez un fichier observé
+              dans la liste pour le consulter.
+            </p>
+          )}
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">

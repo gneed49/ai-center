@@ -85,7 +85,7 @@ export function HandoffPage() {
       handoffIdempotencyKeys.current = null;
       queryClient.setQueryData(["handoff", projectId, "latest"], data);
       queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
-      toast.success(`ContextPack transmis à l’agent ${targetLabel}`);
+      toast.success(`Contexte transmis à l’agent ${targetLabel}`);
     },
     onError: notifyRequestError,
   });
@@ -98,7 +98,7 @@ export function HandoffPage() {
     return (
       <ErrorState
         error={latestHandoff.error}
-        title="Le dernier handoff n’a pas pu être restauré"
+        title="La dernière transmission n’a pas pu être restaurée"
         retry={() => latestHandoff.refetch()}
       />
     );
@@ -129,8 +129,8 @@ export function HandoffPage() {
     <div className="space-y-8">
       <PageHeader
         eyebrow="Transmission contextuelle"
-        title={`Handoff Produit → ${targetLabel}`}
-        description={`Compilez une projection immuable et sourcée. L’agent ${targetLabel} reçoit les connaissances utiles à son travail.`}
+        title={`Transmission Produit → ${targetLabel}`}
+        description={`Préparez une version traçable du contexte. L’agent ${targetLabel} reçoit les connaissances utiles à son travail.`}
         actions={
           <Button variant="outline" asChild>
             <Link to={`/projects/${projectId}`}>
@@ -172,7 +172,7 @@ export function HandoffPage() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Préflight
+                  Avant de transmettre
                 </p>
                 <h2 className="mt-1 text-xl font-semibold">
                   Ce qui sera transmis
@@ -219,12 +219,12 @@ export function HandoffPage() {
               <div className="mt-6 border border-emerald-200 bg-emerald-50 p-5">
                 <div className="flex items-center gap-2 font-semibold text-emerald-900">
                   <Check className="size-4" />
-                  Handoff terminé et courant
+                  Contexte transmis et à jour
                 </div>
                 <p className="mt-2 text-sm text-emerald-800">
-                  ContextPack {shortId(result.context_pack_public_id)} compilé
-                  et session {targetLabel} ouverte. Cet état a été restauré
-                  depuis le serveur.
+                  Contexte {shortId(result.context_pack_public_id)} préparé et
+                  session {targetLabel} ouverte. Cet état a été restauré depuis
+                  le serveur.
                 </p>
                 <Button asChild className="mt-4">
                   <Link
@@ -239,7 +239,7 @@ export function HandoffPage() {
               <div className="mt-6">
                 <EmptyState
                   title="Session Produit requise"
-                  description="Le handoff doit conserver la session d’origine dans sa provenance."
+                  description="Commencez par une conversation Produit pour conserver l’origine du travail transmis."
                   action={
                     <Button asChild>
                       <Link to={`/projects/${projectId}`}>
@@ -252,7 +252,7 @@ export function HandoffPage() {
             ) : !ready ? (
               <div className="mt-6 border border-amber-200 bg-amber-50 p-5">
                 <p className="font-semibold text-amber-950">
-                  Le gate doit être évalué.
+                  Vérifiez les éléments produit avant de continuer.
                 </p>
                 <p className="mt-1 text-sm text-amber-800">
                   Les éléments manquants seront listés avant toute transmission.
@@ -263,7 +263,9 @@ export function HandoffPage() {
                   onClick={() => gate.mutate()}
                   disabled={gate.isPending}
                 >
-                  {gate.isPending ? "Évaluation…" : "Évaluer le gate"}
+                  {gate.isPending
+                    ? "Évaluation…"
+                    : "Vérifier les éléments produit"}
                 </Button>
               </div>
             ) : (
@@ -276,16 +278,16 @@ export function HandoffPage() {
                 >
                   <Send />
                   {handoff.isPending
-                    ? "Compilation du ContextPack…"
+                    ? "Préparation du contexte…"
                     : result
-                      ? `Recompiler et ouvrir une session ${targetLabel}`
-                      : `Compiler et ouvrir la session ${targetLabel}`}
+                      ? `Actualiser et ouvrir une session ${targetLabel}`
+                      : `Transmettre et ouvrir la session ${targetLabel}`}
                 </Button>
                 {handoff.error ? (
                   <div className="mt-4">
                     <ErrorState
                       error={handoff.error}
-                      title="Le handoff n’a pas abouti"
+                      title="La transmission n’a pas abouti"
                       retry={() => handoff.mutate()}
                     />
                   </div>
@@ -296,9 +298,11 @@ export function HandoffPage() {
         </section>
         <aside className="border border-slate-200 bg-[#11182b] p-5 text-white sm:p-6">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-300">
-            ContextPack Preview
+            Aperçu du contexte
           </p>
-          <h2 className="mt-2 text-lg font-semibold">Contrat {targetLabel}</h2>
+          <h2 className="mt-2 text-lg font-semibold">
+            Travail de l’agent {targetLabel}
+          </h2>
           <div className="mt-6 space-y-5">
             <PreviewSection
               label="Objectif"
@@ -314,12 +318,13 @@ export function HandoffPage() {
             />
             <PreviewSection
               label="Sortie attendue"
-              value="Technical Delivery Plan"
+              value="Plan de réalisation technique"
             />
           </div>
           <p className="mt-8 border-t border-white/10 pt-5 text-xs leading-5 text-slate-400">
             Chaque élément transmis référence l’identifiant public et le numéro
-            de version exacts. Une mutation ultérieure rendra ce pack obsolète.
+            de version exacts. Un changement de source demandera une nouvelle
+            préparation.
           </p>
         </aside>
       </div>

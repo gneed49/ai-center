@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  BookOpen,
   Bot,
   FolderKanban,
   FileText,
@@ -30,6 +31,7 @@ const rootLinks = [
   { to: "/graph", label: "Graphe", icon: Network },
   { to: "/agents", label: "Agents", icon: Bot },
   { to: "/projects", label: "Projets", icon: FolderKanban },
+  { to: "/knowledge", label: "Connaissances", icon: BookOpen },
   { to: "/artifacts", label: "Livrables", icon: FileText },
   { to: "/insights", label: "À vérifier", icon: AlertTriangle },
   { to: "/company", label: "Équipe", icon: Users },
