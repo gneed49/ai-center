@@ -67,7 +67,7 @@ test("retrouve le brouillon de l’agent après réponse perdue puis le révise 
   expect(generationCalls).toBe(1);
   await page.getByRole("button", { name: "Nouvelle révision" }).click();
   await page
-    .getByLabel("Description du ticket 1", { exact: true })
+    .getByRole("textbox", { name: "Description du ticket 1", exact: true })
     .fill("[FICTIF] Créer un accès sur invitation, relu par le PM.");
   await page
     .getByRole("button", { name: "Enregistrer la nouvelle version" })

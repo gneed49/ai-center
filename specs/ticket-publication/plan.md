@@ -264,6 +264,39 @@ est présenté comme tel ; le batch ne transfère pas silencieusement son exécu
   admission, région de statut sobre pour les mises à jour et absence de défilement
   horizontal sur écran étroit. Les identifiants techniques restent dans les détails.
 
+#### Lecture des livrables et entrée exacte depuis le graphe
+
+- Réutiliser `typed-draft` pour afficher les cinq formats `agent-artifact-v1`
+  comme des documents lisibles : résumé, sections, cartes de tickets, listes de
+  critères d’acceptation et points à clarifier. Le contenu métier reste intégral ;
+  les marqueurs Markdown ne constituent plus l’affichage principal de ces formats.
+- Mapper les clés canoniques aux libellés français du produit, notamment objectif,
+  périmètre, parties prenantes, étapes, risques, problème, exigences, règles métier,
+  critères d’acceptation, hors périmètre, priorisation, architecture, livraison,
+  dépendances et validation. Le titre métier d’un ticket reste son titre enregistré.
+  Aucune modification du JSON ni du Markdown canonique n’est requise pour lire un
+  ancien brouillon dont le titre de section contient encore une clé anglaise.
+- Replier UUID, empreintes, références techniques et JSON de provenance sous
+  « Détails techniques ». Montrer en premier les titres des sources, leurs versions
+  et les liens accessibles. Les preuves exactes restent consultables et exportables.
+- Ne pas ajouter de moteur ou dépendance Markdown pour ce lot. Les exports Markdown
+  et JSON existants restent exacts ; les documents manuels ou historiques sans
+  contrat typé conservent leur lecture de compatibilité clairement identifiable.
+- Prendre en charge `/artifacts/{id}?version={version}&ticket={index}`. Charger
+  d’abord la version explicitement demandée ; seul un entier canonique 0..29
+  présent dans ce tableau peut désigner une entrée. Ouvrir et mettre en évidence
+  cette carte, avec son titre et « Ticket N · version V », et permettre le focus
+  clavier après chargement. Ne jamais remplacer une version introuvable ou une
+  entrée absente par la version courante ou un ticket de même position ailleurs.
+- Une valeur invalide ou hors tableau affiche un message compréhensible, sans
+  lancer de mutation. Le changement de version retire la sélection d’entrée ou
+  exige une nouvelle navigation explicite : un index n’est pas une filiation entre
+  versions. La vue mobile doit rester lisible à 390 px sans défilement horizontal.
+- Tests : rendu des cinq contrats, libellés français pour les anciennes clés,
+  absence de `##` et d’UUID/hash dans la lecture principale, présence des preuves
+  dans les détails, export inchangé, navigation historique avec `ticket=0` et 29,
+  entrée absente/invalide, focus clavier et écran étroit.
+
 #### Provenance et vérification
 
 - Historique : empreinte canonique sur les identités version/job, indices,
