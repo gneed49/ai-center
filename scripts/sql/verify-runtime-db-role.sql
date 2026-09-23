@@ -10,6 +10,7 @@ declare
   unexpected_sequence text;
   unexpected_function text;
   expected_select_tables constant text[] := array[
+    'steward_scan_progress', 'steward_scan_sources',
     'github_code_corpora', 'github_code_file_observations',
     'workspace_automation_controls', 'ai_call_reservations',
     'work_tool_connections', 'publication_jobs', 'publication_observations',
@@ -30,6 +31,7 @@ declare
     'insight_resolutions', 'domain_events', 'audit_events'
   ];
   expected_insert_tables constant text[] := array[
+    'steward_scan_progress', 'steward_scan_sources',
     'github_code_corpora', 'github_code_file_observations',
     'workspace_automation_controls', 'ai_call_reservations',
     'work_tool_connections', 'publication_jobs', 'publication_observations',
@@ -48,6 +50,7 @@ declare
     'insight_sources', 'insight_resolutions', 'domain_events', 'audit_events'
   ];
   expected_update_tables constant text[] := array[
+    'steward_scan_progress',
     'artifact_destination_settings',
     'provider_connections', 'provider_selections',
     'workspace_members', 'projects', 'sessions', 'idempotency_records', 'mutation_proposals',
@@ -56,6 +59,7 @@ declare
     'knowledge_entries', 'domain_events', 'tasks', 'executions'
   ];
   allowed_function_oids constant oid[] := array[
+    'app.cancel_model_run_after_access_loss(bigint)'::regprocedure::oid,
     'app.finish_ai_call_reservation(uuid,text)'::regprocedure::oid,
     'app.claim_publication_job()'::regprocedure::oid,
     'app.finish_publication_job(uuid,uuid,text,text,jsonb)'::regprocedure::oid,

@@ -458,6 +458,10 @@ mod tests {
                 instructions: "Contract fixture".into(),
                 user_message: "Capture the intent".into(),
                 context: json!({"knowledge": []}),
+                conversation: crate::conversation_context::ConversationContext::empty(
+                    uuid::Uuid::nil(),
+                    uuid::Uuid::nil(),
+                ),
             })
             .await
             .expect("agent-turn contract should deserialize");

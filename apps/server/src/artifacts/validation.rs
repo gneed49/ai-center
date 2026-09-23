@@ -23,11 +23,36 @@ pub(super) fn content(input: &CreateArtifact) -> AppResult<()> {
             "Artifact title, content or sources exceed the supported limits".into(),
         ));
     }
+    if input
+        .structured_content
+        .get("format")
+        .and_then(serde_json::Value::as_str)
+        == Some("agent-artifact-v1")
+    {
+        let draft: super::generation_contract::ArtifactDraft =
+            serde_json::from_value(input.structured_content["draft"].clone())
+                .map_err(|_| AppError::Invalid("Invalid structured artifact draft".into()))?;
+        let source_ids = input
+            .sources
+            .iter()
+            .filter(|source| matches!(source.kind.as_str(), "knowledge" | "artifact_version"))
+            .map(|source| source.public_id)
+            .collect::<Vec<_>>();
+        super::generation_contract::validate(&input.artifact_type, &draft, &source_ids)?;
+        if input.structured_content["artifact_type"] != input.artifact_type
+            || draft.title != input.title
+            || super::generation_contract::markdown(&draft) != input.body_markdown
+        {
+            return Err(AppError::Invalid(
+                "The document must match its typed sections and tickets".into(),
+            ));
+        }
+    }
     let mut ids = HashSet::new();
     for source in &input.sources {
         if !matches!(
             source.kind.as_str(),
-            "knowledge" | "context_pack" | "deliverable" | "session"
+            "knowledge" | "context_pack" | "deliverable" | "session" | "artifact_version"
         ) || source.public_id.is_nil()
             || !ids.insert((&source.kind, source.public_id))
         {

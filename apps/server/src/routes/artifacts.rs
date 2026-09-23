@@ -22,6 +22,22 @@ pub(super) fn router() -> Router<ApiState> {
             "/api/projects/{project_id}/artifacts",
             get(list).post(create),
         )
+        .route(
+            "/api/projects/{project_id}/artifacts/generate",
+            post(generate),
+        )
+        .route(
+            "/api/projects/{project_id}/deliverables/{deliverable_id}/artifact",
+            post(convert),
+        )
+        .route(
+            "/api/projects/{project_id}/artifact-generations/{key}",
+            get(generation_receipt),
+        )
+        .route(
+            "/api/projects/{project_id}/artifact-conversions/{key}",
+            get(conversion_receipt),
+        )
         .route("/api/artifacts/{id}", get(detail))
         .route("/api/artifacts/{id}/draft", post(save))
         .route("/api/artifacts/{id}/validate", post(validate))
@@ -138,15 +154,25 @@ async fn export(
 
 enum Command {
     Create(Uuid, CreateArtifact),
+    Generate(Uuid, artifacts::generation_contract::GenerateArtifact),
+    Convert(Uuid, Uuid),
     Save(Uuid, SaveDraft),
     Validate(Uuid, ValidateArtifact),
     Destination(Option<Uuid>, SetDestination),
     Reset(Option<Uuid>, ResetDestination),
 }
 impl Command {
+    const fn project(&self) -> Option<Uuid> {
+        match self {
+            Self::Generate(id, _) | Self::Convert(id, _) => Some(*id),
+            _ => None,
+        }
+    }
     fn request(&self) -> Value {
         match self {
             Self::Create(id, input) => json!({"project_id":id,"input":input}),
+            Self::Generate(id, input) => json!({"project_id":id,"input":input}),
+            Self::Convert(id, deliverable) => json!({"project_id":id,"deliverable_id":deliverable}),
             Self::Save(id, input) => json!({"artifact_id":id,"input":input}),
             Self::Validate(id, input) => json!({"artifact_id":id,"input":input}),
             Self::Destination(id, input) => json!({"project_id":id,"input":input}),
@@ -156,6 +182,8 @@ impl Command {
     const fn operation(&self) -> &'static str {
         match self {
             Self::Create(..) => "artifact.create",
+            Self::Generate(..) => "artifact.generate",
+            Self::Convert(..) => "artifact.convert",
             Self::Save(..) => "artifact.save_draft",
             Self::Validate(..) => "artifact.validate",
             Self::Destination(..) => "artifact.destination.set",
@@ -173,7 +201,7 @@ async fn command(
         begin_idempotent(
             &state,
             &context,
-            None,
+            command.project(),
             command.operation(),
             key,
             &command.request(),
@@ -185,6 +213,16 @@ async fn command(
     };
     let scoped = scoped(&state, &context);
     let result: AppResult<Value> = match command {
+        Command::Generate(id, input) => {
+            crate::service::artifact_generation::generate(&scoped, id, input, Some(&lease))
+                .await
+                .map(|v| json!(v))
+        }
+        Command::Convert(id, deliverable) => {
+            artifacts::conversion::convert(&scoped, id, deliverable, Some(&lease))
+                .await
+                .map(|v| json!(v))
+        }
         Command::Create(id, input) => artifacts::create(&scoped, id, input, Some(&lease))
             .await
             .map(|v| json!(v)),
@@ -282,4 +320,49 @@ async fn reset_project_destination(
     Json(input): Json<ResetDestination>,
 ) -> AppResult<Response> {
     command(state, context, key, Command::Reset(Some(id), input)).await
+}
+
+async fn generate(
+    State(state): State<ApiState>,
+    Extension(context): Extension<RequestContext>,
+    Extension(key): Extension<Uuid>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<artifacts::generation_contract::GenerateArtifact>,
+) -> AppResult<Response> {
+    command(state, context, key, Command::Generate(id, input)).await
+}
+async fn convert(
+    State(state): State<ApiState>,
+    Extension(context): Extension<RequestContext>,
+    Extension(key): Extension<Uuid>,
+    Path((project, deliverable)): Path<(Uuid, Uuid)>,
+) -> AppResult<Response> {
+    command(state, context, key, Command::Convert(project, deliverable)).await
+}
+
+async fn generation_receipt(
+    State(state): State<ApiState>,
+    Extension(context): Extension<RequestContext>,
+    Path((project, key)): Path<(Uuid, Uuid)>,
+) -> AppResult<Json<Value>> {
+    Ok(Json(
+        crate::service::artifact_generation::receipt(&scoped(&state, &context), project, key)
+            .await?,
+    ))
+}
+
+async fn conversion_receipt(
+    State(state): State<ApiState>,
+    Extension(context): Extension<RequestContext>,
+    Path((project, key)): Path<(Uuid, Uuid)>,
+) -> AppResult<Json<Value>> {
+    Ok(Json(
+        crate::service::artifact_generation::command_receipt(
+            &scoped(&state, &context),
+            project,
+            key,
+            "artifact.convert",
+        )
+        .await?,
+    ))
 }

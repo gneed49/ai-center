@@ -2,7 +2,7 @@
 -- The reviewed catalog fingerprint is filled from the isolated migrated schema.
 create or replace function app.operator_project_expected_schema()
 returns text language sql immutable security invoker set search_path='' as $$
- select 'f17b7f9d7be7197bb88bb69e2fc9d942'::text;
+ select '9d19679eb7bedeb15663096a6a515ddc'::text;
 $$;
 revoke all on function app.operator_project_expected_schema() from public,anon,authenticated,service_role,ai_center_runtime;
 
@@ -33,7 +33,7 @@ returns text language plpgsql immutable security invoker set search_path='' as $
 begin
  case relation_name
  when 'ai_call_reservations','provider_connections','provider_selections','tool_connections','work_tool_connections',
-      'workspace_automation_controls','workspace_invitations','workspace_members','workspaces' then return 'false';
+      'steward_scan_progress','workspace_automation_controls','workspace_invitations','workspace_members','workspaces' then return 'false';
  when 'projects' then return 't.id=$1';
  when 'artifact_version_sources' then return 'exists(select 1 from app.artifact_document_versions v where v.id=t.version_id and v.project_id=$1)';
  when 'publication_observations' then return 'exists(select 1 from app.publication_jobs j where j.id=t.publication_job_id and j.project_id=$1)';
@@ -41,7 +41,7 @@ begin
  when 'artifact_destination_settings','context_pack_scope_sources','context_pack_scope_versions','context_pack_selection_items',
       'context_pack_sources','deliverable_sources','domain_events','edges','execution_events','gates','handoffs',
       'insight_resolutions','insight_sources','mutation_proposals','requirement_coverage','steward_assessment_sources',
-      'steward_scope_sources','evidences','external_reference_observations','github_code_file_observations','insights',
+      'steward_scan_sources','steward_scope_sources','evidences','external_reference_observations','github_code_file_observations','insights',
       'messages','idempotency_records','artifacts','deliverable_sections','github_code_corpora','knowledge_entry_versions',
       'publication_jobs','steward_assessments','artifact_document_versions','deliverables','executions','external_references',
       'knowledge_entries','model_runs','artifact_documents','sessions','tasks','context_packs','context_nodes' then return 't.project_id=$1';
@@ -212,6 +212,7 @@ begin
  -- Shared reservations cannot be assigned to a project, so active work in the
  -- company conservatively prevents this maintenance operation.
  if exists(select 1 from app.ai_call_reservations r where r.workspace_id=erasure_workspace_id and r.status='running' and r.lease_until>clock_timestamp())
+  or exists(select 1 from app.steward_scan_progress r where r.workspace_id=erasure_workspace_id and r.status='running')
   or exists(select 1 from app.model_runs r where r.workspace_id=erasure_workspace_id and r.status='running')
   or exists(select 1 from app.publication_jobs j where j.workspace_id=erasure_workspace_id and j.status in('queued','processing'))
   or exists(select 1 from app.domain_events e where e.workspace_id=erasure_workspace_id and e.status='processing')

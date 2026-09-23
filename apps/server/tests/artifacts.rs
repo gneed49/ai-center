@@ -495,3 +495,322 @@ async fn destination_inheritance_cas_reset_and_no_publication() -> Result<()> {
     fixture.admin.close().await;
     Ok(())
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn agent_draft_has_typed_content_exact_artifact_sources_and_http_replay() -> Result<()> {
+    use ai_center_server::artifacts::generation_contract::GenerateArtifact;
+    let f = fixture().await?;
+    let project_id = project(&f.owner, "Génération").await?;
+    let session = service::create_session(
+        &f.owner,
+        project_id,
+        CreateSession {
+            node_key: "product".into(),
+            title: Some("[FICTIF] Préparation".into()),
+        },
+    )
+    .await?;
+    let manual = artifacts::create(
+        &f.owner,
+        project_id,
+        input("[FICTIF] Règles antérieures"),
+        None,
+    )
+    .await?;
+    let source = artifacts::validate(
+        &f.owner,
+        manual.artifact.public_id,
+        ValidateArtifact {
+            expected_version_id: manual.current_version.public_id,
+        },
+        None,
+    )
+    .await?;
+    let request = GenerateArtifact {
+        session_id: session.session.public_id,
+        artifact_type: "product_tickets".into(),
+        instructions: "[FICTIF] Décomposer la conservation des décisions en tickets".into(),
+    };
+    let (url, server) = serve(f.owner.clone()).await?;
+    let client = reqwest::Client::new();
+    let key = Uuid::new_v4();
+    let endpoint = format!("{url}/api/projects/{project_id}/artifacts/generate");
+    let response = client
+        .post(&endpoint)
+        .header("Idempotency-Key", key.to_string())
+        .json(&request)
+        .send()
+        .await?;
+    ensure!(
+        response.status().is_success(),
+        "generation rejected: {}",
+        response.status()
+    );
+    let draft: ArtifactDetail = response.json().await?;
+    ensure!(
+        draft.current_version.status == "draft" && draft.current_version.validated_at.is_none()
+    );
+    ensure!(
+        draft.current_version.structured_content["draft"]["tickets"]
+            .as_array()
+            .unwrap()
+            .len()
+            == 1
+    );
+    ensure!(
+        draft
+            .current_version
+            .sources
+            .iter()
+            .any(|s| s["kind"] == "artifact_version"
+                && s["public_id"] == source.current_version.public_id.to_string()
+                && s["content_hash"] == source.current_version.content_hash)
+    );
+    let replay: ArtifactDetail = client
+        .post(&endpoint)
+        .header("Idempotency-Key", key.to_string())
+        .json(&request)
+        .send()
+        .await?
+        .json()
+        .await?;
+    ensure!(replay.artifact.public_id == draft.artifact.public_id);
+    let receipt: Value = client
+        .get(format!(
+            "{url}/api/projects/{project_id}/artifact-generations/{key}"
+        ))
+        .send()
+        .await?
+        .json()
+        .await?;
+    ensure!(
+        receipt["status"] == "completed"
+            && receipt["result"]["artifact"]["public_id"] == draft.artifact.public_id.to_string()
+    );
+    let colleague_receipt =
+        service::artifact_generation::receipt(&f.viewer, project_id, key).await?;
+    ensure!(colleague_receipt["result"].is_null() && colleague_receipt["can_retry"] == false);
+    ensure!(matches!(
+        service::artifact_generation::receipt(&f.foreign, project_id, key).await,
+        Err(AppError::NotFound)
+    ));
+
+    // Editing after later conversation messages retains the evidence seen by
+    // the generation, not the conversation's newer head.
+    sqlx::query("insert into app.messages(workspace_id,project_id,session_id,role,content) select workspace_id,project_id,id,'user','[FICTIF] Message postérieur' from app.sessions where public_id=$1")
+        .bind(session.session.public_id).execute(&f.admin).await?;
+    let mut edited_content = draft.current_version.structured_content.clone();
+    edited_content["draft"]["title"] = json!("[FICTIF] Titre relu");
+    let edited = artifacts::save_draft(
+        &f.owner,
+        draft.artifact.public_id,
+        SaveDraft {
+            expected_version_id: draft.current_version.public_id,
+            title: "[FICTIF] Titre relu".into(),
+            body_markdown: draft.current_version.body_markdown.clone(),
+            structured_content: edited_content,
+            sources: draft
+                .current_version
+                .sources
+                .iter()
+                .map(|source| SourceInput {
+                    kind: source["kind"].as_str().unwrap().into(),
+                    public_id: source["public_id"].as_str().unwrap().parse().unwrap(),
+                })
+                .collect(),
+        },
+        None,
+    )
+    .await?;
+    ensure!(
+        edited.current_version.sources == draft.current_version.sources,
+        "Editing must retain exact source snapshots"
+    );
+    sqlx::query("update app.idempotency_records set created_at=now()-interval '2 days',expires_at=now()-interval '1 second' where idempotency_key=$1 and operation_key='artifact.generate'")
+        .bind(key.to_string()).execute(&f.admin).await?;
+    ensure!(
+        client
+            .post(&endpoint)
+            .header("Idempotency-Key", key.to_string())
+            .json(&request)
+            .send()
+            .await?
+            .status()
+            == reqwest::StatusCode::CONFLICT
+    );
+    let expired_receipt = service::artifact_generation::receipt(&f.owner, project_id, key).await?;
+    ensure!(
+        expired_receipt["result"]["artifact"]["public_id"] == draft.artifact.public_id.to_string()
+    );
+    let runs:i64=sqlx::query_scalar("select count(*) from app.model_runs r join app.projects p on p.id=r.project_id where p.public_id=$1 and operation='generate_artifact' and r.status='completed'").bind(project_id).fetch_one(&f.admin).await?;
+    ensure!(runs == 1, "replay must not call the engine again");
+    let graph = ai_center_server::company::graph(
+        &f.owner,
+        ai_center_server::company::models::GraphQuery {
+            project_id: Some(project_id),
+            limit: None,
+        },
+    )
+    .await?;
+    ensure!(graph.edges.iter().any(|edge| edge.source_public_id
+        == draft.current_version.public_id
+        && edge.target_public_id == source.current_version.public_id));
+    ensure!(matches!(
+        service::artifact_generation::generate(&f.viewer, project_id, request.clone(), None).await,
+        Err(AppError::Forbidden)
+    ));
+    ensure!(matches!(
+        service::artifact_generation::generate(&f.foreign, project_id, request.clone(), None).await,
+        Err(AppError::NotFound)
+    ));
+    let unsupported = GenerateArtifact {
+        artifact_type: "technical_tickets".into(),
+        ..request
+    };
+    ensure!(matches!(
+        service::artifact_generation::generate(&f.owner, project_id, unsupported, None).await,
+        Err(AppError::Invalid(_))
+    ));
+    let publication_count:i64=sqlx::query_scalar("select count(*) from app.publication_jobs j join app.projects p on p.id=j.project_id where p.public_id=$1").bind(project_id).fetch_one(&f.admin).await?;
+    ensure!(publication_count == 0);
+    server.abort();
+    f.pool.close().await;
+    f.admin.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn conversion_preserves_exact_historical_deliverable_and_requires_review() -> Result<()> {
+    let f = fixture().await?;
+    let project_id = project(&f.owner, "Conversion historique").await?;
+    let other = project(&f.owner, "Autre projet").await?;
+    let original = json!({"objective":"[FICTIF] Objectif v1","requirements":["Conserver l’historique"],"unknowns":["Échéance à définir"]});
+    let id:Uuid=sqlx::query_scalar("insert into app.deliverables(workspace_id,project_id,context_node_id,contract_id,deliverable_type,title,summary,content,status,coverage_status,version,source_graph_version,content_hash) select p.workspace_id,p.id,n.id,c.id,'feature-brief','[FICTIF] Ancienne spécification','[FICTIF] Version conservée',$2,'superseded','missing',1,p.graph_version,$3 from app.projects p join app.context_nodes n on n.project_id=p.id and n.node_key='product' join app.deliverable_contracts c on c.template_id=p.template_id and c.contract_key='feature-brief' where p.public_id=$1 returning public_id")
+        .bind(project_id).bind(&original).bind("a".repeat(64)).fetch_one(&f.admin).await?;
+    let draft = artifacts::conversion::convert(&f.owner, project_id, id, None).await?;
+    ensure!(
+        draft.artifact.artifact_type == "specification" && draft.current_version.status == "draft"
+    );
+    ensure!(draft.current_version.structured_content["content"] == original);
+    ensure!(
+        draft.current_version.structured_content["origin"]["status_at_capture"] == "superseded"
+    );
+    ensure!(draft.current_version.sources[0]["public_id"] == id.to_string());
+    ensure!(draft.current_version.sources[0]["version"] == 1);
+    ensure!(matches!(
+        artifacts::conversion::convert(&f.owner, other, id, None).await,
+        Err(AppError::NotFound)
+    ));
+    ensure!(matches!(
+        artifacts::conversion::convert(&f.foreign, project_id, id, None).await,
+        Err(AppError::NotFound)
+    ));
+    ensure!(matches!(
+        artifacts::conversion::convert(&f.viewer, project_id, id, None).await,
+        Err(AppError::Forbidden)
+    ));
+    f.pool.close().await;
+    f.admin.close().await;
+    Ok(())
+}
+
+struct ArchiveDuringDraft {
+    admin: PgPool,
+    project: Uuid,
+    output: Value,
+}
+#[async_trait::async_trait]
+impl ai_center_server::integrations::providers::StructuredTransport for ArchiveDuringDraft {
+    fn provider_name(&self) -> &'static str {
+        "fixture-archive"
+    }
+    async fn generate(
+        &self,
+        _model: &str,
+        _operation: &str,
+        _instructions: &str,
+        _input: &Value,
+        _schema: &Value,
+    ) -> ai_center_server::error::AppResult<
+        ai_center_server::integrations::providers::StructuredResponse,
+    > {
+        sqlx::query("update app.projects set status='archived' where public_id=$1")
+            .bind(self.project)
+            .execute(&self.admin)
+            .await?;
+        Ok(
+            ai_center_server::integrations::providers::StructuredResponse {
+                output: self.output.clone(),
+                metadata: ai_center_server::agent::AgentRunMetadata::default(),
+            },
+        )
+    }
+    async fn list_models(
+        &self,
+    ) -> ai_center_server::error::AppResult<
+        Vec<ai_center_server::integrations::providers::ProviderModel>,
+    > {
+        Ok(vec![])
+    }
+}
+#[tokio::test]
+async fn archive_during_generation_closes_model_run_without_saving_a_draft() -> Result<()> {
+    use artifacts::generation_contract::{
+        ArtifactGenerationInput, GenerateArtifact, deterministic,
+    };
+    let f = fixture().await?;
+    let project_id = project(&f.owner, "Archivage pendant génération").await?;
+    let session = service::create_session(
+        &f.owner,
+        project_id,
+        CreateSession {
+            node_key: "product".into(),
+            title: None,
+        },
+    )
+    .await?;
+    let draft = deterministic(ArtifactGenerationInput {
+        artifact_type: "kickoff".into(),
+        instructions: "[FICTIF] Cadrer".into(),
+        agent_instructions: String::new(),
+        objective: "[FICTIF] Archive".into(),
+        context: json!({}),
+        conversation: json!({}),
+        source_ids: vec![],
+    })?
+    .output;
+    let mut state = f.owner.clone();
+    state.engine = Arc::new(ai_center_server::agent::StructuredEngine::with_transport(
+        Arc::new(ArchiveDuringDraft {
+            admin: f.admin.clone(),
+            project: project_id,
+            output: json!(draft),
+        }),
+        "fixture".into(),
+    ));
+    ensure!(
+        service::artifact_generation::generate(
+            &state,
+            project_id,
+            GenerateArtifact {
+                session_id: session.session.public_id,
+                artifact_type: "kickoff".into(),
+                instructions: "[FICTIF] Cadrer".into()
+            },
+            None
+        )
+        .await
+        .is_err()
+    );
+    let states:Vec<String>=sqlx::query_scalar("select r.status from app.model_runs r join app.projects p on p.id=r.project_id where p.public_id=$1 and operation='generate_artifact'").bind(project_id).fetch_all(&f.admin).await?;
+    ensure!(
+        states == vec!["failed"],
+        "A rejected finalization must close the model attempt"
+    );
+    let count:i64=sqlx::query_scalar("select count(*) from app.artifact_documents d join app.projects p on p.id=d.project_id where p.public_id=$1").bind(project_id).fetch_one(&f.admin).await?;
+    ensure!(count == 0);
+    f.pool.close().await;
+    f.admin.close().await;
+    Ok(())
+}

@@ -28,6 +28,7 @@ pub(super) fn router() -> Router<ApiState> {
         .route("/api/company/members/{id}", patch(update_member))
         .route("/api/company/graph", get(company_graph))
         .route("/api/company/knowledge", get(knowledge_library))
+        .route("/api/company/steward", get(steward_progress))
         .route("/api/projects/{id}/graph", get(project_graph))
         .route(
             "/api/projects/{project}/sources/{kind}/{id}",
@@ -305,4 +306,13 @@ async fn rename_project(
     Json(input): Json<company::data::RenameProject>,
 ) -> AppResult<Response> {
     mutate(state, context, key, Command::Rename(id, input)).await
+}
+
+async fn steward_progress(
+    State(state): State<ApiState>,
+    Extension(context): Extension<RequestContext>,
+) -> AppResult<Json<Value>> {
+    Ok(Json(
+        crate::steward::company_progress(&scoped(&state, &context)).await?,
+    ))
 }

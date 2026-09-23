@@ -8,13 +8,14 @@ export const artifactTypes = [
 export type ArtifactType = (typeof artifactTypes)[number];
 export type ArtifactStatus = "draft" | "validated";
 export type ArtifactSourceKind =
-  "knowledge" | "context_pack" | "deliverable" | "session";
+  "knowledge" | "context_pack" | "deliverable" | "session" | "artifact_version";
 export interface ArtifactSourceInput {
   kind: ArtifactSourceKind;
   public_id: string;
 }
 export interface ArtifactSource extends ArtifactSourceInput {
   project_id: string;
+  artifact_id?: string;
   title: string;
   version?: number | null;
   status_at_capture?: string;

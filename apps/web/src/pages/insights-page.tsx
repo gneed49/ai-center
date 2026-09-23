@@ -9,6 +9,7 @@ import {
 import { Link } from "react-router";
 
 import { api } from "@/api/client";
+import { StewardProgress } from "@/components/app/steward-progress";
 import {
   EmptyState,
   ErrorState,
@@ -38,6 +39,7 @@ export function InsightsPage() {
         title="Les signaux qui méritent une décision."
         description="Le steward relie les contradictions et trous de preuve à leurs sources. Il ne corrige jamais silencieusement le projet."
       />
+      <StewardProgress />
       <section className="grid gap-px border border-slate-200 bg-slate-200 sm:grid-cols-3">
         <Metric icon={Inbox} label="À traiter" value={active.length} />
         <Metric

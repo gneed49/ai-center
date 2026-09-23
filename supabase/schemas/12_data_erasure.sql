@@ -23,6 +23,8 @@ returns text[] language sql immutable security invoker set search_path='' as $$
   'requirement_coverage',
   'steward_assessment_sources',
   'steward_scope_sources',
+  'steward_scan_sources',
+  'steward_scan_progress',
   'workspace_automation_controls',
   'workspace_invitations',
   'workspace_members',
@@ -113,6 +115,7 @@ begin
   raise exception 'Pause automation and archive all business projects before erasure' using errcode='55000';
  end if;
  if exists(select 1 from app.ai_call_reservations where workspace_id=erasure_workspace_id and status='running' and lease_until>clock_timestamp())
+  or exists(select 1 from app.steward_scan_progress where workspace_id=erasure_workspace_id and status='running')
   or exists(select 1 from app.model_runs where workspace_id=erasure_workspace_id and status='running')
   or exists(select 1 from app.publication_jobs where workspace_id=erasure_workspace_id and status in('queued','processing'))
   or exists(select 1 from app.domain_events where workspace_id=erasure_workspace_id and status='processing')

@@ -98,6 +98,25 @@ export function companyMockHandler(project: ProjectSummary, enabled: boolean) {
     };
     if (path === "/api/workspaces/capabilities")
       return respond({ can_create_company: true });
+    if (path === "/api/company/steward" && method === "GET")
+      return respond({
+        progress: {
+          status: "idle",
+          last_error_code: null,
+          updated_at: now,
+          lease_expired: null,
+        },
+        available_sources: 3,
+        pending_sources: 0,
+        examined_pairs: 2,
+        omitted_neighbors: 0,
+        exhaustive: false,
+        max_sources: 10_000,
+        max_neighbors_per_source: 12,
+        max_provider_calls_per_hour: 6,
+        coverage_notice:
+          "[FICTIF] Un parcours terminé ne certifie pas l’absence de contradictions.",
+      });
     if (enabled && path === "/api/company")
       return respond({
         ...fixtureCompany,

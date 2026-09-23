@@ -200,6 +200,19 @@ l'état sont restitués. Retry, réponse perdue, expiration et conflit ne créen
 pas des doublons silencieux. Sans connexion valide, l'artefact reste disponible
 en interne et exportable ; aucune publication distante n'est simulée.
 
+**Amendement de granularité — tickets distincts :** pour un artefact structuré
+de tickets produit ou techniques, une sélection humaine de N entrées vers
+Linear/GitHub produit N demandes de création distinctes et, si elles réussissent,
+N issues avec leurs propres liens et états. Le document ne doit pas devenir
+implicitement une seule issue contenant N tickets. Notion conserve la publication
+du document complet. L’identité d’une entrée est sa version source + son index ;
+une nouvelle version ne met pas à jour ni ne recrée silencieusement les anciennes
+issues. Prévisualisation, reprise, quotas et filiation sont précisés dans
+[la spécification Tickets distincts](../ticket-publication/spec.md).
+Cette précision répond au parcours utilisateur ; elle n’était pas couverte par
+le précédent critère de publication documentaire. Le lot reste à implémenter
+après le gel d’intégration et participe à la clôture de CC-G1.
+
 ### CC-U05 — Comprendre les graphes
 
 La personne navigue de la société au projet et sélectionne une décision,
@@ -255,6 +268,7 @@ Leur numérotation est stable ; l'implémentation ne vaut pas acceptation.
 | CC-025 | Notion, Linear et GitHub exposent des capacités limitées, destination autorisée, état de connexion et secrets serveur ; clés non relues par le client.                      | Tests de stockage, permissions et endpoints ; interface masquée et révocation.                                                                |
 | CC-026 | Publication explicite idempotente : Notion page, Linear issue, GitHub issue/référence selon capacité ; lien canonique et résultat exact conservés.                          | Contrats des trois adapters, reprise après réponse perdue, intégration ; écriture réelle limitée à destinations autorisées pour gate externe. |
 | CC-027 | Une modification distante, perte d'accès ou suppression produit conflit/stale/unavailable sans écrasement ni perte d'historique.                                            | Simulations HTTP et scénario réel ciblé par connecteur.                                                                                       |
+| CC-028 | Les tickets structurés sélectionnés et validés sont publiés individuellement dans Linear/GitHub ; N entrées donnent N issues réussies distinctes, avec reprise et provenance par version/index, sans doublons silencieux entre versions. | TP-001 à TP-011 de [Tickets distincts](../ticket-publication/spec.md), dont perte de réponse, quotas atomiques, états partiels et confirmation des créations supplémentaires. |
 | CC-030 | Les entités/arêtes persistées possèdent scope, type, provenance et versions ; aucune arête inter-sociétés acceptée.                                                         | Contraintes SQL, RLS et tests API négatifs.                                                                                                   |
 | CC-031 | Un graphe projet expose connaissances, conversations, artefacts, tâches/références et preuves liés ; navigation vers les objets.                                            | Intégration projection et E2E graphe/listes.                                                                                                  |
 | CC-032 | Le graphe société fédère les projets autorisés et connaissances générales sans recopier leurs sources ni révéler les objets privés.                                         | Acteurs de permissions différentes, réponses API et agrégations comparées.                                                                    |

@@ -280,7 +280,7 @@ async fn provider_failure_and_success_leave_terminal_model_runs() -> Result<()> 
     assert_eq!(rows[0].status, "failed");
     assert_eq!(rows[0].provider, "openai");
     assert_eq!(rows[0].model, "probe-model");
-    assert_eq!(rows[0].prompt_version, "alpha-agent-turn-v1");
+    assert_eq!(rows[0].prompt_version, "company-agent-turn-conversation-v2");
     assert_eq!(rows[0].schema_version, "alpha-agent-turn-v1");
     assert!(rows[0].source_public_ids.is_empty());
     assert_eq!(rows[0].estimated_cost, None);
@@ -296,7 +296,7 @@ async fn provider_failure_and_success_leave_terminal_model_runs() -> Result<()> 
     assert_eq!(rows[1].status, "completed");
     assert_eq!(rows[1].provider, "deterministic");
     assert_eq!(rows[1].model, "deterministic-test-double");
-    assert_eq!(rows[1].prompt_version, "alpha-agent-turn-v1");
+    assert_eq!(rows[1].prompt_version, "company-agent-turn-conversation-v2");
     assert_eq!(rows[1].schema_version, "alpha-agent-turn-v1");
     assert!(rows[1].source_public_ids.is_empty());
     assert_eq!(rows[1].estimated_cost, Some(0.0));

@@ -57,3 +57,11 @@ export function captureRequestContext() {
     },
   };
 }
+
+/** Non-secret namespace for resumable document commands; never returns a token. */
+export function draftStorageIdentity() {
+  return {
+    actorId: identity?.actorId ?? "local",
+    workspaceId: identity?.workspaceId ?? "local",
+  };
+}

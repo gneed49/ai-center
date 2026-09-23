@@ -1,5 +1,6 @@
 #![allow(clippy::missing_errors_doc, clippy::too_many_lines)]
 
+pub mod artifact_generation;
 mod session_recovery;
 
 use std::{collections::HashSet, fmt::Write as _, sync::Arc};
@@ -30,7 +31,7 @@ use crate::{
     },
 };
 
-const EXTRACT_KNOWLEDGE_PROMPT_VERSION: &str = "alpha-agent-turn-v1";
+const EXTRACT_KNOWLEDGE_PROMPT_VERSION: &str = "company-agent-turn-conversation-v2";
 const EXTRACT_KNOWLEDGE_SCHEMA_VERSION: &str = "alpha-agent-turn-v1";
 const CONTEXT_SELECTION_PROMPT_VERSION: &str = "alpha-context-selection-v1";
 const CONTEXT_SELECTION_SCHEMA_VERSION: &str = "alpha-context-selection-v1";
@@ -501,7 +502,7 @@ async fn session_view_in_transaction(
     let messages = sqlx::query_as::<_, MessageView>(
         "select m.public_id,m.client_message_id,m.author_actor_id,nullif(member.display_name,'') as author_name,
                 coalesce(m.author_actor_id=app.current_actor_id(),false) as is_own,
-                m.role,m.content,m.agent_scope,m.metadata,m.created_at
+                m.role,m.content,m.agent_scope,m.metadata - 'conversation_snapshot' as metadata,m.created_at
          from app.messages m left join app.workspace_members member
            on member.workspace_id=m.workspace_id and member.actor_id=m.author_actor_id
          where m.session_id=$1 order by m.created_at,m.id",
@@ -616,12 +617,22 @@ async fn send_message_command(
     let resolution =
         crate::providers::resolve_engine_in_transaction(state, &mut initial_tx).await?;
 
-    // Persist the user's intent before contacting an external provider.
+    let user_public_id = Uuid::new_v4();
+    let mut conversation = crate::conversation_context::prepare(
+        &mut initial_tx,
+        session.id,
+        session_id,
+        user_public_id,
+    )
+    .await?;
+    // Persist intent and the bounded transcript together. Append-only messages
+    // preserve the same conversational input even when a retry happens after
+    // an older, concurrently allocated message identity has finally committed.
     let inserted_user = sqlx::query(
         "insert into app.messages (
            workspace_id, project_id, session_id, client_message_id, role, content,
-           author_actor_id,command_public_id,submitted_content
-         ) values ($1, $2, $3, $4, 'user', $5, $6, $7, $8)
+           author_actor_id,command_public_id,submitted_content,public_id,metadata
+         ) values ($1, $2, $3, $4, 'user', $5, $6, $7, $8, $9, $10)
          on conflict do nothing",
     )
     .bind(session.workspace_id)
@@ -632,12 +643,14 @@ async fn send_message_command(
     .bind(state.actor_id)
     .bind(lease.map(|value| value.record_public_id))
     .bind(lease.map(|_| input.content.as_str()))
+    .bind(user_public_id)
+    .bind(json!({"conversation_snapshot": conversation}))
     .execute(&mut *initial_tx)
     .await?;
     if inserted_user.rows_affected() == 0 {
-        let (existing_content, author, command): (String, Option<Uuid>, Option<Uuid>) =
+        let (existing_content, author, command, existing_public_id, snapshot): (String, Option<Uuid>, Option<Uuid>, Uuid, Value) =
             sqlx::query_as(
-                "select content,author_actor_id,command_public_id from app.messages
+                "select content,author_actor_id,command_public_id,public_id,coalesce(metadata->'conversation_snapshot','null'::jsonb) from app.messages
              where session_id = $1 and role = 'user' and client_message_id = $2",
             )
             .bind(session.id)
@@ -673,6 +686,8 @@ async fn send_message_command(
                 "Reprenez ce message avec sa commande d’origine depuis la conversation.".into(),
             ));
         }
+        conversation =
+            crate::conversation_context::restore(snapshot, session_id, existing_public_id)?;
     }
 
     let source_graph_version: i64 =
@@ -706,6 +721,7 @@ async fn send_message_command(
         let content = snapshot.context(&session.scope_kind, &session.node_key);
         (content, snapshot.source_ids(), snapshot.scopes)
     };
+    let conversation_provenance = conversation.provenance();
     let context_provenance = knowledge_context
         .get("source_provenance")
         .cloned()
@@ -723,6 +739,7 @@ async fn send_message_command(
         "instructions": instructions,
         "user_message": content,
         "context": knowledge_context,
+        "conversation": conversation,
     });
     let input_hash = sha256_json(&run_fingerprint)?;
     let model_run = start_model_run(
@@ -762,6 +779,7 @@ async fn send_message_command(
             instructions,
             user_message: content.into(),
             context: knowledge_context,
+            conversation,
         }),
     )
     .await
@@ -772,6 +790,7 @@ async fn send_message_command(
             return Err(error);
         }
     };
+    with_model_run_access_cleanup(state, model_run.id, async {
     let turn = engine_result.output;
     let turn_output = match serde_json::to_value(&turn) {
         Ok(output) => output,
@@ -871,6 +890,7 @@ async fn send_message_command(
         "source_scopes": scope_stamps,
         "source_provenance": context_provenance,
         "retrieval": retrieval,
+        "conversation_context": conversation_provenance,
         "model_run_public_id": model_run.public_id,
         "model_run": engine_result.metadata,
     }))
@@ -929,6 +949,7 @@ async fn send_message_command(
     complete_command(&mut tx, lease, &result).await?;
     tx.commit().await?;
     Ok(result)
+    }).await
 }
 
 fn ensure_authorized_sources(returned: &[Uuid], allowed: &[Uuid]) -> AppResult<()> {
@@ -3720,6 +3741,32 @@ async fn complete_model_run(
     Ok(())
 }
 
+/// After normal RLS finalization fails, the narrow helper may only cancel a
+/// running operation owned by this actor whose captured authorization changed.
+async fn with_model_run_access_cleanup<T, F>(
+    state: &AppState,
+    model_run_id: i64,
+    finalization: F,
+) -> AppResult<T>
+where
+    F: std::future::Future<Output = AppResult<T>>,
+{
+    let result = finalization.await;
+    if result.is_err() {
+        let mut tx = state.begin_request().await?;
+        let cancelled: bool =
+            sqlx::query_scalar("select app.cancel_model_run_after_access_loss($1)")
+                .bind(model_run_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        tx.commit().await?;
+        if cancelled {
+            return Err(AppError::Forbidden);
+        }
+    }
+    result
+}
+
 async fn record_failed_model_run(
     state: &AppState,
     model_run_id: i64,
@@ -3821,6 +3868,14 @@ async fn fail_model_run_in_transaction(
         .await?
     };
     if updated.rows_affected() != 1 {
+        let cancelled: bool =
+            sqlx::query_scalar("select app.cancel_model_run_after_access_loss($1)")
+                .bind(model_run_id)
+                .fetch_one(&mut **tx)
+                .await?;
+        if cancelled {
+            return Ok(());
+        }
         return Err(AppError::Conflict(
             "model run is no longer in the running state".into(),
         ));

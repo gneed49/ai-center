@@ -46,3 +46,9 @@ grant update(enabled,generation,updated_by_actor_id,updated_at) on app.workspace
 grant update(status,finished_at) on app.ai_call_reservations to ai_center_runtime;
 grant usage on sequence app.workspace_automation_controls_id_seq,app.ai_call_reservations_id_seq to ai_center_runtime;
 grant execute on function app.finish_ai_call_reservation(uuid,text) to ai_center_runtime;
+grant execute on function app.cancel_model_run_after_access_loss(bigint) to ai_center_runtime;
+
+-- Source frontier and public coverage, never an exposed worker capability.
+grant select,insert,update on app.steward_scan_progress to ai_center_runtime;
+grant select,insert on app.steward_scan_sources to ai_center_runtime;
+grant usage on sequence app.steward_scan_progress_id_seq,app.steward_scan_sources_id_seq to ai_center_runtime;

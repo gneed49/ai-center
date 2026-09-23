@@ -51,11 +51,12 @@ create table app.artifact_version_sources (
   workspace_id bigint not null,
   version_id bigint not null,
   source_project_id bigint not null,
-  source_kind text not null check (source_kind in ('knowledge','context_pack','deliverable','session')),
+  source_kind text not null check (source_kind in ('knowledge','context_pack','deliverable','session','artifact_version')),
   knowledge_version_id bigint,
   context_pack_id bigint,
   deliverable_id bigint,
   session_id bigint,
+  source_artifact_version_id bigint,
   source_public_id uuid not null,
   snapshot jsonb not null check (jsonb_typeof(snapshot)='object'),
   unique (version_id,source_kind,source_public_id),
@@ -65,11 +66,13 @@ create table app.artifact_version_sources (
   foreign key (context_pack_id,source_project_id) references app.context_packs(id,project_id),
   foreign key (deliverable_id,source_project_id) references app.deliverables(id,project_id),
   foreign key (session_id,source_project_id) references app.sessions(id,project_id),
+  constraint artifact_sources_artifact_project_fkey foreign key (source_artifact_version_id,source_project_id) references app.artifact_document_versions(id,project_id),
   check (
-    (source_kind='knowledge' and knowledge_version_id is not null and context_pack_id is null and deliverable_id is null and session_id is null)
-    or (source_kind='context_pack' and knowledge_version_id is null and context_pack_id is not null and deliverable_id is null and session_id is null)
-    or (source_kind='deliverable' and knowledge_version_id is null and context_pack_id is null and deliverable_id is not null and session_id is null)
-    or (source_kind='session' and knowledge_version_id is null and context_pack_id is null and deliverable_id is null and session_id is not null)
+    (source_kind='knowledge' and knowledge_version_id is not null and context_pack_id is null and deliverable_id is null and session_id is null and source_artifact_version_id is null)
+    or (source_kind='context_pack' and knowledge_version_id is null and context_pack_id is not null and deliverable_id is null and session_id is null and source_artifact_version_id is null)
+    or (source_kind='deliverable' and knowledge_version_id is null and context_pack_id is null and deliverable_id is not null and session_id is null and source_artifact_version_id is null)
+    or (source_kind='session' and knowledge_version_id is null and context_pack_id is null and deliverable_id is null and session_id is not null and source_artifact_version_id is null)
+    or (source_kind='artifact_version' and knowledge_version_id is null and context_pack_id is null and deliverable_id is null and session_id is null and source_artifact_version_id is not null)
   )
 );
 create index artifact_version_sources_workspace_idx on app.artifact_version_sources(workspace_id);
@@ -77,6 +80,7 @@ create index artifact_version_sources_project_idx on app.artifact_version_source
 create index artifact_version_sources_knowledge_idx on app.artifact_version_sources(knowledge_version_id) where knowledge_version_id is not null;
 create index artifact_version_sources_pack_idx on app.artifact_version_sources(context_pack_id) where context_pack_id is not null;
 create index artifact_version_sources_deliverable_idx on app.artifact_version_sources(deliverable_id) where deliverable_id is not null;
+create index artifact_version_sources_artifact_idx on app.artifact_version_sources(source_artifact_version_id) where source_artifact_version_id is not null;
 create index artifact_version_sources_session_idx on app.artifact_version_sources(session_id) where session_id is not null;
 
 create table app.artifact_destination_settings (

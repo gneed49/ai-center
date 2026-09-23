@@ -1,6 +1,8 @@
 //! Manual, versioned company artifacts. No model or external publication is
 //! invoked here; immutable versions preserve precisely what a person validated.
+pub mod conversion;
 mod destinations;
+pub mod generation_contract;
 pub mod models;
 mod sources;
 mod validation;
@@ -221,6 +223,7 @@ struct VersionWrite<'a> {
     content: &'a CreateArtifact,
     status: &'a str,
     preserve_sources_from: Option<Uuid>,
+    captured_origin: Option<Value>,
 }
 
 async fn append(
@@ -228,11 +231,29 @@ async fn append(
     state: &AppState,
     input: VersionWrite<'_>,
 ) -> AppResult<Uuid> {
-    let sources = if let Some(version) = input.preserve_sources_from {
-        sources::from_version(tx, version).await?
-    } else {
-        sources::resolve(tx, &input.content.sources).await?
-    };
+    let mut sources = sources::resolve(tx, &input.content.sources).await?;
+    if let Some(version) = input.preserve_sources_from {
+        let previous = sources::from_version(tx, version).await?;
+        for source in &mut sources {
+            if let Some(captured) = previous.iter().find(|old| {
+                old.snapshot["kind"] == source.snapshot["kind"]
+                    && old.snapshot["public_id"] == source.snapshot["public_id"]
+            }) {
+                // Editing prose does not advance the evidence snapshot. Only
+                // a newly selected source receives a new capture timestamp.
+                source.snapshot = captured.snapshot.clone();
+            }
+        }
+    }
+    if let Some(origin) = input.captured_origin {
+        for source in &mut sources {
+            if source.snapshot["kind"] == "session"
+                && source.snapshot["public_id"] == origin["public_id"]
+            {
+                source.snapshot = origin.clone();
+            }
+        }
+    }
     let content_hash = idempotency::hash_request(
         &json!({"title":input.content.title.trim(),"body_markdown":input.content.body_markdown,
         "structured_content":input.content.structured_content,"sources":sources.iter().map(|s| &s.snapshot).collect::<Vec<_>>()}),
@@ -282,13 +303,28 @@ pub async fn create(
     editor(state)?;
     validation::content(&input)?;
     let mut tx = state.begin_request().await?;
-    let project = project_id(&mut tx, project).await?;
-    crate::company::data::require_active(&mut tx, project).await?;
+    let output = create_in_transaction(&mut tx, state, project, input, lease, None).await?;
+    tx.commit().await?;
+    Ok(output)
+}
+
+pub(crate) async fn create_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    state: &AppState,
+    project: Uuid,
+    input: CreateArtifact,
+    lease: Option<&IdempotencyLease>,
+    captured_origin: Option<Value>,
+) -> AppResult<ArtifactDetail> {
+    editor(state)?;
+    validation::content(&input)?;
+    let project = project_id(tx, project).await?;
+    crate::company::data::require_active(tx, project).await?;
     let (document,artifact):(i64,Uuid)=sqlx::query_as("insert into app.artifact_documents(workspace_id,project_id,artifact_type,created_by_actor_id)
         values(app.current_workspace_id(),$1,$2,$3) returning id,public_id")
-        .bind(project).bind(&input.artifact_type).bind(state.actor_id).fetch_one(&mut *tx).await?;
+        .bind(project).bind(&input.artifact_type).bind(state.actor_id).fetch_one(&mut **tx).await?;
     let version = append(
-        &mut tx,
+        tx,
         state,
         VersionWrite {
             document,
@@ -297,11 +333,12 @@ pub async fn create(
             content: &input,
             status: "draft",
             preserve_sources_from: None,
+            captured_origin,
         },
     )
     .await?;
     audit(
-        &mut tx,
+        tx,
         state.actor_id,
         Some(project),
         "artifact.created",
@@ -309,9 +346,8 @@ pub async fn create(
         json!({"version_id":version}),
     )
     .await?;
-    let output = detail(&mut tx, artifact).await?;
-    complete(&mut tx, lease, &output).await?;
-    tx.commit().await?;
+    let output = detail(tx, artifact).await?;
+    complete(tx, lease, &output).await?;
     Ok(output)
 }
 
@@ -376,7 +412,8 @@ pub async fn save_draft(
             number: head.version + 1,
             content: &content,
             status: "draft",
-            preserve_sources_from: None,
+            preserve_sources_from: Some(head.version_id),
+            captured_origin: None,
         },
     )
     .await?;
@@ -452,6 +489,7 @@ pub async fn validate(
             content: &content,
             status: "validated",
             preserve_sources_from: Some(head.version_id),
+            captured_origin: None,
         },
     )
     .await?;
@@ -513,4 +551,22 @@ pub fn markdown(artifact: Uuid, value: &ArtifactVersion) -> String {
         );
     }
     output
+}
+
+pub(crate) async fn session_origin(
+    tx: &mut Transaction<'_, Postgres>,
+    id: Uuid,
+) -> AppResult<Value> {
+    sources::resolve(
+        tx,
+        &[SourceInput {
+            kind: "session".into(),
+            public_id: id,
+        }],
+    )
+    .await?
+    .into_iter()
+    .next()
+    .map(|source| source.snapshot)
+    .ok_or(AppError::NotFound)
 }

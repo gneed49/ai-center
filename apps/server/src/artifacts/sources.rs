@@ -28,6 +28,9 @@ pub(super) async fn resolve(
             "deliverable" => {
                 "select s.id,s.project_id,jsonb_build_object('public_id',s.public_id,'project_id',p.public_id,'title',s.title,'version',s.version,'status_at_capture',s.status,'content_hash',s.content_hash) as snapshot from app.deliverables s join app.projects p on p.id=s.project_id where s.public_id=$1 and s.workspace_id=app.current_workspace_id()"
             }
+            "artifact_version" => {
+                "select s.id,s.project_id,jsonb_build_object('public_id',s.public_id,'project_id',p.public_id,'artifact_id',d.public_id,'title',s.title,'version',s.version,'status_at_capture',s.status,'content_hash',s.content_hash) as snapshot from app.artifact_document_versions s join app.artifact_documents d on d.id=s.document_id join app.projects p on p.id=s.project_id where s.public_id=$1 and s.workspace_id=app.current_workspace_id()"
+            }
             "session" => {
                 "select s.id,s.project_id,jsonb_build_object('public_id',s.public_id,'project_id',p.public_id,'title',s.title,'version',null,'origin_only',true,'scope',n.node_key,'captured_at',now(),'message_count',(select count(*) from app.messages m where m.session_id=s.id),'last_message_id',(select m.public_id from app.messages m where m.session_id=s.id order by m.created_at desc,m.id desc limit 1),'last_message_at',(select m.created_at from app.messages m where m.session_id=s.id order by m.created_at desc,m.id desc limit 1),'last_user_message_id',(select m.public_id from app.messages m where m.session_id=s.id and m.role='user' order by m.created_at desc,m.id desc limit 1),'last_assistant_message_id',(select m.public_id from app.messages m where m.session_id=s.id and m.role='assistant' order by m.created_at desc,m.id desc limit 1)) as snapshot from app.sessions s join app.projects p on p.id=s.project_id join app.context_nodes n on n.id=s.context_node_id where s.public_id=$1 and s.workspace_id=app.current_workspace_id()"
             }
@@ -69,13 +72,14 @@ pub(super) async fn store(
             .parse::<uuid::Uuid>()
             .map_err(|error| AppError::Internal(error.to_string()))?;
         sqlx::query("insert into app.artifact_version_sources(workspace_id,version_id,source_project_id,source_kind,
-            knowledge_version_id,context_pack_id,deliverable_id,session_id,source_public_id,snapshot)
-            values(app.current_workspace_id(),$1,$2,$3,$4,$5,$6,$7,$8,$9)")
+            knowledge_version_id,context_pack_id,deliverable_id,session_id,source_artifact_version_id,source_public_id,snapshot)
+            values(app.current_workspace_id(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)")
             .bind(version).bind(source.project_id).bind(&source.kind)
             .bind((source.kind=="knowledge").then_some(source.id))
             .bind((source.kind=="context_pack").then_some(source.id))
             .bind((source.kind=="deliverable").then_some(source.id))
             .bind((source.kind=="session").then_some(source.id))
+            .bind((source.kind=="artifact_version").then_some(source.id))
             .bind(source_public_id).bind(source.snapshot).execute(&mut **tx).await?;
     }
     Ok(())
@@ -87,7 +91,7 @@ pub(super) async fn from_version(
     tx: &mut Transaction<'_, Postgres>,
     version: uuid::Uuid,
 ) -> AppResult<Vec<ResolvedSource>> {
-    Ok(sqlx::query_as("select coalesce(s.knowledge_version_id,s.context_pack_id,s.deliverable_id,s.session_id) as id,
+    Ok(sqlx::query_as("select coalesce(s.knowledge_version_id,s.context_pack_id,s.deliverable_id,s.session_id,s.source_artifact_version_id) as id,
         s.source_project_id as project_id,s.source_kind as kind,s.snapshot
         from app.artifact_version_sources s join app.artifact_document_versions v on v.id=s.version_id
         where v.public_id=$1 and s.workspace_id=app.current_workspace_id() order by s.source_kind,s.source_public_id")

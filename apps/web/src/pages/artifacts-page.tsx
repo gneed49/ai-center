@@ -6,11 +6,8 @@ import { api, ApiError, createIdempotencyKey } from "@/api/client";
 import { companyApi } from "@/api/company";
 import { artifactsApi } from "@/api/artifacts";
 import { artifactTypes } from "@/api/artifact-types";
-import type {
-  ArtifactContent,
-  ArtifactType,
-  CreateArtifact,
-} from "@/api/artifact-types";
+import type { ArtifactContent, CreateArtifact } from "@/api/artifact-types";
+import { ArtifactGenerator } from "@/components/artifacts/artifact-generator";
 import { ArtifactEditor } from "@/components/artifacts/artifact-editor";
 import { artifactLabels } from "@/components/artifacts/labels";
 import {
@@ -56,7 +53,9 @@ export function ArtifactsPage() {
     ? project?.public_id
     : company.data?.company_scope?.project_public_id;
   const [search, setSearch] = useState(params.get("q") ?? "");
-  const [type, setType] = useState<ArtifactType>("specification");
+  const type =
+    artifactTypes.find((item) => item === params.get("draft_type")) ??
+    "specification";
   const filterType = artifactTypes.find((item) => item === params.get("type"));
   const status =
     params.get("status") === "validated"
@@ -253,7 +252,9 @@ export function ArtifactsPage() {
             <select
               id="artifact-type"
               value={type}
-              onChange={(event) => setType(event.target.value as ArtifactType)}
+              onChange={(event) =>
+                updateFilters({ draft_type: event.target.value })
+              }
               disabled={create.isPending}
               className="min-h-11 w-full rounded-md border bg-white px-3 text-sm"
             >
@@ -275,17 +276,26 @@ export function ArtifactsPage() {
               }}
             />
           ) : (
-            <ArtifactEditor
-              key={`${scopeId}:${sourceSessionId ?? "manual"}`}
-              initial={initial}
-              snapshot={snapshot.data}
-              conversation={conversation.data}
-              busy={create.isPending}
-              submitLabel="Créer le brouillon"
-              onSubmit={(content) =>
-                create.mutate({ ...content, artifact_type: type })
-              }
-            />
+            <>
+              <ArtifactGenerator
+                key={`${scopeId}:${type}:${sourceSessionId ?? ""}`}
+                projectId={scopeId}
+                type={type}
+                sessions={snapshot.data?.sessions ?? []}
+                selectedSessionId={sourceSessionId ?? undefined}
+              />
+              <ArtifactEditor
+                key={`${scopeId}:${sourceSessionId ?? "manual"}`}
+                initial={initial}
+                snapshot={snapshot.data}
+                conversation={conversation.data}
+                busy={create.isPending}
+                submitLabel="Créer le brouillon"
+                onSubmit={(content) =>
+                  create.mutate({ ...content, artifact_type: type })
+                }
+              />
+            </>
           )}
           {create.error ? (
             <ErrorState

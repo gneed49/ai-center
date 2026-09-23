@@ -363,7 +363,7 @@ create table app.model_runs (
   constraint model_runs_operation_valid check (
     operation in (
       'extract_knowledge', 'select_context', 'generate_technical_plan',
-      'assess_contradiction', 'assess_coverage'
+      'assess_contradiction', 'assess_coverage', 'generate_artifact'
     )
   ),
   constraint model_runs_status_valid check (

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, FileText, Link2 } from "lucide-react";
 import { Link, useParams } from "react-router";
 
+import { DeliverableConversion } from "@/components/artifacts/deliverable-conversion";
 import { api } from "@/api/client";
 import {
   ErrorState,
@@ -144,6 +145,17 @@ export function DeliverableDetailPage() {
           </div>
         </aside>
       </div>
+      {["feature-brief", "technical-delivery-plan"].includes(
+        item.deliverable_type,
+      ) ? (
+        <DeliverableConversion
+          key={item.public_id}
+          projectId={projectId}
+          deliverableId={item.public_id}
+          version={item.version}
+          archived={snapshot.data?.project.status === "archived"}
+        />
+      ) : null}
       <ExternalProofPanel
         projectId={projectId}
         deliverableId={item.public_id}

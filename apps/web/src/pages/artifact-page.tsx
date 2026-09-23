@@ -413,6 +413,15 @@ function ArtifactView({ artifactId }: { artifactId: string }) {
                     <p className="mt-1 break-all text-xs text-muted-foreground">
                       {source.public_id}
                     </p>
+                    {source.kind === "artifact_version" &&
+                    source.artifact_id ? (
+                      <Link
+                        to={`/artifacts/${source.artifact_id}?version=${source.public_id}`}
+                        className="mt-2 block text-sm text-primary"
+                      >
+                        Ouvrir cette version source
+                      </Link>
+                    ) : null}
                     {source.kind === "session" ? (
                       <Link
                         to={`/projects/${source.project_id}/sessions/${source.public_id}`}

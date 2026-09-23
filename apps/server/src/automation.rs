@@ -274,6 +274,13 @@ impl AgentEngine for ControlledEngine {
     async fn respond(&self, input: AgentInput) -> AppResult<EngineOutput<AgentTurn>> {
         self.run("respond", self.inner.respond(input)).await
     }
+    async fn generate_artifact(
+        &self,
+        input: crate::artifacts::generation_contract::ArtifactGenerationInput,
+    ) -> AppResult<EngineOutput<crate::artifacts::generation_contract::ArtifactDraft>> {
+        self.run("artifact_draft", self.inner.generate_artifact(input))
+            .await
+    }
     async fn select_context(
         &self,
         input: ContextSelectionInput,

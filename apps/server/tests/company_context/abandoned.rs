@@ -32,6 +32,9 @@ async fn offline_closure_requires_stale_work_and_fences_every_abandoned_lease() 
     let run:Uuid=sqlx::query_scalar("insert into app.model_runs(workspace_id,operation,provider,model,prompt_version,schema_version,input_hash,status,created_at,updated_at,started_at) values($1,'extract_knowledge','deterministic','[FICTIF]','v1','v1',repeat('b',64),'running',now()-interval '25 minutes',now()-interval '25 minutes',now()-interval '25 minutes') returning public_id")
         .bind(workspace).fetch_one(&admin).await?;
     let reservation = Uuid::new_v4();
+    let steward_lease = Uuid::new_v4();
+    sqlx::query("insert into app.steward_scan_progress(workspace_id,status,lease_token,lease_until,updated_at) values($1,'running',$2,now()-interval '20 minutes',now()-interval '25 minutes')")
+        .bind(workspace).bind(steward_lease).execute(&admin).await?;
     sqlx::query("insert into app.ai_call_reservations(public_id,workspace_id,actor_id,operation,control_generation,created_at,lease_until) values($1,$2,$3,'respond',0,now()-interval '25 minutes',now()-interval '20 minutes')")
         .bind(reservation).bind(workspace).bind(owner.actor_id).execute(&admin).await?;
     let event:Uuid=sqlx::query_scalar("insert into app.domain_events(workspace_id,event_type,aggregate_kind,aggregate_public_id,status,occurred_at,locked_at,locked_until,locked_by,attempt_count) values($1,'fictitious.maintenance','workspace',$2,'processing',now()-interval '25 minutes',now()-interval '25 minutes',now()-interval '20 minutes','fictitious-worker',1) returning public_id")
@@ -50,7 +53,7 @@ async fn offline_closure_requires_stale_work_and_fences_every_abandoned_lease() 
     publication_fixture.commit().await?;
     let ready = manifest(&admin, owner.workspace_id).await?;
     assert_eq!(ready["eligible"], true, "{ready}");
-    assert_eq!(ready["total_operations"], 7);
+    assert_eq!(ready["total_operations"], 8);
     // A still-owned command lease blocks the entire transaction.
     let mut active = admin.begin().await?;
     sqlx::query("insert into app.idempotency_records(workspace_id,actor_id,operation_key,idempotency_key,request_hash,created_at,updated_at,locked_until) values($1,$2,'fictitious.active',$3,repeat('c',64),now()-interval '25 minutes',now()-interval '25 minutes',now()+interval '1 minute')")
@@ -125,6 +128,18 @@ async fn offline_closure_requires_stale_work_and_fences_every_abandoned_lease() 
     assert_eq!(closed["remote_outcome"], "unknown");
     assert_eq!(closed["closed_counts"]["idempotency_records"], 1);
     assert_eq!(closed["closed_counts"]["publication_jobs"], 3);
+    assert_eq!(closed["closed_counts"]["steward_scan_progress"], 1);
+    let progress: (String, Option<Uuid>, Option<chrono::DateTime<chrono::Utc>>) = sqlx::query_as(
+        "select status,lease_token,lease_until from app.steward_scan_progress where workspace_id=$1",
+    ).bind(workspace).fetch_one(&admin).await?;
+    assert_eq!(progress, ("pending".into(), None, None));
+    let late_worker = sqlx::query("update app.steward_scan_progress set status='idle',lease_token=null,lease_until=null where workspace_id=$1 and lease_token=$2")
+        .bind(workspace).bind(steward_lease).execute(&admin).await?;
+    assert_eq!(
+        late_worker.rows_affected(),
+        0,
+        "closed steward lease must fence late settlement"
+    );
     for (publication, original_status) in publications {
         let (after, lease): (String, Option<Uuid>) = sqlx::query_as(
             "select status,lease_token from app.publication_jobs where public_id=$1",

@@ -607,12 +607,28 @@ async fn all_five_business_operations_share_the_engine_across_every_transport() 
             Arc::new(fixture.client(provider, Duration::from_secs(1))),
             "requested-model".into(),
         );
+        let mut conversation = crate::conversation_context::ConversationContext::empty(
+            uuid::Uuid::from_u128(10),
+            uuid::Uuid::from_u128(11),
+        );
+        conversation.available_messages = 1;
+        conversation
+            .messages
+            .push(crate::conversation_context::ConversationMessage {
+                message_public_id: uuid::Uuid::from_u128(12),
+                author_actor_id: Some(uuid::Uuid::from_u128(13)),
+                role: "assistant".into(),
+                content: "[FICTIF] La seconde option est verte, une hypothèse à valider.".into(),
+                created_at: chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+                content_truncated: false,
+            });
         let turn = engine
             .respond(AgentInput {
                 scope_kind: "project".into(),
                 instructions: "Business instruction".into(),
                 user_message: "User objective".into(),
                 context: json!({}),
+                conversation: conversation.clone(),
             })
             .await
             .unwrap();
@@ -646,6 +662,28 @@ async fn all_five_business_operations_share_the_engine_across_every_transport() 
             .await
             .unwrap();
         assert_eq!(fixture.state.hits.load(Ordering::SeqCst), 5);
+        let requests = fixture.state.requests.lock().unwrap();
+        let wire: Value = serde_json::from_slice(&requests[0].body).unwrap();
+        let payload = match preset(provider).unwrap().protocol {
+            Protocol::Responses => &wire["input"][0]["content"][0]["text"],
+            Protocol::Anthropic => &wire["messages"][0]["content"],
+            Protocol::ChatSchema | Protocol::ChatJson => &wire["messages"][1]["content"],
+        };
+        let payload: Value = serde_json::from_str(payload.as_str().unwrap()).unwrap();
+        assert_eq!(payload["conversation"], json!(conversation));
+        assert_eq!(payload["context"], json!({}));
+        assert_eq!(payload["message"], "User objective");
+        let instruction = match preset(provider).unwrap().protocol {
+            Protocol::Responses => &wire["instructions"],
+            Protocol::Anthropic => &wire["system"],
+            Protocol::ChatSchema | Protocol::ChatJson => &wire["messages"][0]["content"],
+        };
+        assert!(
+            instruction
+                .as_str()
+                .unwrap()
+                .contains("jamais les UUID de messages")
+        );
     }
 }
 
@@ -852,5 +890,45 @@ async fn body_timeouts_and_disconnections_retry_without_becoming_contract_errors
         assert_eq!(result.metadata.attempts, 2);
         assert_eq!(result.output, json!({"ok":true}));
         assert_eq!(fixture.state.hits.load(Ordering::SeqCst), 2);
+    }
+}
+
+#[tokio::test]
+async fn typed_artifacts_use_the_same_strict_contract_across_all_provider_protocols() {
+    use crate::artifacts::generation_contract::{ArtifactGenerationInput, deterministic};
+    for provider in PROVIDERS {
+        let mut inputs = Vec::new();
+        for kind in crate::artifacts::ARTIFACT_TYPES {
+            inputs.push(ArtifactGenerationInput{artifact_type:kind.into(),instructions:"[FICTIF] Préparer les accès".into(),
+                agent_instructions:"[FICTIF] Agent produit".into(),objective:"[FICTIF] Collaboration".into(),
+                context:json!({"knowledge":[{"version_public_id":uuid::Uuid::from_u128(5),"statement":"[FICTIF] Règle"}]}),
+                conversation:json!({"trust":"unconfirmed_conversation","messages":[{"content":"[FICTIF] Hypothèse"}]}),
+                source_ids:vec![uuid::Uuid::from_u128(5)]});
+        }
+        let outputs = inputs
+            .iter()
+            .map(|input| json!(deterministic(input.clone()).unwrap().output));
+        let fixture = Fixture::start(
+            outputs
+                .map(|output| Reply::json(response(provider, output)))
+                .collect(),
+        )
+        .await;
+        let engine = StructuredEngine::with_transport(
+            Arc::new(fixture.client(provider, Duration::from_secs(1))),
+            "requested-model".into(),
+        );
+        for input in inputs {
+            let result = engine.generate_artifact(input.clone()).await.unwrap();
+            crate::artifacts::generation_contract::validate(
+                &input.artifact_type,
+                &result.output,
+                &input.source_ids,
+            )
+            .unwrap();
+            assert_eq!(result.metadata.provider, provider);
+            assert!(result.output.title.starts_with("[FICTIF]"));
+        }
+        assert_eq!(fixture.state.hits.load(Ordering::SeqCst), 5);
     }
 }

@@ -1,7 +1,7 @@
 ---
 project: AI Center
 status_schema: 2
-last_reviewed: 2026-09-22
+last_reviewed: 2026-09-23
 stage: company-context-v1-integration
 health: amber
 publication_status: draft_pr_in_progress_not_deployed
@@ -29,10 +29,25 @@ mono-utilisateur de l'ancien MVP. Le code de production des projets clients
 reste produit dans les outils externes.
 
 Le développement utilise le checkout indiqué en métadonnées ; l'ancien checkout
-est préservé. Les jalons `9be97b6` et `596cfee` sont commités et poussés dans la
+est préservé. Les jalons `9be97b6`, `596cfee` et `f5c5a28` sont commités et poussés dans la
 [PR de travail n°3](https://github.com/gneed49/ai-center/pull/3), avec leurs huit
 contrôles CI distincts réussis. Aucun déploiement de cette V1 ni appel facturé
 ou qualification de destinations Notion/Linear/GitHub réelles n'est déclaré.
+
+## Écarts logiciels prioritaires du 23 septembre
+
+La [revue de continuité du contexte](specs/company-context-v1/acceptance-review-2026-09-23.md)
+a trouvé trois P1 malgré la CI verte : absence d'historique conversationnel dans
+l'entrée modèle, circuit séparé entre génération et artefacts publiables, et
+absence de progression du steward au-delà de ses premières sources/paires.
+Les trois corrections sont implémentées localement et leur recette intégrée
+est en cours. La revue a aussi renforcé les reprises après réponse perdue,
+l’attribution des appels IA lors d’un changement de rôle et le verrouillage
+du steward. La revue du parcours vers les outils a aussi relevé un quatrième
+écart : un document de plusieurs tickets devient encore une seule issue
+Linear/GitHub. Le [lot tickets distincts](specs/ticket-publication/spec.md)
+prévoit une publication et un lien par ticket, sans nouveau tableau de tâches.
+G1 reste ouvert jusqu’à réalisation de ce lot et qualification du même commit.
 
 ## Réalisation présente
 
@@ -57,40 +72,30 @@ chaque exigence. Le registre de preuve du candidat indique leurs contrôles.
 
 ## Preuves courantes
 
-Le [rapport du 22 septembre](specs/company-context-v1/candidate-validation-2026-09-22.md)
-précise les validations reproduites et les écarts ouverts. Il prévaut sur la
-photo intermédiaire ci-dessous. Les deux parcours API/DB réelles et les 20 scénarios société passent après
-l’extension du graphe. Un jalon local est enregistré, avec les écarts restants
-explicitement ouverts ; le jalon `9be97b6` est poussé dans la [PR de travail n°3](https://github.com/gneed49/ai-center/pull/3).
-Ses huit contrôles CI distincts passent, comme ceux de `596cfee` qui ajoute
-TLS PostgreSQL vérifié et réduit les images d'exploitation. La bibliothèque
-de connaissances, les liens précis vers les fichiers du graphe et les textes
-des parcours projet/transmission sont en consolidation dans le prochain jalon.
-
-## Preuves intermédiaires du 21 septembre
-
-- Une première photo qualité passe : formatage, lint, compilation web/serveur,
-  Clippy workspace, 144 tests unitaires Rust, 122 tests web, 69 contrôles Python.
-  Des corrections ultérieures demandent une nouvelle photo commune.
-- Frontend élargi : 133 tests web dans 36 fichiers passent, ainsi que les suites
-  ciblées invitations/arrêt, publication et preuves GitHub. Les mocks de ces
-  tests ne prouvent pas un accès fournisseur réel.
-- Intégration PostgreSQL isolée : migration depuis la baseline, 32 pgTAP,
-  vérification des privilèges runtime/RLS ; modules société (9 tests), artefacts
-  (2), invitations (3), outils (5) et quotas (2) passés dans une première photo.
-  Deux régressions de reprise/fixture ont été corrigées ; nouvelle recette globale
-  requise avec les tests ajoutés et les dernières migrations.
-- Sauvegarde/restauration locale réussie sur 56 tables et 132 politiques ; cette
-  photo précède les dernières colonnes/politiques de reprise et d'effacement.
-- Supabase Auth réel local : création d'identité éphémère, magic-link/OTP,
-  sélection de société, rôle viewer, refus des mutations et des accès forgés.
-  Aucune délivrabilité SMTP externe prouvée.
-- Navigateur avec vrai serveur et PostgreSQL : parcours Produit → contexte →
-  plan technique/couverture/historique passé. Nouveau parcours artefact/graphe
-  en reprise après correction d'une URL de test ; aucun défaut de rendu déduit
-  de ce seul échec.
-- Deux images construites localement via Podman, sans publication. Elles devront
-  être reconstruites sur le candidat final et configurées pour la cible Auth.
+- **Dernier candidat poussé : `f5c5a28`.** Huit contrôles CI distincts réussis,
+  157 tests web, 155 unités Rust, 21 scénarios société, deux parcours navigateur
+  API/DB réelles et 150 scénarios navigateur avec doubles HTTP. La bibliothèque
+  de connaissances et les sources exactes du graphe font partie de ce commit.
+  Le [rapport du 22 septembre](specs/company-context-v1/candidate-validation-2026-09-22.md)
+  conserve la portée détaillée et les preuves des jalons précédents.
+- **Compléments locaux du 23 septembre, pas encore poussés.** La suite qualité
+  passe avec 164 tests web, 164 unités Rust, trois contrats synthétiques et
+  78 contrôles Python, ainsi que format/lint/Clippy et compilations. La matrice
+  navigateur a passé 146/150 scénarios ; les quatre échecs étaient une réponse
+  de progression absente des doubles HTTP. Après correction de cette fixture,
+  les quatre scénarios passent sur les deux tailles Chromium concernées.
+- **Deux comptes Auth dans Chromium : réussi sur base jetable.** Société,
+  invitation, projet partagé, lecture seule, promotion, retrait et ancien lien
+  refusé ; rechargement montrant le refus. OTP obtenu auprès d’Auth local,
+  aucune délivrabilité SMTP externe prouvée. Cette recette entre dans la CI.
+- **Nouveaux parcours d’artefacts : recette en cours.** La conversion du plan
+  technique existant vers un brouillon conserve exactement son contenu et ses
+  sources dans le parcours API/DB. Deux nouveaux parcours génération/reprise
+  sont à rejouer sur une interface stabilisée après corrections de revue.
+- **Schéma et exploitation : en intégration.** Inventaire des tables de
+  progression, sources d’artefacts et auteur immuable d’appel IA revu ; droits
+  runtime explicites, effacement et clôture des opérations abandonnées adaptés.
+  La recette PostgreSQL, restauration et images doit porter sur le candidat final.
 
 ## Ce qui reste ouvert
 

@@ -99,6 +99,7 @@ pub async fn export(state: &AppState, project: Uuid) -> AppResult<ProjectDataExp
 fn owned_predicate(table: &str) -> Option<&'static str> {
     match table {
         "ai_call_reservations"
+        | "steward_scan_progress"
         | "workspace_members"
         | "workspace_automation_controls"
         | "workspaces" => None,

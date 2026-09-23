@@ -186,6 +186,29 @@ test("traverse le vrai backend déterministe jusqu’au plan, à sa couverture e
   await expect(
     page.getByRole("heading", { name: library.items[0].title, exact: true }),
   ).toBeVisible();
+  await page.goto(`${projectPath}/deliverables/${plan.public_id}`);
+  await page
+    .getByRole("button", { name: "Créer un brouillon depuis cette version" })
+    .click();
+  await expect(page.getByText(/Version 1 · Brouillon/)).toBeVisible();
+  const convertedId = new URL(page.url()).pathname.split("/").at(-1)!;
+  const convertedResponse = await request.get(
+    `${apiUrl}/api/artifacts/${convertedId}`,
+  );
+  expect(convertedResponse.status()).toBe(200);
+  const converted = await convertedResponse.json();
+  expect(converted.artifact.artifact_type).toBe("technical_plan");
+  expect(converted.current_version.structured_content.content).toEqual(
+    plan.content,
+  );
+  expect(converted.current_version.sources).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: "deliverable",
+        public_id: plan.public_id,
+      }),
+    ]),
+  );
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
   expect(requestFailures).toEqual([]);

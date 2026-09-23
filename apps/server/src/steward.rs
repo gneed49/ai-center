@@ -43,7 +43,7 @@ const DEFAULT_STEWARD_SCAN_WORKSPACE_LIMIT: u32 = 16;
 const MIN_STEWARD_SCAN_INTERVAL: Duration = Duration::from_secs(1);
 const MAX_STEWARD_SCAN_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const MAX_STEWARD_SCAN_WORKSPACE_LIMIT: u32 = 128;
-const STEWARD_EVENT_TYPES: [&str; 7] = [
+const STEWARD_EVENT_TYPES: [&str; 8] = [
     "knowledge.committed",
     "knowledge.revised",
     "artifact.validated",
@@ -51,8 +51,11 @@ const STEWARD_EVENT_TYPES: [&str; 7] = [
     "external_reference.observed",
     "publication.observed",
     "github_code.observed",
+    "steward.continue",
 ];
 mod company;
+mod progress;
+pub use progress::status as company_progress;
 
 /// Bounded inputs for one Steward run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -330,14 +333,11 @@ pub async fn analyze_project(
     project_public_id: Uuid,
     config: StewardConfig,
 ) -> AppResult<StewardRunResult> {
-    let mut selected_state = state.clone();
-    selected_state.engine = crate::providers::resolve_engine(state).await?;
-    let state = &selected_state;
     let config = config.validate()?;
     ensure_mutating_role(state)?;
 
     let prepared = prepare_run(state, project_public_id, config).await?;
-    let Some(snapshot) = prepared else {
+    let Some((snapshot, engine)) = prepared else {
         let graph_version = current_graph_version(state, project_public_id).await?;
         return Ok(StewardRunResult {
             project_public_id,
@@ -352,8 +352,7 @@ pub async fn analyze_project(
 
     let candidate_payload = serde_json::to_value(&snapshot.candidates)
         .map_err(|error| AppError::Internal(error.to_string()))?;
-    let generated = state
-        .engine
+    let generated = engine
         .analyze_contradictions(StewardInput {
             candidate_pairs: candidate_payload,
         })
@@ -363,6 +362,9 @@ pub async fn analyze_project(
         Ok(generated) => generated,
         Err(error) => {
             record_failed_run(state, snapshot.model_run_id, &error).await?;
+            if let Some(company) = &snapshot.company {
+                let _ = progress::release(state, &company.progress, error.public_code()).await;
+            }
             return Err(error);
         }
     };
@@ -382,6 +384,9 @@ pub async fn analyze_project(
                     &error,
                 )
                 .await?;
+                if let Some(company) = &snapshot.company {
+                    let _ = progress::release(state, &company.progress, error.public_code()).await;
+                }
                 return Err(error);
             }
         };
@@ -389,7 +394,19 @@ pub async fn analyze_project(
     if let Some(company) = &snapshot.company {
         company::enforce_observed_evidence(company, &mut assessments);
     }
-    persist_completed_run(state, snapshot, generated, raw_output, assessments).await
+    let step = snapshot
+        .company
+        .as_ref()
+        .map(|company| company.progress.clone());
+    let model_run_id = snapshot.model_run_id;
+    let result = persist_completed_run(state, snapshot, generated, raw_output, assessments).await;
+    if let Err(error) = &result {
+        let _ = record_failed_run(state, model_run_id, error).await;
+        if let Some(step) = step {
+            let _ = progress::release(state, &step, error.public_code()).await;
+        }
+    }
+    result
 }
 
 /// Processes a domain event that was previously claimed with [`Outbox::claim_batch`].
@@ -561,10 +578,9 @@ async fn drain_steward_outbox_with(
         }
         summary.claimed += events.len();
 
-        // One analysis of the newest claimed event covers the complete current
-        // project graph. Earlier events for that same project are acknowledged
-        // as coalesced, avoiding one provider call per knowledge item in a
-        // multi-proposal commit.
+        // One event resumes the durable company frontier. Coalescing cannot
+        // discard a source: immutable version receipts, rather than this batch
+        // of events, determine the remaining work.
         let latest_by_project = events
             .iter()
             .filter_map(|event| {
@@ -753,7 +769,12 @@ async fn prepare_run(
     state: &AppState,
     project_public_id: Uuid,
     config: StewardConfig,
-) -> AppResult<Option<ProjectSnapshot>> {
+) -> AppResult<
+    Option<(
+        ProjectSnapshot,
+        std::sync::Arc<dyn crate::agent::AgentEngine>,
+    )>,
+> {
     let mut tx = state.begin_request().await?;
     let project: Option<(i64, i64, i64)> = sqlx::query_as(
         "select id, workspace_id, graph_version
@@ -765,11 +786,11 @@ async fn prepare_run(
     .fetch_optional(&mut *tx)
     .await?;
     let (project_id, workspace_id, graph_version) = project.ok_or(AppError::NotFound)?;
-    crate::company::data::require_active(&mut tx, project_id).await?;
-
     let company_context = company::load(&mut tx, project_id, config.max_versions).await?;
-    let (versions, mut company) = if let Some((versions, snapshot)) = company_context {
-        (versions, Some(snapshot))
+    // Keep the same lock order as finalization: company frontier, then project.
+    crate::company::data::require_active(&mut tx, project_id).await?;
+    let (mut candidates, mut company) = if let Some((candidates, snapshot)) = company_context {
+        (candidates, Some(snapshot))
     } else {
         let versions = sqlx::query_as::<_, CurrentKnowledgeVersion>(
             "select version.id as version_id, entry.id as knowledge_entry_id,
@@ -798,9 +819,19 @@ async fn prepare_run(
         .bind(i64::from(config.max_versions))
         .fetch_all(&mut *tx)
         .await?;
-        (versions, None)
+        (
+            build_candidate_pairs(&versions, config.max_candidate_pairs),
+            None,
+        )
     };
-    let mut candidates = build_candidate_pairs(&versions, config.max_candidate_pairs);
+    if candidates.len() > config.max_candidate_pairs {
+        if let Some(company) = company.as_mut() {
+            company.progress.omitted_neighbors +=
+                i64::try_from(candidates.len() - config.max_candidate_pairs).unwrap_or(i64::MAX);
+            company.truncated = true;
+        }
+        candidates.truncate(config.max_candidate_pairs);
+    }
     if let Some(company) = company.as_mut() {
         while serde_json::to_vec(&candidates)
             .map_err(|error| AppError::Internal(error.to_string()))?
@@ -809,13 +840,27 @@ async fn prepare_run(
         {
             candidates.pop();
             company.truncated = true;
+            company.progress.omitted_neighbors += 1;
         }
     }
     if candidates.is_empty() {
+        if let Some(company) = &company {
+            if !crate::scope_context::verify_snapshot(&mut tx, &company.scopes).await? {
+                return Err(AppError::Conflict(
+                    "Le contexte a changé pendant la sélection.".into(),
+                ));
+            }
+            progress::finish(&mut tx, &company.progress, 0).await?;
+        }
         tx.commit().await?;
         return Ok(None);
     }
 
+    if company.is_some() {
+        progress::admit(&mut tx).await?;
+    }
+    let resolution = crate::providers::resolve_engine_in_transaction(state, &mut tx).await?;
+    let engine = resolution.engine?;
     let source_public_ids = candidates
         .iter()
         .flat_map(|candidate| {
@@ -844,8 +889,8 @@ async fn prepare_run(
     )
     .bind(workspace_id)
     .bind(project_id)
-    .bind(state.engine.provider_name())
-    .bind(state.engine.requested_model())
+    .bind(&resolution.provider)
+    .bind(&resolution.model)
     .bind(STEWARD_PROMPT_VERSION)
     .bind(STEWARD_SCHEMA_VERSION)
     .bind(graph_version)
@@ -855,16 +900,19 @@ async fn prepare_run(
     .await?;
     tx.commit().await?;
 
-    Ok(Some(ProjectSnapshot {
-        project_id,
-        workspace_id,
-        project_public_id,
-        graph_version,
-        candidates,
-        model_run_id,
-        model_run_public_id,
-        company,
-    }))
+    Ok(Some((
+        ProjectSnapshot {
+            project_id,
+            workspace_id,
+            project_public_id,
+            graph_version,
+            candidates,
+            model_run_id,
+            model_run_public_id,
+            company,
+        },
+        engine,
+    )))
 }
 
 async fn persist_completed_run(
@@ -875,6 +923,9 @@ async fn persist_completed_run(
     assessments: Vec<ValidatedAssessment>,
 ) -> AppResult<StewardRunResult> {
     let mut tx = state.begin_request().await?;
+    if let Some(company) = &snapshot.company {
+        progress::lock_current(&mut tx, &company.progress).await?;
+    }
     let scopes_current = match &snapshot.company {
         Some(company) => crate::scope_context::verify_snapshot(&mut tx, &company.scopes).await?,
         None => true,
@@ -1087,6 +1138,9 @@ async fn persist_completed_run(
         insight_public_ids.push(insight_public_id);
     }
 
+    if let Some(company) = &snapshot.company {
+        progress::finish(&mut tx, &company.progress, assessments.len()).await?;
+    }
     tx.commit().await?;
     insight_public_ids.sort_unstable();
     insight_public_ids.dedup();
@@ -1201,7 +1255,7 @@ async fn complete_cancelled_run(
 
 async fn record_failed_run(state: &AppState, model_run_id: i64, error: &AppError) -> AppResult<()> {
     let mut tx = state.begin_request().await?;
-    sqlx::query(
+    let updated = sqlx::query(
         "update app.model_runs
          set status = 'failed', error_class = $2, error_message = $3,
              attempt_count = greatest(attempt_count, $4),
@@ -1224,6 +1278,15 @@ async fn record_failed_run(state: &AppState, model_run_id: i64, error: &AppError
     .bind(provider_attempt_count(error))
     .execute(&mut *tx)
     .await?;
+    if updated.rows_affected() == 0 {
+        // A changed request role can make the ordinary RLS update invisible.
+        // This helper only cancels this actor's still-running operation and
+        // cannot publish or recover the provider response.
+        sqlx::query("select app.cancel_model_run_after_access_loss($1)")
+            .bind(model_run_id)
+            .execute(&mut *tx)
+            .await?;
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -1250,7 +1313,7 @@ async fn record_invalid_run(
         .served_model
         .as_deref()
         .unwrap_or(&generated.metadata.requested_model);
-    sqlx::query(
+    let updated = sqlx::query(
         "update app.model_runs
          set provider = $2, model = $3, provider_response_id = $4,
              status = 'failed', output = $5, usage = $6,
@@ -1280,6 +1343,15 @@ async fn record_invalid_run(
     .bind(bounded_error_message(&error.public_message()))
     .execute(&mut *tx)
     .await?;
+    if updated.rows_affected() == 0 {
+        // A changed request role can make the ordinary RLS update invisible.
+        // This helper only cancels this actor's still-running operation and
+        // cannot publish or recover the provider response.
+        sqlx::query("select app.cancel_model_run_after_access_loss($1)")
+            .bind(model_run_id)
+            .execute(&mut *tx)
+            .await?;
+    }
     tx.commit().await?;
     Ok(())
 }

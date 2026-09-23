@@ -50,6 +50,8 @@ pub async fn graph(state: &AppState, query: GraphQuery) -> AppResult<GraphView> 
           ((e.project_id=selected.id and e.target_project_id=p.id) or (e.target_project_id=selected.id and e.project_id=p.id)))
           or exists(select 1 from app.context_pack_scope_sources s join app.context_packs pack on pack.id=s.context_pack_id
             join app.projects selected on selected.id=pack.project_id where selected.public_id=$1 and s.source_project_id=p.id and s.decision='included')
+          or exists(select 1 from app.artifact_version_sources s join app.artifact_document_versions v on v.id=s.version_id
+             join app.projects selected on selected.id=v.project_id where selected.public_id=$1 and s.source_project_id=p.id)
           or exists(select 1 from app.steward_scope_sources s join app.projects selected on selected.id=s.project_id
              where selected.public_id=$1 and s.source_project_id=p.id))
         order by case when p.public_id=$1 then 0 else 1 end,p.id limit 101")

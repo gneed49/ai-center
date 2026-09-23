@@ -17,6 +17,7 @@ Usage:
   ./scripts/ci-desktop.sh tls-smoke
   ./scripts/ci-desktop.sh backup-restore
   ./scripts/ci-desktop.sh auth-smoke
+  ./scripts/ci-desktop.sh auth-browser
   ./scripts/ci-desktop.sh e2e
   ./scripts/ci-desktop.sh real-e2e
   ./scripts/ci-desktop.sh desktop
@@ -58,6 +59,7 @@ quality() {
   python3 -m unittest discover -s scripts/tests -p 'test_native_smoke.py'
   python3 -m unittest discover -s scripts/tests -p 'test_company_erasure.py'
   python3 -m unittest discover -s scripts/tests -p 'test_project_maintenance.py'
+  python3 -m unittest discover -s scripts/tests -p 'test_auth_browser_smoke.py'
   npm run build:web
   cargo build -p ai-center-server
 }
@@ -373,6 +375,10 @@ case "${1:-}" in
     ;;
   auth-smoke)
     auth_smoke
+    ;;
+  auth-browser)
+    integration_require_stack
+    python3 scripts/auth-browser-smoke.py
     ;;
   e2e)
     e2e

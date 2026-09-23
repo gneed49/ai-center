@@ -53,48 +53,159 @@ pub(super) struct Snapshot {
     pub sources: HashMap<Uuid, Source>,
     pub scopes: Vec<ScopeStamp>,
     pub truncated: bool,
+    pub progress: super::progress::Step,
+}
+
+pub(super) const MAX_SOURCES: i64 = 10_000;
+pub(super) const MAX_NEIGHBORS: usize = 12;
+
+fn catalog() -> &'static str {
+    include_str!("company_sources.sql")
 }
 
 pub(super) async fn load(
     tx: &mut Transaction<'_, Postgres>,
     project: i64,
     limit: u32,
-) -> AppResult<Option<(Vec<CurrentKnowledgeVersion>, Snapshot)>> {
+) -> AppResult<Option<(Vec<super::CandidatePair>, Snapshot)>> {
     let enabled:bool=sqlx::query_scalar("select exists(select 1 from app.projects where workspace_id=app.current_workspace_id() and scope_kind='company' and status='active')")
         .fetch_one(&mut **tx).await?;
     if !enabled {
         return Ok(None);
     }
-    let mut sources: Vec<Source> = sqlx::query_as(include_str!("company_sources.sql"))
+    let lease = super::progress::claim(tx).await?;
+    let count: i64 = sqlx::query_scalar(&format!("select count(*) from ({}) catalog", catalog()))
         .bind(project)
-        .bind(i64::from(limit) + 1)
-        .fetch_all(&mut **tx)
+        .fetch_one(&mut **tx)
         .await?;
-    let truncated = sources.len() > usize::try_from(limit).unwrap_or(usize::MAX);
-    sources.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
+    let mut progress = super::progress::Step {
+        lease,
+        anchor: None,
+        omitted_neighbors: 0,
+        has_more: false,
+        blocked: count > MAX_SOURCES,
+    };
+    if progress.blocked {
+        return Ok(Some((
+            vec![],
+            Snapshot {
+                sources: HashMap::new(),
+                scopes: vec![],
+                truncated: true,
+                progress,
+            },
+        )));
+    }
+    let anchor:Option<Source>=sqlx::query_as(&format!("select c.* from ({}) c where not exists(select 1 from app.steward_scan_sources s where s.workspace_id=app.current_workspace_id() and s.source_public_id=c.source_public_id) order by (c.scope_kind='company' and c.entry_type in('business_rule','constraint')) desc,c.observed_at,c.source_kind,c.source_id limit 1",catalog()))
+        .bind(project).fetch_optional(&mut **tx).await?;
+    let Some(anchor) = anchor else {
+        return Ok(Some((
+            vec![],
+            Snapshot {
+                sources: HashMap::new(),
+                scopes: vec![],
+                truncated: false,
+                progress,
+            },
+        )));
+    };
+    let pending:i64=sqlx::query_scalar(&format!("select count(*) from ({}) c where not exists(select 1 from app.steward_scan_sources s where s.workspace_id=app.current_workspace_id() and s.source_public_id=c.source_public_id)",catalog()))
+        .bind(project).fetch_one(&mut **tx).await?;
+    progress.has_more = pending > 1;
+    progress.anchor = Some(anchor.clone());
+    let terms = related_terms(&anchor.statement);
+    let mut sources = vec![anchor.clone()];
+    let mut candidates = Vec::new();
+    let mut bytes = 0;
+    if !terms.is_empty() {
+        #[derive(sqlx::FromRow)]
+        struct Neighbor {
+            #[sqlx(flatten)]
+            source: Source,
+            total_neighbors: i64,
+        }
+        let neighbors:Vec<Neighbor>=sqlx::query_as(&format!("select c.*,count(*) over() as total_neighbors from ({}) c where c.source_public_id<>$2 and c.parent_public_id<>$3 and not exists(select 1 from app.steward_scope_sources a join app.steward_scope_sources b on b.assessment_id=a.assessment_id where a.workspace_id=app.current_workspace_id() and a.source_public_id=$2 and b.source_public_id=c.source_public_id) and to_tsvector('simple',c.title||' '||c.statement) @@ to_tsquery('simple',$4) order by (c.scope_kind='company' and c.entry_type in('business_rule','constraint')) desc,ts_rank(to_tsvector('simple',c.title||' '||c.statement),to_tsquery('simple',$4)) desc,c.source_public_id limit $5",catalog()))
+            .bind(project).bind(anchor.source_public_id).bind(anchor.parent_public_id).bind(terms)
+            .bind(i64::try_from(MAX_NEIGHBORS.min(usize::try_from(limit.saturating_sub(1)).unwrap_or(1))).unwrap_or(12))
+            .fetch_all(&mut **tx).await?;
+        let total = neighbors.first().map_or(0, |n| n.total_neighbors);
+        let fingerprints: Vec<String> = neighbors
+            .iter()
+            .map(|n| super::pair_fingerprint(anchor.source_public_id, n.source.source_public_id))
+            .collect();
+        let assessed:HashSet<String>=sqlx::query_scalar::<_,String>("select distinct fingerprint from app.steward_assessments where workspace_id=app.current_workspace_id() and fingerprint=any($1)")
+            .bind(&fingerprints).fetch_all(&mut **tx).await?.into_iter().collect();
+        let considered = i64::try_from(neighbors.len()).unwrap_or(i64::MAX);
+        progress.omitted_neighbors = total - considered;
+        for neighbor in neighbors {
+            let fingerprint =
+                super::pair_fingerprint(anchor.source_public_id, neighbor.source.source_public_id);
+            if assessed.contains(&fingerprint) {
+                continue;
+            }
+            let pair =
+                super::build_candidate_pairs(&[anchor.version(), neighbor.source.version()], 1)
+                    .pop();
+            if let Some(pair) = pair {
+                let size = serde_json::to_vec(&pair)
+                    .map_err(|e| crate::error::AppError::Internal(e.to_string()))?
+                    .len()
+                    + 2;
+                if bytes + size > 159_000 {
+                    progress.omitted_neighbors += 1;
+                    continue;
+                }
+                bytes += size;
+                sources.push(neighbor.source);
+                candidates.push(pair);
+            }
+        }
+    }
     let mut seen = HashSet::new();
     let scopes = sources
         .iter()
-        .filter(|source| seen.insert(source.source_project_id))
-        .map(|source| ScopeStamp {
-            project_id: source.source_project_id,
-            project_public_id: source.source_project_public_id,
-            graph_version: source.graph_version,
-            scope_kind: source.scope_kind.clone(),
+        .filter(|s| seen.insert(s.source_project_id))
+        .map(|s| ScopeStamp {
+            project_id: s.source_project_id,
+            project_public_id: s.source_project_public_id,
+            graph_version: s.graph_version,
+            scope_kind: s.scope_kind.clone(),
         })
         .collect();
-    let versions = sources.iter().map(Source::version).collect();
     Ok(Some((
-        versions,
+        candidates,
         Snapshot {
             sources: sources
                 .into_iter()
-                .map(|source| (source.source_public_id, source))
+                .map(|s| (s.source_public_id, s))
                 .collect(),
             scopes,
-            truncated,
+            truncated: progress.omitted_neighbors > 0 || progress.has_more,
+            progress,
         },
     )))
+}
+
+fn related_terms(statement: &str) -> String {
+    super::subject_terms(statement)
+        .into_iter()
+        .filter(|term| {
+            !matches!(
+                term.as_str(),
+                "fictif"
+                    | "règle"
+                    | "regle"
+                    | "projet"
+                    | "décision"
+                    | "decision"
+                    | "source"
+                    | "knowledge"
+                    | "artifact"
+            )
+        })
+        .take(48)
+        .collect::<Vec<_>>()
+        .join(" | ")
 }
 
 /// Metadata, missing text and stale observations can support a request for
@@ -147,6 +258,20 @@ pub(super) async fn persist_source(
 mod tests {
     use super::*;
     #[test]
+    fn neighbor_query_uses_bounded_business_terms_not_fixture_or_query_syntax() {
+        assert_eq!(
+            related_terms("[FICTIF] Source pour une décision : quartzbudget ':*!"),
+            "quartzbudget"
+        );
+        assert!(related_terms("[FICTIF] Source décision projet").is_empty());
+        let long = (0..100)
+            .map(|n| format!("concept{n}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(related_terms(&long).split(" | ").count(), 48);
+    }
+
+    #[test]
     fn metadata_or_missing_content_cannot_authorize_a_provider_claim() {
         let left = Uuid::new_v4();
         let right = Uuid::new_v4();
@@ -181,6 +306,7 @@ mod tests {
                 sources,
                 scopes: vec![],
                 truncated: false,
+                progress: crate::steward::progress::Step::test_empty(),
             };
             for verdict in ["contradiction", "compatible"] {
                 let mut assessments = vec![ValidatedAssessment {

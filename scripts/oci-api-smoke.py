@@ -79,6 +79,8 @@ def main():
             config = json.loads(command("inspect", name))[0]
             if config["Config"]["User"] != "10001:10001" or not config["HostConfig"]["ReadonlyRootfs"]:
                 raise RuntimeError("Non-root read-only runtime required")
+            if config["Config"].get("Healthcheck", {}).get("Test") != ["CMD", "/usr/local/bin/ai-center-server", "--healthcheck"]:
+                raise RuntimeError("Image must retain its scheduled healthcheck; Podman builds require --format docker")
             command("stop", "--time", "30", name)
             state = json.loads(command("inspect", "--format", "{{json .State}}", name))
             if state["ExitCode"] != 0:

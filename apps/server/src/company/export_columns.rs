@@ -18,7 +18,7 @@ pub(super) const TABLES: &[(&str, &str)] = &[
     ),
     (
         "artifact_version_sources",
-        "id,workspace_id,version_id,source_project_id,source_kind,knowledge_version_id,context_pack_id,deliverable_id,session_id,source_public_id,snapshot",
+        "id,workspace_id,version_id,source_project_id,source_kind,knowledge_version_id,context_pack_id,deliverable_id,session_id,source_artifact_version_id,source_public_id,snapshot",
     ),
     (
         "artifacts",
@@ -134,7 +134,7 @@ pub(super) const TABLES: &[(&str, &str)] = &[
     ),
     (
         "model_runs",
-        "id,public_id,workspace_id,project_id,session_id,context_pack_id,operation,provider,model,prompt_version,schema_version,source_graph_version,input_hash,source_public_ids,provider_response_id,status,output,usage,input_tokens,output_tokens,estimated_cost,latency_ms,attempt_count,error_class,error_message,started_at,completed_at,created_at,updated_at",
+        "id,public_id,workspace_id,project_id,session_id,context_pack_id,started_by_actor_id,operation,provider,model,prompt_version,schema_version,source_graph_version,input_hash,source_public_ids,provider_response_id,status,output,usage,input_tokens,output_tokens,estimated_cost,latency_ms,attempt_count,error_class,error_message,started_at,completed_at,created_at,updated_at",
     ),
     (
         "mutation_proposals",
@@ -167,6 +167,14 @@ pub(super) const TABLES: &[(&str, &str)] = &[
     (
         "steward_assessments",
         "id,public_id,workspace_id,project_id,model_run_id,graph_version,fingerprint,classification,severity,confidence,title,explanation,created_at",
+    ),
+    (
+        "steward_scan_progress",
+        "id,workspace_id,status,last_error_code,updated_at",
+    ),
+    (
+        "steward_scan_sources",
+        "id,workspace_id,project_id,source_public_id,source_kind,examined_pairs,omitted_neighbors,completed_at",
     ),
     (
         "steward_scope_sources",

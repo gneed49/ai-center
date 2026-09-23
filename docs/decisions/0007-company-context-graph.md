@@ -13,3 +13,28 @@ Alternatives écartées : rendre tous les `project_id` optionnels aurait fragili
 La provenance interprojets s'ajoute aux tables locales historiques : `context_pack_scope_sources` conserve chaque candidat transverse ou artefact, sa décision d'inclusion et sa version exacte ; `context_pack_scope_versions` conserve les versions de graphes observées. Les clés étrangères locales restent en place. Les exports et le hash incluent la provenance et les espaces. Les versions de graphe protègent la compilation et la réponse en cours contre une modification concurrente ; après création, seules les sources incluses révisées ou devenues indisponibles périment un pack, sans rendre inutilisable un pack indépendant à chaque changement voisin.
 
 Le parcours courant est limité à deux relations confirmées, vingt espaces sources, cent soixante connaissances et vingt artefacts validés. Il ajoute les règles et contraintes société ; l'agent société reçoit aussi vingt résumés de projets au maximum, identifiés comme résumés avec un indicateur de troncature. Un dépassement des sources refuse le traitement et demande un périmètre plus étroit. Les brouillons ne remplacent pas une version d'artefact validée ; la dernière validation est utilisée avec son identité immuable et un extrait explicitement borné. Les relais lead technique et développeur conservent le même contrôle de pack obligatoire.
+
+## Continuité des conversations et de la vérification — 23 septembre 2026
+
+Le contexte de conversation est distinct des connaissances confirmées. Chaque
+tour conserve une capture bornée des messages visibles au moment de la commande ;
+une reprise retrouve cette capture. Les messages peuvent orienter le brainstorming,
+mais ne deviennent ni règles validées ni citations de connaissance par leur seule
+présence dans le transcript. Les artefacts générés conservent les identités des
+sources réellement utilisées et commencent comme brouillons ; leur validation et
+leur publication restent deux actions humaines distinctes.
+
+Le steward utilise un registre persistant des versions examinées. Il progresse
+par source avec douze voisins pertinents au maximum, dans un catalogue plafonné
+à dix mille sources. Les paires déjà évaluées sont écartées avant l’appel modèle,
+et une société ne lance pas plus de six appels de contradiction par heure,
+indépendamment des autres quotas IA. Un bail clôturé ou remplacé ne permet pas
+à un ancien worker de publier son résultat. Les continuations gardent un acteur
+autorisé et les droits sont revérifiés avant enregistrement.
+
+Ce parcours utilise notamment les termes communs entre sources ; il ne compare
+pas toutes les paires possibles et ne couvre pas nécessairement deux formulations
+sémantiquement liées sans terme commun. Le bilan expose les sources en attente,
+les voisins omis et le caractère non exhaustif. « Parcours terminé » ne signifie
+jamais « aucune contradiction dans l’entreprise ». Le contrat et les preuves sont
+suivis dans [le plan du steward](../../specs/company-context-v1/steward-progress-plan.md).

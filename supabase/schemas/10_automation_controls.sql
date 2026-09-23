@@ -11,7 +11,7 @@ create table app.ai_call_reservations (
   public_id uuid not null unique,
   workspace_id bigint not null references app.workspaces(id) on delete cascade,
   actor_id uuid not null,
-  operation text not null check(operation in ('respond','select_context','technical_plan','coverage','steward')),
+  operation text not null check(operation in ('respond','select_context','technical_plan','coverage','steward','artifact_draft')),
   control_generation bigint not null check(control_generation>=0),
   status text not null default 'running' check(status in ('running','completed','failed','cancelled')),
   created_at timestamptz not null default now(),
@@ -123,7 +123,7 @@ as $$
       ) as due_at
     from app.domain_events event
     cross join scan_bounds bounds
-    where event.event_type in ('knowledge.committed','knowledge.revised','artifact.validated','graph.relationship_confirmed','external_reference.observed','publication.observed','github_code.observed')
+    where event.event_type in ('knowledge.committed','knowledge.revised','artifact.validated','graph.relationship_confirmed','external_reference.observed','publication.observed','github_code.observed','steward.continue')
       and (
         (event.status = 'pending' and event.available_at <= bounds.observed_at)
         or (

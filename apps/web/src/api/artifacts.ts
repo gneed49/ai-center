@@ -42,6 +42,40 @@ export const artifactsApi = {
       `/api/projects/${id(projectId)}/artifacts`,
       command(input, key),
     ),
+  generate: (
+    projectId: string,
+    input: {
+      session_id: string;
+      artifact_type: ArtifactType;
+      instructions: string;
+    },
+    key: string,
+  ) =>
+    request<ArtifactDetail>(
+      `/api/projects/${id(projectId)}/artifacts/generate`,
+      command(input, key),
+    ),
+  generationReceipt: (projectId: string, key: string) =>
+    request<{
+      status: string;
+      can_retry: boolean;
+      result: ArtifactDetail | null;
+    }>(`/api/projects/${id(projectId)}/artifact-generations/${id(key)}`, {
+      cache: "no-store",
+    }),
+  fromDeliverable: (projectId: string, deliverableId: string, key: string) =>
+    request<ArtifactDetail>(
+      `/api/projects/${id(projectId)}/deliverables/${id(deliverableId)}/artifact`,
+      command({}, key),
+    ),
+  conversionReceipt: (projectId: string, key: string) =>
+    request<{
+      status: string;
+      can_retry: boolean;
+      result: ArtifactDetail | null;
+    }>(`/api/projects/${id(projectId)}/artifact-conversions/${id(key)}`, {
+      cache: "no-store",
+    }),
   detail: (artifactId: string) =>
     request<ArtifactDetail>(`/api/artifacts/${id(artifactId)}`),
   save: (artifactId: string, input: SaveArtifact, key: string) =>

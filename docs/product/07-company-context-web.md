@@ -33,6 +33,13 @@ Développeur et retrouve des conversations attachées au bon périmètre. Les
 profils métier ne sont pas des rôles d'autorisation. Le passage vers la partie
 technique conserve le contexte sourcé requis par le relais.
 
+Dans une conversation, l’agent reçoit une fenêtre récente des échanges de cette
+session, avec leurs auteurs et leur provenance, afin de poursuivre le
+brainstorming. Cette mémoire de travail est séparée des connaissances confirmées.
+Les omissions et extraits d’une longue conversation sont explicites ; l’agent
+ne prétend pas se souvenir d’échanges qui n’ont pas été transmis. Les messages
+arrivés après la capture d’un tour ne changent pas les données de ce tour.
+
 Le PM prépare kickoff, spécification et tickets produit ; le lead prépare plan
 et tickets techniques. Les versions des artefacts sont organisées par projet,
 consultables et exportables. Une conversation peut être une source de travail,
@@ -90,3 +97,23 @@ l'observation et le fichier sélectionnés ; une identité absente est signalée
 sans substituer un contenu différent. Lire une observation ne relance pas GitHub.
 La création d'un projet décrit les cinq agents ; le parcours Produit vers Lead
 ou Développement présente validation et transmission en langage métier.
+
+
+### Brouillons préparés par les agents
+
+La bibliothèque permet de demander explicitement une note de lancement, une
+spécification ou des tickets produit aux agents généraliste, produit et commercial.
+Le lead technique et le développeur préparent plans et tickets techniques depuis
+un contexte transmis courant. Le document conserve ses sections, tickets,
+citations et points à clarifier ; l’édition de ces champs met à jour le même
+contenu Markdown transmis aux outils. Le résultat reste un brouillon jusqu’à une
+validation humaine, et la publication externe nécessite une action distincte.
+
+Un livrable FeatureBrief ou TechnicalPlan existant peut être copié depuis sa
+page dans un brouillon publiable. La version choisie, y compris historique,
+reste la source exacte : aucune substitution par le livrable le plus récent.
+
+Une demande de génération envoyée reste retrouvable dans le même navigateur et
+le même compte/société/projet. Le suivi lit un reçu serveur sans nouvel appel IA.
+Une reprise est explicite et conserve son identité ; une demande expirée invite
+à consulter les résultats existants avant de préparer une nouvelle demande.

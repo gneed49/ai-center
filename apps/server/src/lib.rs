@@ -49,6 +49,7 @@ pub mod company;
 pub mod config;
 pub mod container_health;
 pub mod context;
+pub mod conversation_context;
 mod database_transport;
 pub mod error;
 pub mod external_references;
@@ -270,7 +271,7 @@ async fn verify_company_schema(pool: &PgPool) -> Result<()> {
              'app.projects','app.workspace_invitations','app.artifact_documents',
              'app.artifact_document_versions','app.context_pack_scope_sources',
              'app.work_tool_connections','app.publication_jobs','app.publication_observations',
-             'app.steward_scope_sources','app.workspace_automation_controls','app.ai_call_reservations'
+             'app.steward_scope_sources','app.steward_scan_progress','app.steward_scan_sources','app.workspace_automation_controls','app.ai_call_reservations'
              ,'app.github_code_corpora','app.github_code_file_observations'
            ]) required(name) where to_regclass(name) is null
          ) and not exists (

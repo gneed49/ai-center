@@ -31,7 +31,7 @@ objects as (
  from app.publication_observations o join app.publication_jobs j on j.id=o.publication_job_id join scopes p on p.id=j.project_id
  where not exists(select 1 from app.publication_observations newer where newer.publication_job_id=j.id and newer.id>o.id)
  union all
- select f.id,p.id,p.public_id,'github_code_file_observation',f.public_id,c.public_id,
+ select f.id,p.id,p.public_id,'github_code_file_observation',f.public_id,f.public_id,
    case when p.id=$1 then 'focus/' else p.public_id::text||'/' end||'github-code','technical_rule',
    c.repository||'@'||c.commit_sha||':'||f.path,
    left(coalesce(f.content_text,'Contenu non lu : '||f.status),6000),
@@ -49,5 +49,5 @@ objects as (
    join app.github_code_corpora nc on nc.id=newer.corpus_id where newer.project_id=f.project_id
      and nc.repository=c.repository and newer.path=f.path and newer.id>f.id)
 )
-select o.source_id,o.source_project_id,o.source_project_public_id,o.source_kind,o.source_public_id,o.parent_public_id,o.node_key,o.entry_type,o.title,o.statement,o.insufficient,o.provenance,p.graph_version,p.scope_kind
- from objects o join scopes p on p.id=o.source_project_id order by o.priority,o.observed_at desc,o.source_kind,o.source_id desc limit $2
+select o.source_id,o.source_project_id,o.source_project_public_id,o.source_kind,o.source_public_id,o.parent_public_id,o.node_key,o.entry_type,o.title,o.statement,o.insufficient,o.provenance,p.graph_version,p.scope_kind,o.observed_at
+ from objects o join scopes p on p.id=o.source_project_id

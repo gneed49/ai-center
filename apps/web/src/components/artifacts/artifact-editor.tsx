@@ -1,3 +1,5 @@
+import { typedDraft, draftMarkdown } from "./typed-draft";
+import { TypedDraftEditor } from "./typed-draft-editor";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import type {
@@ -27,6 +29,9 @@ export function ArtifactEditor({
   onSubmit: (content: ArtifactContent) => void;
   submitLabel: string;
 }) {
+  const [draft, setDraft] = useState(() =>
+    typedDraft(initial.structured_content),
+  );
   const [title, setTitle] = useState(initial.title);
   const [body, setBody] = useState(initial.body_markdown);
   const [sources, setSources] = useState<ArtifactSourceInput[]>(() =>
@@ -83,8 +88,13 @@ export function ArtifactEditor({
     if (!title.trim() || busy) return;
     onSubmit({
       title: title.trim(),
-      body_markdown: body,
-      structured_content: initial.structured_content,
+      body_markdown: draft ? draftMarkdown(draft) : body,
+      structured_content: draft
+        ? {
+            ...initial.structured_content,
+            draft: { ...draft, title: title.trim() },
+          }
+        : initial.structured_content,
       sources,
     });
   }
@@ -114,37 +124,44 @@ export function ArtifactEditor({
           disabled={busy}
         />
       </div>
-      <div>
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <label htmlFor="artifact-body" className="text-sm font-medium">
-            Contenu
-          </label>
-          {lastResponse ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => setBody(lastResponse.content)}
-            >
-              Reprendre la dernière réponse
-            </Button>
-          ) : null}
+      {draft ? (
+        <TypedDraftEditor value={draft} onChange={setDraft} busy={busy} />
+      ) : (
+        <div>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <label htmlFor="artifact-body" className="text-sm font-medium">
+              Contenu
+            </label>
+            {lastResponse ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => setBody(lastResponse.content)}
+              >
+                Reprendre la dernière réponse
+              </Button>
+            ) : null}
+          </div>
+          <Textarea
+            id="artifact-body"
+            rows={14}
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            disabled={busy}
+            placeholder="Rédigez votre brouillon ou collez le texte à relire. Le format Markdown est accepté."
+            className="min-h-72 leading-7"
+          />
+          <p className="mt-2 text-xs text-muted-foreground">
+            Relisez le contenu et ses sources avant de valider cette version.
+          </p>
         </div>
-        <Textarea
-          id="artifact-body"
-          rows={14}
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          disabled={busy}
-          placeholder="Rédigez votre brouillon ou collez le texte à relire. Le format Markdown est accepté."
-          className="min-h-72 leading-7"
-        />
-        <p className="mt-2 text-xs text-muted-foreground">
-          Relisez le contenu et ses sources avant de valider cette version.
-        </p>
-      </div>
-      <fieldset disabled={busy} className="rounded-lg border p-4">
+      )}
+      <fieldset
+        disabled={busy || Boolean(draft)}
+        className="rounded-lg border p-4"
+      >
         <legend className="px-1 text-sm font-medium">
           Sources de cette version
         </legend>

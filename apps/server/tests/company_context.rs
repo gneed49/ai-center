@@ -829,6 +829,7 @@ async fn validated_artifact_sources_survive_drafts_then_expire_on_new_validation
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)] // Cross-project evidence, replay and human-state lifecycle.
 async fn company_steward_cites_cross_project_versions_and_keeps_human_status_separate() -> Result<()>
 {
     use ai_center_server::{
@@ -887,7 +888,11 @@ async fn company_steward_cites_cross_project_versions_and_keeps_human_status_sep
     }
     // Replayed exact versions must not create another notification.
     let replay = steward::analyze_project(&owner, a.public_id, StewardConfig::default()).await?;
-    assert_eq!(replay.insight_public_ids, vec![insight_id]);
+    assert!(replay.insight_public_ids.is_empty());
+    assert!(
+        replay.model_run_public_id.is_none(),
+        "an already evaluated pair never invokes the model again"
+    );
     let graph = company::graph(
         &owner,
         GraphQuery {
@@ -1354,3 +1359,12 @@ mod graph_navigation;
 
 #[path = "company_context/knowledge_library.rs"]
 mod knowledge_library;
+
+#[path = "company_context/conversation.rs"]
+mod conversation;
+
+#[path = "company_context/steward_progress.rs"]
+mod steward_progress;
+
+#[path = "company_context/model_run_access.rs"]
+mod model_run_access;

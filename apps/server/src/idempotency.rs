@@ -141,6 +141,7 @@ struct TransactionScope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExistingDecision {
     ResetExpired,
+    ExpiredConflict,
     ScopeConflict,
     HashConflict,
     Reclaim,
@@ -254,6 +255,9 @@ pub async fn begin(
 
     match classify_existing(&record, request) {
         ExistingDecision::ResetExpired => reset_expired(tx, record.id, request).await,
+        ExistingDecision::ExpiredConflict => Err(AppError::Conflict(
+            "Cette demande est expirée. Consultez son reçu ou la bibliothèque avant de créer une nouvelle demande.".into(),
+        )),
         ExistingDecision::ScopeConflict => Err(AppError::Conflict(
             "idempotency key was already used for a different project scope".into(),
         )),
@@ -780,6 +784,18 @@ fn classify_existing(record: &IdempotencyRecord, request: BeginRequest<'_>) -> E
     // must never turn its old command identity into another provider call.
     let maintenance_closed = record.status == "failed"
         && record.error_code.as_deref() == Some("operator_abandoned_closed");
+    // Saved artifact commands survive a browser reload. Their identity must
+    // never silently become a new paid generation after retention expires.
+    // This decision runs under the same row lock as the lease claim.
+    if record.expired
+        && !maintenance_closed
+        && matches!(
+            request.operation_key,
+            "artifact.generate" | "artifact.convert"
+        )
+    {
+        return ExistingDecision::ExpiredConflict;
+    }
     if record.expired && !maintenance_closed {
         return ExistingDecision::ResetExpired;
     }
@@ -1041,6 +1057,23 @@ mod tests {
             classify_existing(&closed, request(HASH_A, Some(3))),
             ExistingDecision::ScopeConflict
         );
+    }
+
+    #[test]
+    fn saved_artifact_generations_never_restart_after_expiry() {
+        for operation_key in ["artifact.generate", "artifact.convert"] {
+            let request = BeginRequest {
+                operation_key,
+                ..request(HASH_A, Some(2))
+            };
+            for status in ["completed", "processing", "failed"] {
+                let expired = record(status, HASH_A, Some(2), true, true);
+                assert_eq!(
+                    classify_existing(&expired, request),
+                    ExistingDecision::ExpiredConflict
+                );
+            }
+        }
     }
 
     #[test]

@@ -27,9 +27,29 @@ coordinateur ; ils n'introduisent pas de nouvelles attentes d'approbation.
 | CC-T10 | Parcours web et graphe interactif — frontend               | CC-004,022,033,044,053           | T03, T04, T05, T08 ; T09 pour inbox finale | review       |
 | CC-T11 | Reprise, quotas, arrêt et usage — backend + frontend       | CC-050 à 053                     | T02 ; intégration avec T04/T06/T09         | review       |
 | CC-T12 | Données et préparation exploitation — backend/Ops          | CC-054 à 056                     | T03, T05, T06, T11                         | review       |
-| CC-T13 | Candidate intégrée, revue et publication — QA/coordination | CC-057, CC-G1                    | T03 à T12                                  | in_progress  |
+| CC-T13 | Candidate intégrée, revue et publication — QA/coordination | CC-057, CC-G1                    | T03 à T12 et T16                            | in_progress  |
 | CC-T14 | Qualification réelle et ouverture contrôlée — Ops/produit  | CC-014,026,027,055,056, CC-G2/G3 | T13 + accès/cible/budget identifiés        | pending      |
 | CC-T15 | Pilote et décision V1 — produit/pilotes                    | CC-G4                            | T14 + temps et participants réels          | pending      |
+| CC-T16 | Tickets distincts vers les outils — backend + web          | CC-020,026,028,031,050,054        | T05, T06, T07 ; fin du gel d’intégration    | pending      |
+
+### Amendement de granularité — CC-T16
+
+L’audit de publication a confirmé qu’un artefact contenant plusieurs tickets
+créait une seule issue contenant tout le document. Le nouveau contrat
+[Tickets distincts](../ticket-publication/spec.md) et son
+[plan](../ticket-publication/plan.md) exigent une demande de publication par
+entrée sélectionnée, avec états/liens individuels et filiation version/index.
+Notion reste documentaire ; aucun tableau de tâches interne n’est ajouté.
+
+Le plan est préparé pendant la recette, **sans code ni SQL avant le signal de fin
+du gel donné par l’intégrateur**. Le lot doit prouver sélection N → N issues,
+inscription atomique sous quotas, réponse perdue/réconciliation sans doublon par
+entrée, autorisations, confirmation des créations entre versions, exports et
+effacement. Les preuves documentaires précédentes ne satisfont pas ce critère.
+
+CC-T13/CC-G1 dépendent également de CC-T16 ; ils ne sont pas clos par la recette
+du seul comportement documentaire existant. Les comptes/outils réels restent
+qualifiés séparément par CC-T14.
 
 ## CC-T01 — Base, contrats et amendements
 
