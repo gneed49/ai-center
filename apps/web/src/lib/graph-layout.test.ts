@@ -44,6 +44,24 @@ describe("knowledge graph projection", () => {
     const id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     const app_path = `/artifacts/${id}?version=${id}`;
     expect(internalSourceLink({ ...rule, app_path })).toBe(app_path);
+    for (const index of [0, 1, 29]) {
+      const ticketPath = `${app_path}&ticket=${index}`;
+      expect(internalSourceLink({ app_path: ticketPath })).toBe(ticketPath);
+    }
+    for (const index of [
+      "-1",
+      "30",
+      "01",
+      "1.0",
+      "1e0",
+      "+1",
+      "%31",
+      "0&next=x",
+    ]) {
+      expect(
+        internalSourceLink({ app_path: `${app_path}&ticket=${index}` }),
+      ).toBeNull();
+    }
     const codePath = `/projects/${id}/code?observation=${id}&file=${id}`;
     expect(internalSourceLink({ app_path: codePath })).toBe(codePath);
     for (const invalid of [

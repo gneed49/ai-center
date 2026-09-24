@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
-const JOB_SELECT: &str = "select j.public_id,d.public_id as artifact_id,v.public_id as version_id,c.public_id as connection_id,j.provider,j.target_id,j.status,j.external_id,j.external_url,j.error_code,j.attempt_count,j.created_at,j.updated_at from app.publication_jobs j join app.artifact_document_versions v on v.id=j.artifact_version_id join app.artifact_documents d on d.id=v.document_id join app.work_tool_connections c on c.id=j.connection_id";
+pub(super) const JOB_SELECT: &str = "select j.source_ticket_index,j.title,v.version as source_version_number,j.public_id,d.public_id as artifact_id,v.public_id as version_id,c.public_id as connection_id,j.provider,j.target_id,j.status,j.external_id,j.external_url,j.error_code,j.attempt_count,j.created_at,j.updated_at from app.publication_jobs j join app.artifact_document_versions v on v.id=j.artifact_version_id join app.artifact_documents d on d.id=v.document_id join app.work_tool_connections c on c.id=j.connection_id";
 pub(crate) fn marker(id: Uuid) -> String {
     format!("AI Center publication: {id}")
 }
@@ -27,7 +27,10 @@ pub(crate) async fn job(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> AppResu
     crate::company::data::require_active(tx, job.project_id).await?;
     Ok(job)
 }
-async fn publication(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> AppResult<Publication> {
+pub(super) async fn publication(
+    tx: &mut Transaction<'_, Postgres>,
+    id: Uuid,
+) -> AppResult<Publication> {
     sqlx::query_as(&format!(
         "{JOB_SELECT} where j.public_id=$1 and j.workspace_id=app.current_workspace_id()"
     ))
@@ -110,7 +113,7 @@ pub async fn publish(
         ));
     }
     let destination:Option<(String,Option<String>)>=sqlx::query_as("select provider,target_id from app.artifact_destination_settings where workspace_id=app.current_workspace_id() and artifact_type=$1 and enabled and (project_id=$2 or project_id is null) order by project_id is not null desc limit 1")
-        .bind(kind).bind(project).fetch_optional(&mut *tx).await?;
+        .bind(&kind).bind(project).fetch_optional(&mut *tx).await?;
     let (provider,target)=destination.filter(|row|row.0!="internal").and_then(|row|row.1.map(|target|(row.0,target)))
         .ok_or_else(||AppError::Invalid("Configure an external destination before publishing; internal artifacts can be exported directly".into()))?;
     if provider != input.expected_provider || target != input.expected_target_id {
@@ -132,11 +135,18 @@ pub async fn publish(
     let (connection, revision) = connection.ok_or_else(|| {
         AppError::Invalid("Choose an enabled connection for this destination".into())
     })?;
-    let existing:Option<Uuid>=sqlx::query_scalar("select public_id from app.publication_jobs where workspace_id=app.current_workspace_id() and artifact_version_id=$1 and provider=$2 and target_id=$3")
+    let existing:Option<Uuid>=sqlx::query_scalar("select public_id from app.publication_jobs where workspace_id=app.current_workspace_id() and artifact_version_id=$1 and provider=$2 and target_id=$3 and source_ticket_index=-1")
         .bind(version_id).bind(&provider).bind(&target).fetch_optional(&mut *tx).await?;
     let id = if let Some(existing) = existing {
         existing
     } else {
+        if matches!(kind.as_str(), "product_tickets" | "technical_tickets")
+            && matches!(provider.as_str(), "linear" | "github")
+        {
+            return Err(AppError::Invalid(
+                "Préparez et confirmez les tickets distincts avant leur publication.".into(),
+            ));
+        }
         super::reliability::admit_publication(&mut tx).await?;
         sqlx::query("insert into app.publication_jobs(public_id,workspace_id,project_id,artifact_version_id,connection_id,connection_revision,requested_by_actor_id,provider,target_id,title,body_markdown,content_hash) values($1,app.current_workspace_id(),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
             .bind(job_id).bind(project).bind(version_id).bind(connection).bind(revision).bind(state.actor_id).bind(&provider).bind(&target).bind(&version.title).bind(body).bind(hash).execute(&mut *tx).await?;

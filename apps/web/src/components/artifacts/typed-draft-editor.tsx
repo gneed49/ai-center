@@ -1,6 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { TypedDraft } from "./typed-draft";
+import { sectionLabel, type TypedDraft } from "./typed-draft";
 export function TypedDraftEditor({
   value,
   onChange,
@@ -29,7 +29,7 @@ export function TypedDraftEditor({
           key={section.key}
           className="block space-y-2 text-sm font-medium"
         >
-          {section.title}
+          {sectionLabel(section.key, section.title)}
           <Textarea
             rows={5}
             value={section.body}

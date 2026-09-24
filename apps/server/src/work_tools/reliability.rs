@@ -70,15 +70,27 @@ async fn quota_lock(tx: &mut Transaction<'_, Postgres>) -> AppResult<()> {
     Ok(())
 }
 pub(super) async fn admit_publication(tx: &mut Transaction<'_, Postgres>) -> AppResult<()> {
+    admit_publications(tx, 1).await
+}
+pub(super) async fn admit_publications(
+    tx: &mut Transaction<'_, Postgres>,
+    count: i64,
+) -> AppResult<()> {
+    if count == 0 {
+        return Ok(());
+    }
+    if !(1..=30).contains(&count) {
+        return Err(AppError::Invalid("Invalid publication count".into()));
+    }
     quota_lock(tx).await?;
     let usage = usage(tx).await?;
     let limits = limits()?;
-    if usage.publications_last_hour >= limits.max_publications_per_hour {
+    if usage.publications_last_hour + count > limits.max_publications_per_hour {
         return Err(AppError::Capacity {
             retry_after_seconds: 3600,
         });
     }
-    if usage.queued + usage.processing >= limits.max_pending_publications {
+    if usage.queued + usage.processing + count > limits.max_pending_publications {
         return Err(AppError::Capacity {
             retry_after_seconds: 60,
         });

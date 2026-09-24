@@ -146,7 +146,7 @@ pub(super) const TABLES: &[(&str, &str)] = &[
     ),
     (
         "publication_jobs",
-        "id,public_id,workspace_id,project_id,artifact_version_id,connection_id,connection_revision,requested_by_actor_id,provider,target_id,title,body_markdown,content_hash,status,attempt_count,external_id,external_url,error_code,created_at,updated_at",
+        "id,public_id,workspace_id,project_id,artifact_version_id,source_ticket_index,connection_id,connection_revision,requested_by_actor_id,provider,target_id,title,body_markdown,content_hash,status,attempt_count,external_id,external_url,error_code,created_at,updated_at",
     ),
     (
         "publication_observations",

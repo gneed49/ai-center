@@ -14,12 +14,14 @@ AI Center — contrôles CI desktop-only
 Usage:
   ./scripts/ci-desktop.sh quality
   ./scripts/ci-desktop.sh integration
+  ./scripts/integration-stack.sh run schema-review
   ./scripts/ci-desktop.sh tls-smoke
   ./scripts/ci-desktop.sh backup-restore
   ./scripts/ci-desktop.sh auth-smoke
   ./scripts/ci-desktop.sh auth-browser
   ./scripts/ci-desktop.sh e2e
   ./scripts/ci-desktop.sh real-e2e
+  ./scripts/integration-stack.sh run ticket-browser
   ./scripts/ci-desktop.sh desktop
   ./scripts/ci-desktop.sh native-build
   ./scripts/integration-stack.sh run integration native-e2e
@@ -362,6 +364,13 @@ case "${1:-}" in
   integration)
     integration
     ;;
+  schema-review)
+    integration_require_stack
+    ./scripts/baseline-alpha-upgrade-smoke.sh
+    psql --no-psqlrc --set=ON_ERROR_STOP=1 \
+      --dbname="${AI_CENTER_ADMIN_DATABASE_URL:?}" \
+      --file=scripts/sql/review-schema-catalog.sql
+    ;;
   oci-api-smoke)
     integration_require_stack
     python3 scripts/oci-api-smoke.py
@@ -385,6 +394,17 @@ case "${1:-}" in
     ;;
   real-e2e)
     real_e2e
+    ;;
+  ticket-browser)
+    integration_require_stack
+    require_command npm
+    require_command cargo
+    DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL:?}" \
+      AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
+      AI_CENTER_AGENT_MODE=deterministic \
+      AI_CENTER_AI_CALLS_PER_HOUR=10000 AI_CENTER_AI_ACTOR_CALLS_PER_HOUR=10000 \
+      cargo test -p ai-center-server --test work_tools \
+        ticket_publication_browser -- --ignored --test-threads=1 --nocapture
     ;;
   desktop)
     desktop

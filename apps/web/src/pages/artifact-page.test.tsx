@@ -201,3 +201,22 @@ it("keeps an archived project's exact versions visible without revision or valid
   ).toBeNull();
   expect(screen.getByLabelText("Version affichée")).toBeDefined();
 });
+
+it("does not substitute current content for an inaccessible historical ticket link", async () => {
+  vi.mocked(artifactsApi.version).mockRejectedValue(
+    new ApiError("Version introuvable", 404),
+  );
+  openPage("?version=missing-version&ticket=0");
+  await screen.findByText("Version introuvable");
+  expect(artifactsApi.version).toHaveBeenCalledWith(
+    "fixture-artifact",
+    "missing-version",
+  );
+  expect(
+    screen.queryByText("Une exigence confirmée.", { exact: false }),
+  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "Copier v2" })).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Nouvelle révision" }),
+  ).toBeNull();
+});

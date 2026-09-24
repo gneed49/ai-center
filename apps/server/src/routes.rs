@@ -242,16 +242,18 @@ async fn require_context(
         {
             return Err(crate::error::AppError::Forbidden);
         }
-        let idempotency_key = headers
-            .get("idempotency-key")
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<Uuid>().ok())
-            .ok_or_else(|| {
-                crate::error::AppError::Invalid(
-                    "Idempotency-Key must be a client-generated UUID".into(),
-                )
-            })?;
-        request.extensions_mut().insert(idempotency_key);
+        if !work_tools::is_ticket_preview(request.uri().path()) {
+            let idempotency_key = headers
+                .get("idempotency-key")
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<Uuid>().ok())
+                .ok_or_else(|| {
+                    crate::error::AppError::Invalid(
+                        "Idempotency-Key must be a client-generated UUID".into(),
+                    )
+                })?;
+            request.extensions_mut().insert(idempotency_key);
+        }
     }
     request.extensions_mut().insert(context);
     Ok(next.run(request).await)

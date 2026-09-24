@@ -76,10 +76,15 @@ select id,kind,project_public_id,scope_kind,label,status,version_public_id,sourc
     (select '/projects/'||objects.project_public_id||'/sources/artifact/'||a.public_id from app.artifacts a where a.public_id=objects.id)
   ) when kind in ('knowledge','task') then '/projects/'||project_public_id||'/sources/'||kind||'/'||id
   when kind='session' then '/projects/'||project_public_id||'/sessions/'||id
-  when kind='external_reference' then (
-    select '/projects/'||objects.project_public_id||'/code?observation='||c.public_id||'&file='||f.public_id
-    from app.github_code_file_observations f join app.github_code_corpora c on c.id=f.corpus_id
-    where f.public_id=objects.id
+  when kind='external_reference' then coalesce(
+    (select '/projects/'||objects.project_public_id||'/code?observation='||c.public_id||'&file='||f.public_id
+      from app.github_code_file_observations f join app.github_code_corpora c on c.id=f.corpus_id
+      where f.public_id=objects.id),
+    (select '/artifacts/'||d.public_id||'?version='||v.public_id||
+        case when j.source_ticket_index>=0 then '&ticket='||j.source_ticket_index else '' end
+      from app.publication_observations o join app.publication_jobs j on j.id=o.publication_job_id
+      join app.artifact_document_versions v on v.id=j.artifact_version_id
+      join app.artifact_documents d on d.id=v.document_id where o.public_id=objects.id)
   )
   when kind='insight' then '/projects/'||project_public_id||'/insights/'||id else null end as app_path
 from objects

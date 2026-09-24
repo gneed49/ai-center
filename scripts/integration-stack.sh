@@ -26,10 +26,10 @@ case "${1:-help}" in
     ;;
   run)
     shift
-    if (( $# == 0 )); then set -- integration tls-smoke backup-restore auth-smoke auth-browser real-e2e; fi
+    if (( $# == 0 )); then set -- ticket-browser integration tls-smoke backup-restore auth-smoke auth-browser real-e2e; fi
     for integration_phase in "$@"; do
       case "${integration_phase}" in
-        integration | tls-smoke | oci-api-smoke | backup-restore | auth-smoke | auth-browser | real-e2e | native-e2e) ;;
+        integration | schema-review | tls-smoke | oci-api-smoke | backup-restore | auth-smoke | auth-browser | real-e2e | ticket-browser | native-e2e) ;;
         *) printf 'Phase CI inconnue.\n' >&2; exit 2 ;;
       esac
     done
@@ -87,7 +87,7 @@ PY
     ;;
   *)
     printf '%s\n' \
-      'Usage: ./scripts/integration-stack.sh prepare|run [integration tls-smoke oci-api-smoke backup-restore auth-smoke auth-browser real-e2e native-e2e]|stop' \
+      'Usage: ./scripts/integration-stack.sh prepare|run [integration schema-review tls-smoke oci-api-smoke backup-restore auth-smoke auth-browser real-e2e ticket-browser native-e2e]|stop' \
       'run prépare une stack jetable, exécute les contrôles puis supprime ses seuls volumes.'
     ;;
 esac

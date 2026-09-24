@@ -1,9 +1,11 @@
 # Qualification Company Context V1 — 23 septembre 2026
 
 Statut : recette locale du jalon `30619bf` réussie après correction du sélecteur E2E ; CC-G1, G2, G3 et G4 restent ouverts pour les écarts produit et les qualifications externes.
-Branche : `feat/company-context-v1`. Jalon logiciel : `30619bf3dd6882527bc92448612a4699dd0a0644`, poussé. Sa CI est en cours ; le correctif de sélecteur navigateur est porté par le commit du présent rapport.
-Le commit de ce document identifie le complément local ; sa recette corrective
-et sa CI doivent être rattachées avant de le qualifier intégralement.
+Branche : `feat/company-context-v1`. Jalon logiciel : `30619bf3dd6882527bc92448612a4699dd0a0644`, poussé ; complément de sélecteur et rapport : `11bc60f8b759c5523c9ea7616cfb9511458eaf7c`.
+Mise à jour le 24 septembre : les cinq contrôles de
+[Desktop CI](https://github.com/gneed49/ai-center/actions/runs/35934774241)
+et les trois de [OCI Build](https://github.com/gneed49/ai-center/actions/runs/35934774264)
+réussissent pour ce dernier commit. Aucun déploiement n’en découle.
 
 ## Compléments qualifiés
 

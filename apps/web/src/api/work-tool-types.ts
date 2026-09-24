@@ -55,6 +55,10 @@ export type PublicationStatus =
   | "unavailable"
   | "cancelled";
 export interface Publication {
+  /** Older stored command receipts may omit these three fields. */
+  source_ticket_index?: number;
+  title?: string | null;
+  source_version_number?: number | null;
   public_id: string;
   artifact_id: string;
   version_id: string;

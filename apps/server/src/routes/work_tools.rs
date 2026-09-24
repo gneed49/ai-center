@@ -16,6 +16,18 @@ pub(super) fn router() -> Router<ApiState> {
         .route("/api/work-tools/connections/{id}/disable", post(disable))
         .route("/api/work-tools/connections/{id}/test", post(test))
         .route("/api/artifacts/{id}/publications", get(list).post(publish))
+        .route(
+            "/api/artifacts/{id}/ticket-publications",
+            get(ticket_coverage).post(publish_tickets),
+        )
+        .route(
+            "/api/artifacts/{id}/ticket-publications/preview",
+            post(ticket_preview),
+        )
+        .route(
+            "/api/artifacts/{id}/ticket-publication-commands/{key}",
+            get(ticket_receipt),
+        )
         .route("/api/publications/{id}", get(detail))
         .route("/api/publications/{id}/reconcile", post(reconcile))
         .route("/api/publications/{id}/refresh", post(refresh))
@@ -56,6 +68,7 @@ enum Command {
     Disable(Uuid, DisableConnection),
     Test(Uuid),
     Publish(Uuid, PublishArtifact),
+    PublishTickets(Uuid, work_tools::ticket_models::PublishTickets),
     Reconcile(Uuid, ReconcilePublication),
     Refresh(Uuid),
     Cancel(Uuid),
@@ -69,13 +82,17 @@ impl Command {
             }
             Self::Disable(id, input) => json!({"id":id,"input":input}),
             Self::Publish(id, input) => json!({"artifact_id":id,"input":input}),
+            Self::PublishTickets(id, input) => json!({"artifact_id":id,"input":input}),
             Self::Reconcile(id, input) => json!({"publication_id":id,"input":input}),
             Self::Test(id) | Self::Refresh(id) | Self::Cancel(id) => json!({"id":id}),
             Self::ReadCode(id, input) => json!({"project_id":id,"input":input}),
         })
     }
-    const fn operation(&self) -> &'static str {
-        match self {
+    fn operation(&self) -> String {
+        if let Self::PublishTickets(id, _) = self {
+            return work_tools::tickets::operation(*id);
+        }
+        let family = match self {
             Self::Save(_) => "work_tool.connection.save",
             Self::Disable(..) => "work_tool.connection.disable",
             Self::Test(_) => "work_tool.connection.test",
@@ -84,7 +101,9 @@ impl Command {
             Self::Refresh(_) => "publication.refresh",
             Self::Cancel(_) => "publication.cancel",
             Self::ReadCode(..) => "github_code.read",
-        }
+            Self::PublishTickets(..) => unreachable!("qualified operation handled above"),
+        };
+        family.into()
     }
 }
 async fn command(
@@ -94,12 +113,17 @@ async fn command(
     command: Command,
 ) -> AppResult<Response> {
     let scope = scoped(&state, &context);
+    let project = if let Command::PublishTickets(id, _) = &command {
+        Some(work_tools::tickets::project(&scope, *id).await?)
+    } else {
+        None
+    };
     let lease = match mutation_start(
         begin_idempotent(
             &state,
             &context,
-            None,
-            command.operation(),
+            project,
+            &command.operation(),
             key,
             &command.request(&scope)?,
         )
@@ -121,6 +145,11 @@ async fn command(
             Command::Test(id) => work_tools::test_connection(&scope, id)
                 .await
                 .map(|value| json!(value)),
+            Command::PublishTickets(id, input) => {
+                work_tools::tickets::publish(&scope, id, input, Some(&lease))
+                    .await
+                    .map(|value| json!(value))
+            }
             Command::Publish(id, input) => work_tools::publish(&scope, id, input, Some(&lease))
                 .await
                 .map(|value| json!(value)),
@@ -225,4 +254,50 @@ async fn code_read(
     Json(input): Json<work_tools::code::ReadCode>,
 ) -> AppResult<Response> {
     command(s, c, k, Command::ReadCode(id, input)).await
+}
+
+/// Only this authenticated read-only POST may omit the command key.
+pub(super) fn is_ticket_preview(path: &str) -> bool {
+    path.strip_prefix("/api/artifacts/")
+        .and_then(|tail| tail.strip_suffix("/ticket-publications/preview"))
+        .is_some_and(|id| Uuid::parse_str(id).is_ok_and(|uuid| uuid.to_string() == id))
+}
+async fn ticket_coverage(
+    State(s): State<ApiState>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+    Query(query): Query<work_tools::ticket_models::TicketCoverageQuery>,
+) -> AppResult<Json<work_tools::ticket_models::TicketCoverage>> {
+    Ok(Json(
+        work_tools::tickets::coverage(&scoped(&s, &c), id, query).await?,
+    ))
+}
+async fn ticket_preview(
+    State(s): State<ApiState>,
+    Extension(c): Extension<RequestContext>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<work_tools::ticket_models::PreviewTickets>,
+) -> AppResult<Json<work_tools::ticket_models::TicketPreview>> {
+    Ok(Json(
+        work_tools::tickets::preview(&scoped(&s, &c), id, input).await?,
+    ))
+}
+async fn publish_tickets(
+    State(s): State<ApiState>,
+    Extension(c): Extension<RequestContext>,
+    Extension(k): Extension<Uuid>,
+    Path(id): Path<Uuid>,
+    Json(mut input): Json<work_tools::ticket_models::PublishTickets>,
+) -> AppResult<Response> {
+    work_tools::tickets::canonicalize_command(&mut input)?;
+    command(s, c, k, Command::PublishTickets(id, input)).await
+}
+async fn ticket_receipt(
+    State(s): State<ApiState>,
+    Extension(c): Extension<RequestContext>,
+    Path((id, key)): Path<(Uuid, Uuid)>,
+) -> AppResult<Json<Value>> {
+    Ok(Json(
+        work_tools::tickets::receipt(&scoped(&s, &c), id, key).await?,
+    ))
 }

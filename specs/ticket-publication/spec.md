@@ -1,8 +1,8 @@
 # Spécification — Tickets distincts dans les outils de l’équipe
 
-> Statut : conception autorisée ; implémentation en attente de la fin du gel d’intégration
+> Statut : implémentation et recette locale réussies ; CI du jalon à suivre
 > Responsable : lot publications, coordination Company Context V1
-> Dernière mise à jour : 2026-09-23
+> Dernière mise à jour : 2026-09-24
 
 ## Intention
 
@@ -224,6 +224,11 @@ de publications donnent accès aux autres éléments si le graphe est tronqué.
   automatique des tâches existantes.
 - Aucun quota n’est augmenté pour rendre un exemple de 30 tickets admissible.
   L’interface doit expliquer la capacité et permettre une sélection plus petite.
-- Le numéro de migration et la fenêtre d’application sont attribués par
-  l’intégrateur après la recette gelée. **Aucune édition code/SQL ni migration
-  exécutée dans ce lot de conception.**
+- Les migrations additives `20260923234438_ticket_publications.sql` et
+  `20260923235104_ticket_publication_maintenance.sql` ont été générées depuis
+  les schémas déclaratifs puis revues. La première ajoute l’indice et ses
+  invariants ; la seconde actualise l’inventaire de maintenance après examen
+  du catalogue. La recette utilise uniquement la base jetable isolée.
+- L’aperçu refuse un historique supérieur à 500 publications pour cette
+  destination, au lieu de présenter une confirmation partielle. Aucun quota
+  de création n’est augmenté par cette limite de lecture.

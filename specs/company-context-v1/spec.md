@@ -213,6 +213,23 @@ Cette précision répond au parcours utilisateur ; elle n’était pas couverte 
 le précédent critère de publication documentaire. Le lot reste à implémenter
 après le gel d’intégration et participe à la clôture de CC-G1.
 
+### Amendement — Partir du contexte existant dans les outils
+
+Le parcours doit également fonctionner lorsque la page Notion et l'issue Linear
+existent avant AI Center. L'audit du 23 septembre confirme que les connecteurs
+actuels relisent uniquement leurs propres publications ; les observations
+externes visibles dans le graphe/steward ne sont pas encore des sources directes
+du contexte PM/génération. C'est un écart P1 de l'objectif utilisateur, omis des
+premiers critères documentaires CC-025 à CC-027.
+
+Le lot [Contexte issu des outils existants](../existing-tool-context/spec.md)
+précise le rattachement explicite d'un objet, sa lecture bornée, son actualisation
+et son observation exacte réutilisable dans les questions, artefacts, transmissions
+et graphes. La confiance reste « observé dans un outil externe » ; elle ne devient
+jamais implicitement une règle confirmée. Aucun crawl, import massif, nouvelle
+intégration ou synchronisation globale n'est ajouté. Ce lot est conçu après l'audit
+et se réalise après Tickets distincts ; il participe également à CC-G1.
+
 ### CC-U05 — Comprendre les graphes
 
 La personne navigue de la société au projet et sélectionne une décision,
@@ -269,6 +286,7 @@ Leur numérotation est stable ; l'implémentation ne vaut pas acceptation.
 | CC-026 | Publication explicite idempotente : Notion page, Linear issue, GitHub issue/référence selon capacité ; lien canonique et résultat exact conservés.                          | Contrats des trois adapters, reprise après réponse perdue, intégration ; écriture réelle limitée à destinations autorisées pour gate externe. |
 | CC-027 | Une modification distante, perte d'accès ou suppression produit conflit/stale/unavailable sans écrasement ni perte d'historique.                                            | Simulations HTTP et scénario réel ciblé par connecteur.                                                                                       |
 | CC-028 | Les tickets structurés sélectionnés et validés sont publiés individuellement dans Linear/GitHub ; N entrées donnent N issues réussies distinctes, avec reprise et provenance par version/index, sans doublons silencieux entre versions. | TP-001 à TP-011 de [Tickets distincts](../ticket-publication/spec.md), dont perte de réponse, quotas atomiques, états partiels et confirmation des créations supplémentaires. |
+| CC-029 | Une page Notion ou issue Linear préexistante peut être rattachée explicitement, observée et actualisée ; son observation exacte est utilisable par les agents, artefacts, handoffs, graphe et steward, avec portée, date, couverture et confiance externe conservées. | ETC-001 à ETC-012 de [Contexte issu des outils existants](../existing-tool-context/spec.md), dont sources sans marqueur, droits/révocation, contenu partiel, injection, fraîcheur, export et effacement. |
 | CC-030 | Les entités/arêtes persistées possèdent scope, type, provenance et versions ; aucune arête inter-sociétés acceptée.                                                         | Contraintes SQL, RLS et tests API négatifs.                                                                                                   |
 | CC-031 | Un graphe projet expose connaissances, conversations, artefacts, tâches/références et preuves liés ; navigation vers les objets.                                            | Intégration projection et E2E graphe/listes.                                                                                                  |
 | CC-032 | Le graphe société fédère les projets autorisés et connaissances générales sans recopier leurs sources ni révéler les objets privés.                                         | Acteurs de permissions différentes, réponses API et agrégations comparées.                                                                    |

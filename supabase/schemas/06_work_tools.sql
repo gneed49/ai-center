@@ -38,8 +38,9 @@ create table app.publication_jobs (
   error_code text check (length(error_code)<=80),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  source_ticket_index smallint not null default -1 check (source_ticket_index between -1 and 29),
   unique (id,workspace_id),
-  unique (workspace_id,artifact_version_id,provider,target_id),
+  constraint publication_jobs_source_destination_unique unique (workspace_id,artifact_version_id,provider,target_id,source_ticket_index),
   foreign key (artifact_version_id,workspace_id) references app.artifact_document_versions(id,workspace_id),
   foreign key (artifact_version_id,project_id) references app.artifact_document_versions(id,project_id),
   foreign key (project_id,workspace_id) references app.projects(id,workspace_id),
@@ -53,6 +54,50 @@ create index publication_jobs_version_idx on app.publication_jobs(artifact_versi
 create index publication_jobs_connection_idx on app.publication_jobs(connection_id);
 create index publication_jobs_queue_idx on app.publication_jobs(created_at,id) where status='queued';
 create index publication_jobs_lease_idx on app.publication_jobs(lease_until) where status='processing';
+
+-- The index is scoped to an immutable version, never matched across versions.
+-- Invoker rights preserve the same source RLS as the request that queues a job.
+create or replace function app.publication_validate_source_ticket()
+returns trigger language plpgsql set search_path='' as $$
+declare source_kind text; source_content jsonb; tickets jsonb;
+begin
+  if tg_op='UPDATE' then
+    if (new.public_id,new.workspace_id,new.project_id,new.artifact_version_id,
+        new.source_ticket_index,new.connection_id,new.connection_revision,
+        new.requested_by_actor_id,new.provider,new.target_id,new.title,new.body_markdown,new.content_hash)
+      is distinct from
+       (old.public_id,old.workspace_id,old.project_id,old.artifact_version_id,
+        old.source_ticket_index,old.connection_id,old.connection_revision,
+        old.requested_by_actor_id,old.provider,old.target_id,old.title,old.body_markdown,old.content_hash) then
+      raise exception 'A publication source and prepared content are immutable' using errcode='23514';
+    end if;
+    return new;
+  end if;
+  if new.source_ticket_index>=0 then
+    select d.artifact_type,v.structured_content into source_kind,source_content
+      from app.artifact_document_versions v join app.artifact_documents d on d.id=v.document_id
+      where v.id=new.artifact_version_id and v.workspace_id=new.workspace_id and v.project_id=new.project_id;
+    if not found or new.provider not in ('linear','github')
+      or source_kind not in ('product_tickets','technical_tickets')
+      or source_content->>'format' is distinct from 'agent-artifact-v1'
+      or source_content->>'artifact_type' is distinct from source_kind then
+      raise exception 'An indexed publication requires an exact structured ticket source' using errcode='23514';
+    end if;
+    tickets=source_content->'draft'->'tickets';
+    if jsonb_typeof(tickets) is distinct from 'array' then
+      raise exception 'The ticket source has no structured entries' using errcode='23514';
+    end if;
+    if jsonb_array_length(tickets) not between 1 and 30
+      or jsonb_typeof(tickets->new.source_ticket_index::integer) is distinct from 'object' then
+      raise exception 'The selected ticket does not exist in this version' using errcode='23514';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function app.publication_validate_source_ticket() from public,anon,authenticated,service_role;
+create trigger publication_jobs_validate_source_ticket before insert or update on app.publication_jobs
+for each row execute function app.publication_validate_source_ticket();
 
 create or replace function app.publication_preserve_receipt()
 returns trigger language plpgsql set search_path='' as $$

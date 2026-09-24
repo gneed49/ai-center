@@ -699,3 +699,9 @@ async fn github_code_corpus_keeps_exact_bytes_scopes_and_insufficient_evidence()
     task.abort();
     Ok(())
 }
+
+#[path = "work_tools/tickets.rs"]
+mod ticket_publications;
+
+#[path = "work_tools/browser.rs"]
+mod browser;

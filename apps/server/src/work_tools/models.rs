@@ -67,8 +67,17 @@ pub struct PublishArtifact {
 pub struct ReconcilePublication {
     pub external_id: String,
 }
-#[derive(Serialize, Deserialize, sqlx::FromRow)]
+fn document_index() -> i16 {
+    -1
+}
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Publication {
+    #[serde(default = "document_index")]
+    pub source_ticket_index: i16,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub source_version_number: Option<i32>,
     pub public_id: Uuid,
     pub artifact_id: Uuid,
     pub version_id: Uuid,

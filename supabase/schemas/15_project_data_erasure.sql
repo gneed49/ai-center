@@ -2,7 +2,7 @@
 -- The reviewed catalog fingerprint is filled from the isolated migrated schema.
 create or replace function app.operator_project_expected_schema()
 returns text language sql immutable security invoker set search_path='' as $$
- select '9d19679eb7bedeb15663096a6a515ddc'::text;
+ select '88f3623848234264a58535727a2e97b2'::text;
 $$;
 revoke all on function app.operator_project_expected_schema() from public,anon,authenticated,service_role,ai_center_runtime;
 

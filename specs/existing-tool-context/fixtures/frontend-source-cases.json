@@ -1,0 +1,862 @@
+{
+  "_fixture": {
+    "classification": "[FICTIF]",
+    "purpose": "Préparation documentaire frontend T17 ; aucun appel réseau, aucune importation dans le produit.",
+    "hashes": "Valeurs synthétiques de forme SHA-256, pas des hashes canoniques calculés par le backend.",
+    "provider_urls": "Adresses synthétiques de forme officielle ; ne pas les ouvrir pour exécuter ces cas.",
+    "merge": "Chaque response est un DTO complet ; aucune fusion implicite nécessaire.",
+    "identity_scope": "Société/projet synthétiques ; aucune preuve de permission distante individuelle."
+  },
+  "ids": {
+    "project": "20000000-0000-4000-8000-000000000001",
+    "reference": "30000000-0000-4000-8000-000000000001",
+    "observation": "40000000-0000-4000-8000-000000000001",
+    "next_observation": "40000000-0000-4000-8000-000000000002",
+    "publication": "50000000-0000-4000-8000-000000000001",
+    "connection": "60000000-0000-4000-8000-000000000001",
+    "external": "70000000-0000-4000-8000-000000000001",
+    "command": "80000000-0000-4000-8000-000000000001"
+  },
+  "reference": {
+    "public_id": "30000000-0000-4000-8000-000000000001",
+    "project_id": "20000000-0000-4000-8000-000000000001",
+    "provider": "linear",
+    "object_kind": "issue",
+    "external_id": "70000000-0000-4000-8000-000000000001",
+    "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+    "connection_id": "60000000-0000-4000-8000-000000000001",
+    "connection_revision": 2,
+    "status": "active",
+    "revision": 2,
+    "current_observation_id": "40000000-0000-4000-8000-000000000001",
+    "created_at": "2026-09-24T00:00:00Z",
+    "updated_at": "2026-09-24T00:10:00Z",
+    "last_attempt_at": "2026-09-24T00:09:50Z",
+    "last_checked_at": "2026-09-24T00:10:00Z",
+    "last_check_status": "available",
+    "last_check_error_code": null
+  },
+  "observation_cases": [
+    {
+      "id": "complete_with_out_of_scope_omissions",
+      "response": {
+        "observation": {
+          "source_kind": "tool_source_observation",
+          "public_id": "40000000-0000-4000-8000-000000000001",
+          "reference_public_id": "30000000-0000-4000-8000-000000000001",
+          "publication_public_id": null,
+          "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+          "provider": "linear",
+          "object_kind": "issue",
+          "external_id": "70000000-0000-4000-8000-000000000001",
+          "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+          "version": 1,
+          "observed_at": "2026-09-24T00:00:00Z",
+          "remote_updated_at": "2026-09-23T23:50:00Z",
+          "title": "[FICTIF] Durée des crédits",
+          "excerpt": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+          "availability": "available",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "snapshot_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "projection_version": "existing-tool-text-v1",
+          "trust": "observed_external",
+          "mandatory": false,
+          "coverage": "complete",
+          "omission_reasons": [
+            "attachments_not_read",
+            "comments_not_read",
+            "related_objects_not_read"
+          ],
+          "freshness": {
+            "is_current": true,
+            "eligible": true,
+            "reasons": [],
+            "current_observation_id": "40000000-0000-4000-8000-000000000001",
+            "last_checked_at": "2026-09-24T00:10:00Z",
+            "last_check_status": "available",
+            "last_check_error_code": null
+          }
+        },
+        "body_markdown": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+        "metadata": {
+          "identifier": "PROD-42",
+          "team_id": "90000000-0000-4000-8000-000000000001",
+          "state": {
+            "id": "90000000-0000-4000-8000-000000000002",
+            "name": "[FICTIF] À faire",
+            "type": "unstarted"
+          }
+        }
+      },
+      "assertions": [
+        "Le texte est observé, jamais une règle validée.",
+        "La couverture complète conserve les omissions commentaires, pièces jointes et objets liés.",
+        "00:00 capture, 00:10 dernière vérification et 23:50 modification distante sont distinctes."
+      ]
+    },
+    {
+      "id": "partial_unknown_block",
+      "response": {
+        "observation": {
+          "source_kind": "tool_source_observation",
+          "public_id": "40000000-0000-4000-8000-000000000001",
+          "reference_public_id": "30000000-0000-4000-8000-000000000001",
+          "publication_public_id": null,
+          "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+          "provider": "linear",
+          "object_kind": "issue",
+          "external_id": "70000000-0000-4000-8000-000000000001",
+          "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+          "version": 1,
+          "observed_at": "2026-09-24T00:00:00Z",
+          "remote_updated_at": "2026-09-23T23:50:00Z",
+          "title": "[FICTIF] Durée des crédits",
+          "excerpt": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+          "availability": "available",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "snapshot_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "projection_version": "existing-tool-text-v1",
+          "trust": "observed_external",
+          "mandatory": false,
+          "coverage": "partial",
+          "omission_reasons": [
+            "comments_not_read",
+            "unknown_blocks"
+          ],
+          "freshness": {
+            "is_current": true,
+            "eligible": true,
+            "reasons": [],
+            "current_observation_id": "40000000-0000-4000-8000-000000000001",
+            "last_checked_at": "2026-09-24T00:10:00Z",
+            "last_check_status": "partial",
+            "last_check_error_code": null
+          }
+        },
+        "body_markdown": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+        "metadata": {
+          "identifier": "PROD-42",
+          "team_id": "90000000-0000-4000-8000-000000000001",
+          "state": {
+            "id": "90000000-0000-4000-8000-000000000002",
+            "name": "[FICTIF] À faire",
+            "type": "unstarted"
+          }
+        }
+      },
+      "assertions": [
+        "Lecture partielle et bloc non reconnu visibles avant le corps.",
+        "Le passage conservé reste lisible et citable."
+      ]
+    },
+    {
+      "id": "remote_date_unavailable",
+      "response": {
+        "observation": {
+          "source_kind": "tool_source_observation",
+          "public_id": "40000000-0000-4000-8000-000000000001",
+          "reference_public_id": "30000000-0000-4000-8000-000000000001",
+          "publication_public_id": null,
+          "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+          "provider": "linear",
+          "object_kind": "issue",
+          "external_id": "70000000-0000-4000-8000-000000000001",
+          "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+          "version": 1,
+          "observed_at": "2026-09-24T00:00:00Z",
+          "remote_updated_at": null,
+          "title": "[FICTIF] Durée des crédits",
+          "excerpt": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+          "availability": "available",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "snapshot_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "projection_version": "existing-tool-text-v1",
+          "trust": "observed_external",
+          "mandatory": false,
+          "coverage": "partial",
+          "omission_reasons": [
+            "remote_date_unavailable"
+          ],
+          "freshness": {
+            "is_current": true,
+            "eligible": true,
+            "reasons": [],
+            "current_observation_id": "40000000-0000-4000-8000-000000000001",
+            "last_checked_at": "2026-09-24T00:10:00Z",
+            "last_check_status": "partial",
+            "last_check_error_code": null
+          }
+        },
+        "body_markdown": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+        "metadata": {
+          "identifier": "PROD-42",
+          "team_id": "90000000-0000-4000-8000-000000000001",
+          "state": {
+            "id": "90000000-0000-4000-8000-000000000002",
+            "name": "[FICTIF] À faire",
+            "type": "unstarted"
+          }
+        }
+      },
+      "assertions": [
+        "Aucune date de modification distante inventée.",
+        "La capture locale reste visible."
+      ]
+    },
+    {
+      "id": "unknown_omission_code",
+      "response": {
+        "observation": {
+          "source_kind": "tool_source_observation",
+          "public_id": "40000000-0000-4000-8000-000000000001",
+          "reference_public_id": "30000000-0000-4000-8000-000000000001",
+          "publication_public_id": null,
+          "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+          "provider": "linear",
+          "object_kind": "issue",
+          "external_id": "70000000-0000-4000-8000-000000000001",
+          "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+          "version": 1,
+          "observed_at": "2026-09-24T00:00:00Z",
+          "remote_updated_at": "2026-09-23T23:50:00Z",
+          "title": "[FICTIF] Durée des crédits",
+          "excerpt": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+          "availability": "available",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "snapshot_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "projection_version": "existing-tool-text-v1",
+          "trust": "observed_external",
+          "mandatory": false,
+          "coverage": "partial",
+          "omission_reasons": [
+            "future_fixture_limit"
+          ],
+          "freshness": {
+            "is_current": true,
+            "eligible": true,
+            "reasons": [],
+            "current_observation_id": "40000000-0000-4000-8000-000000000001",
+            "last_checked_at": "2026-09-24T00:10:00Z",
+            "last_check_status": "partial",
+            "last_check_error_code": null
+          }
+        },
+        "body_markdown": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+        "metadata": {
+          "identifier": "PROD-42",
+          "team_id": "90000000-0000-4000-8000-000000000001",
+          "state": {
+            "id": "90000000-0000-4000-8000-000000000002",
+            "name": "[FICTIF] À faire",
+            "type": "unstarted"
+          }
+        }
+      },
+      "assertions": [
+        "Une limite inconnue est signalée, avec son code dans les détails techniques."
+      ]
+    },
+    {
+      "id": "current_unavailable",
+      "response": {
+        "observation": {
+          "source_kind": "tool_source_observation",
+          "public_id": "40000000-0000-4000-8000-000000000002",
+          "reference_public_id": "30000000-0000-4000-8000-000000000001",
+          "publication_public_id": null,
+          "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+          "provider": "linear",
+          "object_kind": "issue",
+          "external_id": "70000000-0000-4000-8000-000000000001",
+          "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+          "version": 2,
+          "observed_at": "2026-09-24T00:20:00Z",
+          "remote_updated_at": null,
+          "title": "[FICTIF] PROD-42",
+          "excerpt": "",
+          "availability": "unavailable",
+          "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "snapshot_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "projection_version": "existing-tool-text-v1",
+          "trust": "observed_external",
+          "mandatory": false,
+          "coverage": "none",
+          "omission_reasons": [],
+          "freshness": {
+            "is_current": true,
+            "eligible": false,
+            "reasons": [
+              "unavailable"
+            ],
+            "current_observation_id": "40000000-0000-4000-8000-000000000002",
+            "last_checked_at": "2026-09-24T00:20:00Z",
+            "last_check_status": "unavailable",
+            "last_check_error_code": "remote_not_found"
+          }
+        },
+        "body_markdown": "",
+        "metadata": {}
+      },
+      "assertions": [
+        "Aucun ancien corps affiché comme contenu courant.",
+        "Absent ou inaccessible ne devient pas supprimé."
+      ]
+    },
+    {
+      "id": "historical_after_change",
+      "response": {
+        "observation": {
+          "source_kind": "tool_source_observation",
+          "public_id": "40000000-0000-4000-8000-000000000001",
+          "reference_public_id": "30000000-0000-4000-8000-000000000001",
+          "publication_public_id": null,
+          "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+          "provider": "linear",
+          "object_kind": "issue",
+          "external_id": "70000000-0000-4000-8000-000000000001",
+          "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+          "version": 1,
+          "observed_at": "2026-09-24T00:00:00Z",
+          "remote_updated_at": "2026-09-23T23:50:00Z",
+          "title": "[FICTIF] Durée des crédits",
+          "excerpt": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+          "availability": "available",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "snapshot_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "projection_version": "existing-tool-text-v1",
+          "trust": "observed_external",
+          "mandatory": false,
+          "coverage": "complete",
+          "omission_reasons": [
+            "attachments_not_read",
+            "comments_not_read",
+            "related_objects_not_read"
+          ],
+          "freshness": {
+            "is_current": false,
+            "eligible": false,
+            "reasons": [
+              "historical"
+            ],
+            "current_observation_id": "40000000-0000-4000-8000-000000000002",
+            "last_checked_at": "2026-09-24T00:20:00Z",
+            "last_check_status": "available",
+            "last_check_error_code": null
+          }
+        },
+        "body_markdown": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+        "metadata": {
+          "identifier": "PROD-42",
+          "team_id": "90000000-0000-4000-8000-000000000001",
+          "state": {
+            "id": "90000000-0000-4000-8000-000000000002",
+            "name": "[FICTIF] À faire",
+            "type": "unstarted"
+          }
+        }
+      },
+      "assertions": [
+        "La lecture n°1 et son corps restent exacts.",
+        "Le lien actuel est distinct du lien de citation historique."
+      ]
+    },
+    {
+      "id": "latest_check_failed",
+      "response": {
+        "observation": {
+          "source_kind": "tool_source_observation",
+          "public_id": "40000000-0000-4000-8000-000000000001",
+          "reference_public_id": "30000000-0000-4000-8000-000000000001",
+          "publication_public_id": null,
+          "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+          "provider": "linear",
+          "object_kind": "issue",
+          "external_id": "70000000-0000-4000-8000-000000000001",
+          "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+          "version": 1,
+          "observed_at": "2026-09-24T00:00:00Z",
+          "remote_updated_at": "2026-09-23T23:50:00Z",
+          "title": "[FICTIF] Durée des crédits",
+          "excerpt": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+          "availability": "available",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "snapshot_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "projection_version": "existing-tool-text-v1",
+          "trust": "observed_external",
+          "mandatory": false,
+          "coverage": "complete",
+          "omission_reasons": [
+            "attachments_not_read",
+            "comments_not_read",
+            "related_objects_not_read"
+          ],
+          "freshness": {
+            "is_current": true,
+            "eligible": true,
+            "reasons": [],
+            "current_observation_id": "40000000-0000-4000-8000-000000000001",
+            "last_checked_at": "2026-09-24T00:20:00Z",
+            "last_check_status": "failed",
+            "last_check_error_code": "remote_timeout"
+          }
+        },
+        "body_markdown": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+        "metadata": {
+          "identifier": "PROD-42",
+          "team_id": "90000000-0000-4000-8000-000000000001",
+          "state": {
+            "id": "90000000-0000-4000-8000-000000000002",
+            "name": "[FICTIF] À faire",
+            "type": "unstarted"
+          }
+        }
+      },
+      "assertions": [
+        "La capture ancienne reste visible avec sa date.",
+        "La dernière vérification en échec ne présente pas le corps comme relu."
+      ]
+    },
+    {
+      "id": "detached",
+      "response": {
+        "observation": {
+          "source_kind": "tool_source_observation",
+          "public_id": "40000000-0000-4000-8000-000000000001",
+          "reference_public_id": "30000000-0000-4000-8000-000000000001",
+          "publication_public_id": null,
+          "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+          "provider": "linear",
+          "object_kind": "issue",
+          "external_id": "70000000-0000-4000-8000-000000000001",
+          "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+          "version": 1,
+          "observed_at": "2026-09-24T00:00:00Z",
+          "remote_updated_at": "2026-09-23T23:50:00Z",
+          "title": "[FICTIF] Durée des crédits",
+          "excerpt": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+          "availability": "available",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "snapshot_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "projection_version": "existing-tool-text-v1",
+          "trust": "observed_external",
+          "mandatory": false,
+          "coverage": "complete",
+          "omission_reasons": [
+            "attachments_not_read",
+            "comments_not_read",
+            "related_objects_not_read"
+          ],
+          "freshness": {
+            "is_current": true,
+            "eligible": false,
+            "reasons": [
+              "detached"
+            ],
+            "current_observation_id": "40000000-0000-4000-8000-000000000001",
+            "last_checked_at": "2026-09-24T00:10:00Z",
+            "last_check_status": "available",
+            "last_check_error_code": null
+          }
+        },
+        "body_markdown": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+        "metadata": {
+          "identifier": "PROD-42",
+          "team_id": "90000000-0000-4000-8000-000000000001",
+          "state": {
+            "id": "90000000-0000-4000-8000-000000000002",
+            "name": "[FICTIF] À faire",
+            "type": "unstarted"
+          }
+        }
+      },
+      "assertions": [
+        "Retirée du contexte actif ; historique consultable.",
+        "Pas de réactivation implicite via actualisation."
+      ]
+    },
+    {
+      "id": "connection_unverified",
+      "response": {
+        "observation": {
+          "source_kind": "tool_source_observation",
+          "public_id": "40000000-0000-4000-8000-000000000001",
+          "reference_public_id": "30000000-0000-4000-8000-000000000001",
+          "publication_public_id": null,
+          "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+          "provider": "linear",
+          "object_kind": "issue",
+          "external_id": "70000000-0000-4000-8000-000000000001",
+          "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+          "version": 1,
+          "observed_at": "2026-09-24T00:00:00Z",
+          "remote_updated_at": "2026-09-23T23:50:00Z",
+          "title": "[FICTIF] Durée des crédits",
+          "excerpt": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+          "availability": "available",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "snapshot_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "projection_version": "existing-tool-text-v1",
+          "trust": "observed_external",
+          "mandatory": false,
+          "coverage": "complete",
+          "omission_reasons": [
+            "attachments_not_read",
+            "comments_not_read",
+            "related_objects_not_read"
+          ],
+          "freshness": {
+            "is_current": true,
+            "eligible": false,
+            "reasons": [
+              "connection_unverified"
+            ],
+            "current_observation_id": "40000000-0000-4000-8000-000000000001",
+            "last_checked_at": "2026-09-24T00:10:00Z",
+            "last_check_status": "available",
+            "last_check_error_code": null
+          }
+        },
+        "body_markdown": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+        "metadata": {
+          "identifier": "PROD-42",
+          "team_id": "90000000-0000-4000-8000-000000000001",
+          "state": {
+            "id": "90000000-0000-4000-8000-000000000002",
+            "name": "[FICTIF] À faire",
+            "type": "unstarted"
+          }
+        }
+      },
+      "assertions": [
+        "Une nouvelle lecture autorisée est nécessaire avant réutilisation.",
+        "La révision historique de contenu n’est pas remplacée."
+      ]
+    },
+    {
+      "id": "connection_disabled",
+      "response": {
+        "observation": {
+          "source_kind": "tool_source_observation",
+          "public_id": "40000000-0000-4000-8000-000000000001",
+          "reference_public_id": "30000000-0000-4000-8000-000000000001",
+          "publication_public_id": null,
+          "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+          "provider": "linear",
+          "object_kind": "issue",
+          "external_id": "70000000-0000-4000-8000-000000000001",
+          "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+          "version": 1,
+          "observed_at": "2026-09-24T00:00:00Z",
+          "remote_updated_at": "2026-09-23T23:50:00Z",
+          "title": "[FICTIF] Durée des crédits",
+          "excerpt": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+          "availability": "available",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "snapshot_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "projection_version": "existing-tool-text-v1",
+          "trust": "observed_external",
+          "mandatory": false,
+          "coverage": "complete",
+          "omission_reasons": [
+            "attachments_not_read",
+            "comments_not_read",
+            "related_objects_not_read"
+          ],
+          "freshness": {
+            "is_current": true,
+            "eligible": false,
+            "reasons": [
+              "connection_disabled"
+            ],
+            "current_observation_id": "40000000-0000-4000-8000-000000000001",
+            "last_checked_at": "2026-09-24T00:10:00Z",
+            "last_check_status": "available",
+            "last_check_error_code": null
+          }
+        },
+        "body_markdown": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+        "metadata": {
+          "identifier": "PROD-42",
+          "team_id": "90000000-0000-4000-8000-000000000001",
+          "state": {
+            "id": "90000000-0000-4000-8000-000000000002",
+            "name": "[FICTIF] À faire",
+            "type": "unstarted"
+          }
+        }
+      },
+      "assertions": [
+        "Contenu historique accessible sous droits courants mais pas alimenté au contexte actuel.",
+        "Aucune lecture automatique pour réparer la connexion."
+      ]
+    },
+    {
+      "id": "publication_origin",
+      "response": {
+        "observation": {
+          "source_kind": "publication_observation",
+          "public_id": "40000000-0000-4000-8000-000000000001",
+          "reference_public_id": null,
+          "publication_public_id": "50000000-0000-4000-8000-000000000001",
+          "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+          "provider": "linear",
+          "object_kind": "issue",
+          "external_id": "70000000-0000-4000-8000-000000000001",
+          "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+          "version": 1,
+          "observed_at": "2026-09-24T00:00:00Z",
+          "remote_updated_at": "2026-09-23T23:50:00Z",
+          "title": "[FICTIF] Durée des crédits",
+          "excerpt": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+          "availability": "available",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "snapshot_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "projection_version": "existing-tool-text-v1",
+          "trust": "observed_external",
+          "mandatory": false,
+          "coverage": "complete",
+          "omission_reasons": [
+            "attachments_not_read",
+            "comments_not_read",
+            "related_objects_not_read"
+          ],
+          "freshness": {
+            "is_current": true,
+            "eligible": true,
+            "reasons": [],
+            "current_observation_id": "40000000-0000-4000-8000-000000000001",
+            "last_checked_at": "2026-09-24T00:10:00Z",
+            "last_check_status": "available",
+            "last_check_error_code": null
+          }
+        },
+        "body_markdown": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+        "metadata": {
+          "identifier": "PROD-42",
+          "team_id": "90000000-0000-4000-8000-000000000001",
+          "state": {
+            "id": "90000000-0000-4000-8000-000000000002",
+            "name": "[FICTIF] À faire",
+            "type": "unstarted"
+          }
+        }
+      },
+      "assertions": [
+        "Origine publication et lien job conservés.",
+        "Aucun faux rattachement, bouton detach/rebind ou nouveau POST de création."
+      ]
+    },
+    {
+      "id": "notion_page",
+      "response": {
+        "observation": {
+          "source_kind": "tool_source_observation",
+          "public_id": "40000000-0000-4000-8000-000000000001",
+          "reference_public_id": "30000000-0000-4000-8000-000000000001",
+          "publication_public_id": null,
+          "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+          "provider": "notion",
+          "object_kind": "page",
+          "external_id": "70000000-0000-4000-8000-000000000001",
+          "canonical_url": "https://www.notion.so/70000000000040008000000000000001",
+          "version": 1,
+          "observed_at": "2026-09-24T00:00:00Z",
+          "remote_updated_at": "2026-09-23T23:50:00Z",
+          "title": "[FICTIF] Règle proposée sur les crédits",
+          "excerpt": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+          "availability": "available",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "snapshot_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "projection_version": "existing-tool-text-v1",
+          "trust": "observed_external",
+          "mandatory": false,
+          "coverage": "complete",
+          "omission_reasons": [
+            "comments_not_read",
+            "embedded_content_not_read",
+            "properties_not_read"
+          ],
+          "freshness": {
+            "is_current": true,
+            "eligible": true,
+            "reasons": [],
+            "current_observation_id": "40000000-0000-4000-8000-000000000001",
+            "last_checked_at": "2026-09-24T00:10:00Z",
+            "last_check_status": "available",
+            "last_check_error_code": null
+          }
+        },
+        "body_markdown": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+        "metadata": {
+          "parent_type": "workspace",
+          "parent_id": null
+        }
+      },
+      "assertions": [
+        "Le fournisseur et la page sont rendus explicitement.",
+        "Aucun parent ou contenu incorporé n’est présenté comme lu."
+      ]
+    }
+  ],
+  "saved_attach_command": {
+    "schema": 1,
+    "key": "80000000-0000-4000-8000-000000000001",
+    "createdAt": 1790208000000,
+    "projectId": "20000000-0000-4000-8000-000000000001",
+    "action": "attach",
+    "referenceId": null,
+    "input": {
+      "connection_id": "60000000-0000-4000-8000-000000000001",
+      "expected_connection_revision": 2,
+      "provider": "linear",
+      "source": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+      "confirm_scope_sharing": true
+    }
+  },
+  "receipt_cases": [
+    {
+      "id": "not_received_old_local_date",
+      "local_created_at": 1,
+      "response": {
+        "status": "not_received",
+        "can_retry": true,
+        "retry_after": null,
+        "result": null,
+        "error": null
+      },
+      "assertions": [
+        "Aucun POST au montage.",
+        "Même clé et payload au clic ; l’âge local ne décide pas de l’expiration."
+      ]
+    },
+    {
+      "id": "completed_response_lost",
+      "response": {
+        "status": "completed",
+        "can_retry": false,
+        "retry_after": null,
+        "result": {
+          "reference": {
+            "public_id": "30000000-0000-4000-8000-000000000001",
+            "project_id": "20000000-0000-4000-8000-000000000001",
+            "provider": "linear",
+            "object_kind": "issue",
+            "external_id": "70000000-0000-4000-8000-000000000001",
+            "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+            "connection_id": "60000000-0000-4000-8000-000000000001",
+            "connection_revision": 2,
+            "status": "active",
+            "revision": 1,
+            "current_observation_id": "40000000-0000-4000-8000-000000000001",
+            "created_at": "2026-09-24T00:00:00Z",
+            "updated_at": "2026-09-24T00:00:00Z",
+            "last_attempt_at": "2026-09-24T00:00:00Z",
+            "last_checked_at": "2026-09-24T00:00:00Z",
+            "last_check_status": "available",
+            "last_check_error_code": null
+          },
+          "observation": {
+            "source_kind": "tool_source_observation",
+            "public_id": "40000000-0000-4000-8000-000000000001",
+            "reference_public_id": "30000000-0000-4000-8000-000000000001",
+            "publication_public_id": null,
+            "source_project_public_id": "20000000-0000-4000-8000-000000000001",
+            "provider": "linear",
+            "object_kind": "issue",
+            "external_id": "70000000-0000-4000-8000-000000000001",
+            "canonical_url": "https://linear.app/fictif/issue/PROD-42/specification-fictive",
+            "version": 1,
+            "observed_at": "2026-09-24T00:00:00Z",
+            "remote_updated_at": "2026-09-23T23:50:00Z",
+            "title": "[FICTIF] Durée des crédits",
+            "excerpt": "[FICTIF] Les crédits acquis restent disponibles sans date d’expiration.\n\nLe ticket décrit la règle attendue ; il ne prouve pas son implémentation.",
+            "availability": "available",
+            "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "snapshot_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "projection_version": "existing-tool-text-v1",
+            "trust": "observed_external",
+            "mandatory": false,
+            "coverage": "complete",
+            "omission_reasons": [
+              "attachments_not_read",
+              "comments_not_read",
+              "related_objects_not_read"
+            ],
+            "freshness": {
+              "is_current": true,
+              "eligible": true,
+              "reasons": [],
+              "current_observation_id": "40000000-0000-4000-8000-000000000001",
+              "last_checked_at": "2026-09-24T00:00:00Z",
+              "last_check_status": "available",
+              "last_check_error_code": null
+            }
+          },
+          "action": "attach",
+          "effect": "created",
+          "verification_status": "available"
+        },
+        "error": null
+      },
+      "assertions": [
+        "GET reçu uniquement après rechargement.",
+        "Une lecture locale de fraîcheur ne réécrit pas ce résultat historique."
+      ]
+    },
+    {
+      "id": "source_too_soon",
+      "response": {
+        "status": "retryable",
+        "can_retry": true,
+        "retry_after": "2026-09-24T00:11:00Z",
+        "result": null,
+        "error": {
+          "code": "source_refresh_too_soon",
+          "message": "Cette source vient de faire l’objet d’une tentative de lecture."
+        }
+      },
+      "assertions": [
+        "Date serveur conservée à chaque GET.",
+        "Aucun POST automatique à la fin du délai."
+      ]
+    },
+    {
+      "id": "expired",
+      "response": {
+        "status": "expired",
+        "can_retry": false,
+        "retry_after": null,
+        "result": null,
+        "error": null
+      },
+      "assertions": [
+        "Aucune réutilisation de la clé expirée.",
+        "État local consulté avant préparation explicite d’une nouvelle commande."
+      ]
+    }
+  ],
+  "invalid_response_cases": [
+    {
+      "id": "unknown_source_kind",
+      "patch": {
+        "source_kind": "future_fixture_source"
+      },
+      "assertion": "Ne pas convertir en connaissance ou artefact ; afficher une limite explicite."
+    },
+    {
+      "id": "both_origins",
+      "patch": {
+        "reference_public_id": "30000000-0000-4000-8000-000000000001",
+        "publication_public_id": "50000000-0000-4000-8000-000000000001"
+      },
+      "assertion": "Refuser une provenance ambiguë."
+    },
+    {
+      "id": "wrong_observation_identity",
+      "patch": {
+        "public_id": "40000000-0000-4000-8000-000000000002"
+      },
+      "assertion": "Une route demandant la première observation ne remplace pas son identité."
+    }
+  ]
+}

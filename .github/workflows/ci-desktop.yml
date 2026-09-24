@@ -85,6 +85,13 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Certify the disposable PostgreSQL, Auth and desktop stack
         run: ./scripts/integration-stack.sh run
+      - name: Upload synthetic ticket browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ticket-browser-diagnostics
+          path: /tmp/ai-center-ticket-real-playwright-results
+          if-no-files-found: ignore
       - name: Stop only this disposable stack after interruption
         if: always()
         run: ./scripts/integration-stack.sh stop

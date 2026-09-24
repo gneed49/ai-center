@@ -15,6 +15,7 @@ import { providerLabels } from "@/components/artifacts/labels";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, LoadingState } from "@/components/app/page";
 import { PublicationDetailPanel } from "./publication-detail";
+import { TicketPublications } from "./ticket-publications";
 
 type Review = {
   input: PublishArtifact;
@@ -23,7 +24,26 @@ type Review = {
   destinationLabel: string;
   connectionName: string;
 };
-export function ArtifactPublications({
+type Props = {
+  artifactId: string;
+  version: ArtifactVersion;
+  isCurrent: boolean;
+  artifactType: ArtifactType;
+  projectId?: string;
+  canEdit: boolean;
+  currentVersionId?: string;
+  currentVersionNumber?: number;
+};
+export function ArtifactPublications(props: Props) {
+  const document = <DocumentPublications {...props} />;
+  return props.artifactType === "product_tickets" ||
+    props.artifactType === "technical_tickets" ? (
+    <TicketPublications {...props}>{document}</TicketPublications>
+  ) : (
+    document
+  );
+}
+function DocumentPublications({
   artifactId,
   version,
   isCurrent,
@@ -357,9 +377,17 @@ export function ArtifactPublications({
                       <p className="mt-1 text-xs text-muted-foreground">
                         {job.version_id === version.public_id
                           ? `Version affichée · ${version.version}`
-                          : `Version ${job.version_id}`}{" "}
+                          : job.source_version_number
+                            ? `Version ${job.source_version_number}`
+                            : "Version source conservée"}{" "}
                         · {formatDate(job.created_at, true)}
                       </p>
+                      <Link
+                        className="mt-2 inline-block text-sm text-primary underline"
+                        to={`/artifacts/${artifactId}?version=${job.version_id}${(job.source_ticket_index ?? -1) >= 0 ? `&ticket=${job.source_ticket_index}` : ""}`}
+                      >
+                        Ouvrir la version source
+                      </Link>
                     </div>
                     {url ? (
                       <a

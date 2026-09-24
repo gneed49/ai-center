@@ -1,7 +1,7 @@
 ---
 project: AI Center
 status_schema: 2
-last_reviewed: 2026-09-23
+last_reviewed: 2026-09-24
 stage: company-context-v1-integration
 health: amber
 publication_status: draft_pr_in_progress_not_deployed
@@ -29,7 +29,7 @@ mono-utilisateur de l'ancien MVP. Le code de production des projets clients
 reste produit dans les outils externes.
 
 Le développement utilise le checkout indiqué en métadonnées ; l'ancien checkout
-est préservé. Les jalons `9be97b6`, `596cfee` et `f5c5a28` sont commités et poussés dans la
+est préservé. Les jalons jusqu’à `11bc60f` sont commités et poussés dans la
 [PR de travail n°3](https://github.com/gneed49/ai-center/pull/3), avec leurs huit
 contrôles CI distincts réussis. Aucun déploiement de cette V1 ni appel facturé
 ou qualification de destinations Notion/Linear/GitHub réelles n'est déclaré.
@@ -43,9 +43,10 @@ absence de progression du steward au-delà de ses premières sources/paires.
 Les trois corrections sont livrées dans `30619bf` ; la recette locale est réussie après une correction de sélecteur E2E. La revue a aussi renforcé les reprises après réponse perdue,
 l’attribution des appels IA lors d’un changement de rôle et le verrouillage
 du steward. La revue du parcours vers les outils a aussi relevé un quatrième
-écart : un document de plusieurs tickets devient encore une seule issue
+écart : un document de plusieurs tickets devenait une seule issue
 Linear/GitHub. Le [lot tickets distincts](specs/ticket-publication/spec.md)
-prévoit une publication et un lien par ticket, sans nouveau tableau de tâches.
+est implémenté et qualifié localement : une publication et un lien par ticket,
+sans nouveau tableau de tâches. [Qualification du lot](specs/ticket-publication/validation-2026-09-24.md).
 Le rattachement ciblé du contexte Notion/Linear préexistant et son utilisation par les agents restent aussi à réaliser. G1 reste ouvert jusqu’à réalisation de ces écarts et qualification du même commit.
 
 ## Réalisation présente
@@ -71,13 +72,14 @@ chaque exigence. Le registre de preuve du candidat indique leurs contrôles.
 
 ## Preuves courantes
 
-- **Dernier candidat poussé : `f5c5a28`.** Huit contrôles CI distincts réussis,
+- **Jalon antérieur : `f5c5a28`.** Huit contrôles CI distincts réussis,
   157 tests web, 155 unités Rust, 21 scénarios société, deux parcours navigateur
   API/DB réelles et 150 scénarios navigateur avec doubles HTTP. La bibliothèque
   de connaissances et les sources exactes du graphe font partie de ce commit.
   Le [rapport du 22 septembre](specs/company-context-v1/candidate-validation-2026-09-22.md)
   conserve la portée détaillée et les preuves des jalons précédents.
-- **Jalon du 23 septembre : `30619bf`, poussé ; CI en cours.** Qualité :
+- **Dernier candidat poussé : `11bc60f`, huit contrôles CI distincts réussis.**
+  Il complète `30619bf` par le sélecteur corrigé et son rapport. Qualité du jalon :
   164 tests web, 164 unités Rust, trois contrats synthétiques, 78 contrôles Python,
   format/lint/Clippy et builds. PostgreSQL : 71 scénarios réussis, dont 32 société
   et cinq artefacts ; TLS, restauration de 58 tables/138 politiques et Auth API
@@ -92,6 +94,14 @@ chaque exigence. Le registre de preuve du candidat indique leurs contrôles.
   qu’un sélecteur de test. Sur la matrice avec doubles HTTP, 146/150 ont passé,
   puis les quatre échecs de fixture ont passé après correction sur les tailles
   Chromium concernées. La présentation des tickets sera simplifiée dans T16.
+
+- **Lot tickets distincts : recette locale réussie le 24 septembre.**
+  82 scénarios PostgreSQL, dont 35 société et 14 publications ; TLS,
+  restauration, Auth et quatre parcours API/DB réussis. Un cinquième parcours
+  vérifie deux tickets Linear puis trois GitHub, les cinq reçus, la reprise et
+  les liens historiques, avec fournisseurs HTTP fictifs. Qualité : 184 unités
+  web initiales, 168 Rust, puis régressions ciblées et build après corrections.
+  [Preuves et revue](specs/ticket-publication/validation-2026-09-24.md).
 
 ## Ce qui reste ouvert
 

@@ -11,6 +11,7 @@ import type {
   SaveArtifact,
 } from "@/api/artifact-types";
 import { ArtifactEditor } from "@/components/artifacts/artifact-editor";
+import { TypedDraftView } from "@/components/artifacts/typed-draft-view";
 import { ArtifactExport } from "@/components/artifacts/artifact-export";
 import { ArtifactPublications } from "@/components/work-tools/artifact-publications";
 import { VersionComparison } from "@/components/artifacts/version-comparison";
@@ -21,7 +22,13 @@ import { formatDate } from "@/lib/format";
 
 export function ArtifactPage() {
   const { artifactId = "" } = useParams();
-  return <ArtifactView key={artifactId} artifactId={artifactId} />;
+  const [params] = useSearchParams();
+  return (
+    <ArtifactView
+      key={`${artifactId}:${params.get("version") ?? "current"}`}
+      artifactId={artifactId}
+    />
+  );
 }
 
 function ArtifactView({ artifactId }: { artifactId: string }) {
@@ -383,13 +390,10 @@ function ArtifactView({ artifactId }: { artifactId: string }) {
             <h2 className="mb-5 text-lg font-semibold">
               Contenu de la version {selected.version}
             </h2>
-            <div className="whitespace-pre-wrap break-words text-sm leading-7">
-              {selected.body_markdown ||
-                "Ce brouillon ne contient pas encore de texte."}
-            </div>
+            <TypedDraftView version={selected} ticket={params.get("ticket")} />
             {Object.keys(selected.structured_content).length ? (
               <details className="mt-6 border-t pt-4 text-sm">
-                <summary>Données structurées conservées</summary>
+                <summary>Détails techniques du document</summary>
                 <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words text-xs">
                   {JSON.stringify(selected.structured_content, null, 2)}
                 </pre>
@@ -410,9 +414,10 @@ function ArtifactView({ artifactId }: { artifactId: string }) {
                       {source.version ? `Version ${source.version} · ` : ""}
                       {source.status_at_capture ?? "Source rattachée"}
                     </p>
-                    <p className="mt-1 break-all text-xs text-muted-foreground">
-                      {source.public_id}
-                    </p>
+                    <details className="mt-2 text-xs text-muted-foreground">
+                      <summary>Détails techniques de la source</summary>
+                      <p className="mt-1 break-all">{source.public_id}</p>
+                    </details>
                     {source.kind === "artifact_version" &&
                     source.artifact_id ? (
                       <Link
@@ -438,7 +443,10 @@ function ArtifactView({ artifactId }: { artifactId: string }) {
                 Aucune source rattachée. Ce contenu a été rédigé manuellement.
               </p>
             )}
-            <div className="border-t pt-4">
+            <details className="border-t pt-4">
+              <summary className="text-sm">
+                Détails techniques de la version
+              </summary>
               <p className="text-xs font-medium">Version immuable</p>
               <p className="mt-1 break-all text-xs text-muted-foreground">
                 {selected.public_id}
@@ -447,7 +455,7 @@ function ArtifactView({ artifactId }: { artifactId: string }) {
               <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
                 {selected.content_hash}
               </p>
-            </div>
+            </details>
           </aside>
         </section>
       )}
@@ -470,6 +478,8 @@ function ArtifactView({ artifactId }: { artifactId: string }) {
           key={selected.public_id}
           artifactId={artifactId}
           version={selected}
+          currentVersionId={current.public_id}
+          currentVersionNumber={current.version}
           isCurrent={!historical}
           artifactType={artifact.artifact_type}
           projectId={companyScope ? undefined : artifact.project_id}

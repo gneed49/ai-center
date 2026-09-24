@@ -27,10 +27,11 @@ coordinateur ; ils n'introduisent pas de nouvelles attentes d'approbation.
 | CC-T10 | Parcours web et graphe interactif — frontend               | CC-004,022,033,044,053           | T03, T04, T05, T08 ; T09 pour inbox finale | review       |
 | CC-T11 | Reprise, quotas, arrêt et usage — backend + frontend       | CC-050 à 053                     | T02 ; intégration avec T04/T06/T09         | review       |
 | CC-T12 | Données et préparation exploitation — backend/Ops          | CC-054 à 056                     | T03, T05, T06, T11                         | review       |
-| CC-T13 | Candidate intégrée, revue et publication — QA/coordination | CC-057, CC-G1                    | T03 à T12 et T16                            | in_progress  |
+| CC-T13 | Candidate intégrée, revue et publication — QA/coordination | CC-057, CC-G1                    | T03 à T12, T16 et T17                       | in_progress  |
 | CC-T14 | Qualification réelle et ouverture contrôlée — Ops/produit  | CC-014,026,027,055,056, CC-G2/G3 | T13 + accès/cible/budget identifiés        | pending      |
 | CC-T15 | Pilote et décision V1 — produit/pilotes                    | CC-G4                            | T14 + temps et participants réels          | pending      |
-| CC-T16 | Tickets distincts vers les outils — backend + web          | CC-020,026,028,031,050,054        | T05, T06, T07 ; fin du gel d’intégration    | pending      |
+| CC-T16 | Tickets distincts vers les outils — backend + web          | CC-020,026,028,031,050,054        | T05, T06, T07 ; local réussi, CI à suivre   | in_progress  |
+| CC-T17 | Contexte Notion/Linear existant — backend + web            | CC-012,020,023,025,027,029,031,054 | T04 à T09 ; après T16                       | pending      |
 
 ### Amendement de granularité — CC-T16
 
@@ -50,6 +51,27 @@ effacement. Les preuves documentaires précédentes ne satisfont pas ce critère
 CC-T13/CC-G1 dépendent également de CC-T16 ; ils ne sont pas clos par la recette
 du seul comportement documentaire existant. Les comptes/outils réels restent
 qualifiés séparément par CC-T14.
+
+### Amendement de contexte entrant — CC-T17
+
+Les connecteurs permettent aujourd'hui de relire leurs propres publications,
+mais pas de rattacher une page Notion ou une issue Linear existante. Le graphe
+et le steward disposent d'observations que le contexte PM/génération ne sélectionne
+pas encore directement. Cet écart P1 empêche de travailler à partir des outils
+déjà utilisés par l'entreprise.
+
+La [spécification ciblée](../existing-tool-context/spec.md) et son
+[plan](../existing-tool-context/plan.md) couvrent le rattachement volontaire d'un
+objet, les observations immuables/refresh et leur chaîne complète de provenance
+vers agents, artefacts et handoffs. Deux petites tables dédiées évitent d'affaiblir
+les contraintes GitHub ou les reçus de publication. Connexions, quotas, commandes,
+graphe et steward existants sont réutilisés ; pas de synchronisation globale.
+
+**État : conception seulement**, aucun code ou SQL dans cette passe. Le lot se
+réalise après T16 et participe à CC-T13/CC-G1 ; la recette précédente ne le ferme
+pas. Fin : ETC-001 à ETC-012 avec fixtures marquées, recette isolée, preuves de
+révocation/couverture/confiance et export/effacement. La qualification des objets
+réels reste une preuve distincte de CC-T14.
 
 ## CC-T01 — Base, contrats et amendements
 

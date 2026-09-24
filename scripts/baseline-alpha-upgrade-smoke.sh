@@ -98,6 +98,11 @@ psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet \
   --file=scripts/sql/upgrade-legacy-fixtures.sql
 
 for alpha_migration in "${alpha_migrations[@]:1}"; do
+  if [[ "${alpha_migration}" == "20260923234438_ticket_publications.sql" ]]; then
+    psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet \
+      --dbname="${alpha_upgrade_database_url}" \
+      --file=scripts/sql/upgrade-publication-fixture.sql
+  fi
   psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet \
     --dbname="${alpha_upgrade_database_url}" \
     --file="supabase/migrations/${alpha_migration}"
@@ -106,6 +111,10 @@ done
 psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet \
   --dbname="${alpha_upgrade_database_url}" \
   --file=scripts/sql/verify-upgraded-domain.sql
+
+psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet \
+  --dbname="${alpha_upgrade_database_url}" \
+  --file=scripts/sql/verify-upgraded-publication.sql
 
 alpha_unrecoverable_workspace_count="$(
   psql --no-psqlrc --set=ON_ERROR_STOP=1 \

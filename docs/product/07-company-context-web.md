@@ -117,3 +117,19 @@ Une demande de génération envoyée reste retrouvable dans le même navigateur 
 le même compte/société/projet. Le suivi lit un reçu serveur sans nouvel appel IA.
 Une reprise est explicite et conserve son identité ; une demande expirée invite
 à consulter les résultats existants avant de préparer une nouvelle demande.
+
+
+### Tickets distincts dans les outils
+
+Une version validée de tickets produit ou techniques permet de sélectionner les
+entrées à publier. Un aperçu montre le contenu et la destination ; chaque entrée
+confirmée devient une issue distincte dans Linear ou GitHub, avec son état et
+son lien. Notion reçoit toujours une page pour le document complet. Les tickets
+existants de cette version sont réutilisés ; une nouvelle version demande une
+confirmation supplémentaire, sans modifier automatiquement les anciennes issues.
+
+Un résultat incertain est vérifié individuellement avant toute autre action.
+La reprise d’une commande lit son reçu sans envoyer de nouvelles créations.
+Le graphe, l’historique et les exports conservent la version et le numéro exacts
+de chaque entrée. L’interface permet de lire et modifier les entrées déjà
+présentes ; l’ajout et le retrait d’entrées dans cet éditeur restent à compléter.

@@ -1368,3 +1368,6 @@ mod steward_progress;
 
 #[path = "company_context/model_run_access.rs"]
 mod model_run_access;
+
+#[path = "company_context/ticket_provenance.rs"]
+mod ticket_provenance;

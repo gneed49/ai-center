@@ -19,6 +19,16 @@ stored as (
       'created_at',e.created_at,'persisted',true) as provenance
   from app.edges e join scopes p on p.id=e.project_id join scopes target on target.id=e.target_project_id
 ), sources as (
+  select md5('publication-source:'||o.id::text)::uuid as id,'external_reference'::text as source_kind,
+    o.public_id as source_public_id,p.public_id as source_project_public_id,'artifact'::text as target_kind,
+    v.public_id as target_public_id,p.public_id as target_project_public_id,'derived_from'::text as edge_type,
+    'confirmed'::text as status,jsonb_build_object('origin','publication_source','persisted',true,
+      'publication_id',j.public_id,'artifact_id',d.public_id,'artifact_version_id',v.public_id,
+      'source_ticket_index',j.source_ticket_index,'observation_kind',o.observation_kind) as provenance
+  from app.publication_observations o join app.publication_jobs j on j.id=o.publication_job_id
+  join app.artifact_document_versions v on v.id=j.artifact_version_id
+  join app.artifact_documents d on d.id=v.document_id join scopes p on p.id=j.project_id
+  union all
   select md5('pack-source:'||s.id::text)::uuid as id,'artifact'::text as source_kind,c.public_id as source_public_id,
     p.public_id as source_project_public_id,'knowledge'::text as target_kind,v.public_id as target_public_id,
     p.public_id as target_project_public_id,'derived_from'::text as edge_type,'confirmed'::text as status,

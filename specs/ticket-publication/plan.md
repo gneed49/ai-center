@@ -1,6 +1,6 @@
 # Plan d’implémentation — Tickets distincts
 
-> Statut : prêt pour revue de conception ; code/SQL gelés jusqu’au signal de l’intégrateur
+> Statut : implémentation et recette locale réussies ; CI du jalon à suivre
 > Spec liée : [spec.md](spec.md)
 
 ## Approche
@@ -92,7 +92,10 @@ Contrats proposés, à garder séparés de la route documentaire existante :
   contrat canonique ci-dessous. Cette route ne réserve ni job ni appel fournisseur.
 - `POST /api/artifacts/{id}/ticket-publications` avec clé d’idempotence : mêmes
   identités plus `preview_fingerprint`, `prior_publications_fingerprint` et, lorsque requis,
-  `confirm_additional_issues: true`. Opération `publication.tickets.create`.
+  `confirm_additional_issues: true`. Famille métier `publication.tickets.create` ; opération interne
+  `publication.tickets.create:{artifact_uuid}` (UUID canonique, 63 caractères).
+  Cette qualification lie aussi un reçu en cours à son artefact sans ajouter de
+  colonne ; GET et POST calculent la même opération, sous acteur/société/projet.
   Réponse : version/destination, liste ordonnée de publications avec index,
   nombres créé/existant. Aucun statut agrégé ne remplace les états individuels.
 - Le reçu de commande est consultable en lecture seule sous acteur/société/projet ;
@@ -117,7 +120,18 @@ Dans une courte transaction :
 5. Inscrire uniquement les manquants, auditer sélection/version/destination et
    créations supplémentaires confirmées, puis compléter le reçu idempotent
    dans la même transaction. Tout rejet provoque rollback de tous les nouveaux
-   jobs ; aucun appel distant ne se fait avant commit.
+   jobs ; aucun appel distant ne se fait avant commit. Pour cette famille de
+   commandes, verrouiller le reçu puis vérifier la génération, le bail et la
+   rétention avec l’horloge courante lors de la finalisation. Une attente sur le
+   document ou le quota ne doit pas permettre de finaliser après expiration ;
+   le renouvellement refuse également une commande déjà expirée.
+
+La connexion est lue sous la politique SELECT des membres : aucune donnée secrète
+n'est exposée et aucun verrou de ligne ne réclame la politique UPDATE owner-only.
+Une rotation après cette lecture peut laisser inscrire un job de l'ancienne
+révision ; le worker le recontrôle et l'annule avant tout HTTP. L'admission ne
+promet donc pas le départ avec une connexion encore valide au moment du worker.
+Une rotation déjà visible lors de la confirmation invalide l'empreinte d'aperçu.
 
 Le verrou document et l’unicité SQL arbitrent les batchs concurrents, y compris
 deux membres et deux clés. La requête ne modifie jamais l’acteur d’un job déjà
@@ -299,7 +313,10 @@ est présenté comme tel ; le batch ne transfère pas silencieusement son exécu
 
 #### Provenance et vérification
 
-- Historique : empreinte canonique sur les identités version/job, indices,
+- Historique : lire au plus 501 publications pertinentes ; si plus de 500 existent,
+  refuser l’aperçu et l’admission avec demande de vérification de cet historique.
+  Ne jamais calculer une empreinte ni une confirmation sur un historique tronqué.
+  Cette borne n’augmente aucun quota. Empreinte canonique sur identités version/job, indices,
   états et identités distantes pertinents, triés. Exclure dates mouvantes sans
   importance. Si un état change entre aperçu et confirmation, refaire l’aperçu.
 - Étendre la projection des arêtes de graphe : observation de publication →
@@ -355,12 +372,12 @@ est présenté comme tel ; le batch ne transfère pas silencieusement son exécu
 
 ## Validation
 
-- [ ] Signal de fin du gel reçu ; numéro de migration attribué.
-- [ ] Types partagés et corps/previews relus ; TP-001 à TP-004.
-- [ ] Quotas, concurrence et permissions ; TP-005/006.
-- [ ] Compatibilité historique/Notion et créations interversions ; TP-007/008.
-- [ ] Graphe, exports, effacement/restauration ; TP-009/010.
-- [ ] Parcours web et revue indépendante ; TP-011.
+- [x] Signal de fin du gel reçu ; numéro de migration attribué.
+- [x] Types partagés et corps/previews relus ; TP-001 à TP-004.
+- [x] Quotas, concurrence et permissions ; TP-005/006.
+- [x] Compatibilité historique/Notion et créations interversions ; TP-007/008.
+- [x] Graphe, exports, effacement/restauration ; TP-009/010.
+- [x] Parcours web et revue indépendante ; TP-011.
 - [ ] Format, lint, tests ciblés, intégration, CI et image au commit livré.
 
 ## Déploiement et retour arrière
@@ -379,3 +396,34 @@ les jobs et leurs capacités de lecture/réconciliation. Une restauration compl�
 reste un exercice contrôlé avec sorties désactivées : aucune restauration ne doit
 recréer les issues déjà présentes dans les outils. Préférer une correction avant
 de réintroduire un binaire qui ignore la granularité des jobs.
+
+## Livraison frontend — vérifications du 24 septembre 2026
+
+- Sélection explicite et couverture complète, aperçu métier serveur, confirmation
+  des créations supplémentaires, états individuels, reçus durables et navigation
+  exacte vers une entrée historique implémentés. Lecture des cinq formats en
+  français, critères en listes et détails techniques repliés ; exports préservés.
+- Revue root corrigée : une demande ancienne localement mais `not_received` côté
+  serveur reste explicitement reprenable. L’horloge du navigateur ne décide plus
+  de l’expiration ; le reçu et le refus atomique serveur restent canoniques.
+- Construction/lint web et 182 unités ont passé avant les deux dernières
+  régressions ciblées (historique inaccessible et reprise `not_received`, également
+  passées séparément). La recette navigateur mock vérifie 2 tickets parmi 30,
+  perte de réponse, retour sur une nouvelle version, états succès/incertain,
+  clavier/focus et mobile 390×844 ; axe ne trouve aucune violation. La suite
+  Playwright existante est utilisée, le plugin Browser n’étant pas disponible.
+- Captures viewport lisibles hors dépôt :
+  `/tmp/ai-center-ticket-document-mobile.png` et
+  `/tmp/ai-center-ticket-publication-mobile.png`.
+- TP-011 réel préparé dans `apps/web/ticket-real-e2e/workflow.spec.ts` avec config
+  dédiée. Il appelle la vraie API et valide/publie dans l’UI. Le moteur déterministe
+  produit **une entrée** par artefact ; la fixture ajoute explicitement les autres
+  par l’API de révision pour obtenir 2 entrées produit et 3 techniques. Cette
+  préparation est jointe au résultat Playwright et ne prouve pas une génération
+  multi-ticket par fournisseur réel. Les cinq objets externes restent des réponses
+  HTTP fictives du harness gardé. Exécution réservée à l’intégrateur.
+- Amélioration UX suivante : ajouter/supprimer des entrées dans l’éditeur typé.
+  L’éditeur actuel permet leur relecture et modification ; la recette T16 n’ajoute
+  pas cette commande au produit pendant son gel.
+
+Qualification intégrée : [rapport du 24 septembre](validation-2026-09-24.md).

@@ -9,7 +9,32 @@ import type {
   WorkToolSettings,
   WorkToolTest,
 } from "./work-tool-types";
+import type {
+  PreviewTickets,
+  PublishTickets,
+  TicketCoverage,
+  TicketPreview,
+  TicketPublicationResult,
+  TicketPublicationReceipt,
+} from "./ticket-publication-types";
 const id = encodeURIComponent;
+async function hydratePublication(value: Publication): Promise<Publication> {
+  const normalized = {
+    ...value,
+    source_ticket_index: value.source_ticket_index ?? -1,
+  };
+  if (value.title != null && value.source_version_number != null)
+    return normalized;
+  const detail = await request<PublicationDetail>(
+    `/api/publications/${id(value.public_id)}`,
+    { cache: "no-store" },
+  );
+  return {
+    ...normalized,
+    title: detail.publication.title,
+    source_version_number: detail.publication.source_version_number,
+  };
+}
 function command(input: unknown, key: string): RequestInit {
   return {
     method: "POST",
@@ -18,6 +43,31 @@ function command(input: unknown, key: string): RequestInit {
   };
 }
 export const workToolsApi = {
+  ticketCoverage: (
+    artifactId: string,
+    versionId: string,
+    provider: string,
+    targetId: string,
+  ) =>
+    request<TicketCoverage>(
+      `/api/artifacts/${id(artifactId)}/ticket-publications?${new URLSearchParams({ version_id: versionId, provider, target_id: targetId })}`,
+      { cache: "no-store" },
+    ),
+  ticketPreview: (artifactId: string, input: PreviewTickets) =>
+    request<TicketPreview>(
+      `/api/artifacts/${id(artifactId)}/ticket-publications/preview`,
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  publishTickets: (artifactId: string, input: PublishTickets, key: string) =>
+    request<TicketPublicationResult>(
+      `/api/artifacts/${id(artifactId)}/ticket-publications`,
+      command(input, key),
+    ),
+  ticketReceipt: (artifactId: string, key: string) =>
+    request<TicketPublicationReceipt>(
+      `/api/artifacts/${id(artifactId)}/ticket-publication-commands/${id(key)}`,
+      { cache: "no-store" },
+    ),
   settings: () => request<WorkToolSettings>("/api/work-tools"),
   save: (input: SaveWorkToolConnection, key: string) =>
     request<WorkToolConnection>(
@@ -42,7 +92,7 @@ export const workToolsApi = {
     request<Publication>(
       `/api/artifacts/${id(artifactId)}/publications`,
       command(input, key),
-    ),
+    ).then(hydratePublication),
   publication: (publicationId: string) =>
     request<PublicationDetail>(`/api/publications/${id(publicationId)}`),
   reconcile: (publicationId: string, externalId: string, key: string) =>

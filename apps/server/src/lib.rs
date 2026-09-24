@@ -284,7 +284,8 @@ async fn verify_company_schema(pool: &PgPool) -> Result<()> {
            ]) required(name) where to_regprocedure(name) is null
          ) and not exists (
            select 1 from (values ('messages','author_actor_id'),('messages','command_public_id'),
-             ('messages','submitted_content'),('domain_events','deferred_count')) required(table_name,column_name)
+             ('messages','submitted_content'),('domain_events','deferred_count'),
+             ('publication_jobs','source_ticket_index')) required(table_name,column_name)
            where not exists (select 1 from information_schema.columns c where c.table_schema='app'
              and c.table_name=required.table_name and c.column_name=required.column_name)
          )",

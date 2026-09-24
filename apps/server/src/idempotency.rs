@@ -353,6 +353,8 @@ pub async fn renew(
     lease: &IdempotencyLease,
 ) -> AppResult<bool> {
     assert_transaction_scope(tx, lease.workspace_id, lease.actor_id).await?;
+    let ticket_command = is_ticket_publication_operation(&lease.operation_key);
+    lock_ticket_command(tx, lease, ticket_command).await?;
     let renewed: Option<bool> = sqlx::query_scalar(
         "update app.idempotency_records
          set locked_until = case when status = 'processing'
@@ -362,6 +364,8 @@ pub async fn renew(
          where public_id = $1 and workspace_id = $2 and actor_id = $3
            and lease_generation = $4
            and (status <> 'processing' or locked_until > now())
+           and (not $7 or status <> 'processing'
+                or (locked_until > clock_timestamp() and expires_at > clock_timestamp()))
          returning status = 'processing'",
     )
     .bind(lease.record_public_id)
@@ -370,6 +374,7 @@ pub async fn renew(
     .bind(lease.generation)
     .bind(LEASE_DURATION_SECONDS)
     .bind(RETENTION_SECONDS)
+    .bind(ticket_command)
     .fetch_optional(&mut **tx)
     .await?;
     renewed.ok_or_else(|| AppError::Conflict("command lease expired or was reclaimed".into()))
@@ -564,6 +569,8 @@ async fn finalize(
     response: StoredResponse,
 ) -> AppResult<StoredResponse> {
     assert_transaction_scope(tx, lease.workspace_id, lease.actor_id).await?;
+    let ticket_command = is_ticket_publication_operation(&lease.operation_key);
+    lock_ticket_command(tx, lease, ticket_command).await?;
     let status = if response.failed {
         "failed"
     } else {
@@ -587,7 +594,8 @@ async fn finalize(
            and idempotency_key = $6
            and request_hash = $7
            and status = 'processing'
-           and lease_generation = $12",
+           and lease_generation = $12
+           and (not $13 or (locked_until > clock_timestamp() and expires_at > clock_timestamp()))",
     )
     .bind(lease.record_public_id)
     .bind(lease.workspace_id)
@@ -601,6 +609,7 @@ async fn finalize(
     .bind(&response.body)
     .bind(&response.error_code)
     .bind(lease.generation)
+    .bind(ticket_command)
     .execute(&mut **tx)
     .await?;
 
@@ -644,6 +653,31 @@ async fn finalize(
     Err(AppError::Conflict(
         "idempotency lease is no longer active".into(),
     ))
+}
+
+// Acquire the row before evaluating wall-clock deadlines. Transaction `now()`
+// predates waits on documents/quotas, and an UPDATE may itself wait for a lock.
+// Keeping this lock through finalization makes receipt + jobs one fenced commit.
+async fn lock_ticket_command(
+    tx: &mut Transaction<'_, Postgres>,
+    lease: &IdempotencyLease,
+    ticket_command: bool,
+) -> AppResult<()> {
+    if ticket_command {
+        sqlx::query("select id from app.idempotency_records where public_id=$1 and workspace_id=$2 and actor_id=$3 for update")
+            .bind(lease.record_public_id)
+            .bind(lease.workspace_id)
+            .bind(lease.actor_id)
+            .fetch_optional(&mut **tx)
+            .await?;
+    }
+    Ok(())
+}
+
+fn is_ticket_publication_operation(operation: &str) -> bool {
+    operation
+        .strip_prefix("publication.tickets.create:")
+        .is_some_and(|id| Uuid::parse_str(id).is_ok_and(|uuid| uuid.to_string() == id))
 }
 
 async fn assert_transaction_scope(
@@ -789,10 +823,10 @@ fn classify_existing(record: &IdempotencyRecord, request: BeginRequest<'_>) -> E
     // This decision runs under the same row lock as the lease claim.
     if record.expired
         && !maintenance_closed
-        && matches!(
+        && (matches!(
             request.operation_key,
             "artifact.generate" | "artifact.convert"
-        )
+        ) || is_ticket_publication_operation(request.operation_key))
     {
         return ExistingDecision::ExpiredConflict;
     }
@@ -1060,8 +1094,29 @@ mod tests {
     }
 
     #[test]
+    fn ticket_operation_requires_a_canonical_artifact_identity() {
+        let operation = "publication.tickets.create:abcdef00-0000-4000-8000-000000000001";
+        assert_eq!(operation.len(), 63);
+        assert!(validate_operation_key(operation).is_ok());
+        assert!(is_ticket_publication_operation(operation));
+        for invalid in [
+            "publication.tickets.create",
+            "publication.tickets.create:",
+            "publication.tickets.create:ABCDEF00-0000-4000-8000-000000000001",
+            "publication.tickets.create:abcdef00000040008000000000000001",
+            "publication.tickets.create:abcdef00-0000-4000-8000-000000000001:extra",
+        ] {
+            assert!(!is_ticket_publication_operation(invalid));
+        }
+    }
+
+    #[test]
     fn saved_artifact_generations_never_restart_after_expiry() {
-        for operation_key in ["artifact.generate", "artifact.convert"] {
+        for operation_key in [
+            "artifact.generate",
+            "artifact.convert",
+            "publication.tickets.create:10000000-0000-4000-8000-000000000001",
+        ] {
             let request = BeginRequest {
                 operation_key,
                 ..request(HASH_A, Some(2))

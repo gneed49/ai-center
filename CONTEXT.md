@@ -22,9 +22,20 @@ AI Center relie le travail des équipes, les décisions et les résultats de leu
 
 **Livrable** : document ou ensemble de tickets produit à partir d'un contexte, conservé en versions et soumis à une décision explicite de publication.
 
+**Entrée de ticket** : travail décrit dans une version précise d'un livrable, avec son titre, ses critères et ses sources. Sa position dans une nouvelle version ne prouve pas qu'il s'agit du même travail.
+
 **Destination** : emplacement choisi dans AI Center ou dans un outil externe pour publier une version précise d'un livrable.
 
 **Référence externe** : identité et adresse d'un objet qui reste détenu par un outil existant, accompagnées d'observations datées.
+
+**Source rattachée** : référence externe explicitement partagée dans le contexte d'un projet ou de la société. Son retrait du contexte actif ne supprime ni l'objet dans son outil, ni les observations déjà citées.
+
+**Observation** : contenu et limites de lecture d'une source externe à un instant donné, conservés pour pouvoir retrouver ce qu'un agent a effectivement reçu. Une observation n'est pas une connaissance confirmée.
+_Éviter_ : vérité synchronisée, règle validée automatiquement.
+
+**Vérification** : lecture explicite de l'état actuel d'une source, dont le résultat peut confirmer une observation inchangée, révéler un changement ou rester indisponible. La dernière vérification ne réécrit pas les anciennes citations.
+
+**Publication** : demande explicite de créer un objet dans une destination à partir d'une version relue du livrable ou d'une entrée de ticket. Son reçu atteste la création observée, pas l'accomplissement du travail décrit.
 
 **Preuve** : élément examiné et validé pour étayer une exigence. Un lien, une réponse IA ou l'absence de résultat de recherche ne constituent pas seuls une preuve.
 
