@@ -364,11 +364,22 @@ test("PM 2 tickets Linear puis lead 3 tickets GitHub conservent leurs versions e
     page.getByRole("article", { name: "Ticket 3 · version 3", exact: true }),
   ).toBeFocused();
   await page.setViewportSize({ width: 390, height: 844 });
+  // Viewport metrics arrive before the responsive CSS transitions are painted.
+  // Even reduced-motion transitions need a frame; measure the committed layout.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+  const mobileLayout = await page.evaluate(() => ({
+    contentWidth: document.documentElement.scrollWidth,
+    viewportWidth: innerWidth,
+  }));
   expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
+    mobileLayout.contentWidth,
+    `Le contenu mesure ${mobileLayout.contentWidth}px pour un écran de ${mobileLayout.viewportWidth}px`,
+  ).toBeLessThanOrEqual(mobileLayout.viewportWidth);
   const axe = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
     .analyze();

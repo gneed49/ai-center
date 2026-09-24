@@ -104,3 +104,18 @@ Le build web a été repris après le correctif de focus et réussit, ainsi que
 le formatage des ajouts navigateur/CI. La phase navigateur intègre désormais
 la CI et conserve ses traces en cas d’échec. Cette preuve reste synthétique
 pour les fournisseurs et ne ferme aucune gate réelle ou d’exploitation.
+
+
+## Contrôle distant et rendu mobile
+
+Le commit `442860b` est poussé. Les huit contrôles du workflow de push ont réussi ;
+le workflow PR a révélé un défaut de synchronisation du test mobile, après succès
+du parcours 2 + 3 : la largeur était mesurée immédiatement après redimensionnement,
+pendant une transition de mise en page. Le rejeu des réponses fictives de la trace
+reproduit le dépassement immédiatement (10/15 puis 6/15 essais), et aucun dépassement
+après deux frames de rendu (0/15 dans chaque série).
+
+Le test attend désormais ces deux frames avant le même contrôle strict de largeur,
+sans marge, délai arbitraire ni répétition de l’assertion. Le journal
+`.run/ticket-viewport-diagnosis.md` conserve les mesures. La CI du correctif doit
+confirmer le parcours ; son premier échec n’est pas effacé du registre des preuves.
