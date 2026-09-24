@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-center.local/schemas/alpha-context-proof/report.schema.json",
+  "title": "Alpha Context Proof aggregate report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "campaign_id",
+    "generated_at",
+    "sample",
+    "budget",
+    "metrics",
+    "gate_passed"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "campaign_id": { "type": "string" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "sample": {
+      "type": "object",
+      "required": [
+        "projects",
+        "handoff_tasks",
+        "contradiction_pairs",
+        "model_runs",
+        "owner_comparisons",
+        "secondary_coverage",
+        "complete"
+      ],
+      "properties": {
+        "projects": { "type": "integer" },
+        "handoff_tasks": { "type": "integer" },
+        "contradiction_pairs": { "type": "integer" },
+        "model_runs": { "type": "integer" },
+        "owner_comparisons": { "type": "integer" },
+        "secondary_coverage": { "type": "number" },
+        "complete": { "type": "boolean" },
+        "missing": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "required": [
+        "calibration_usd",
+        "main_usd",
+        "reserve_usd",
+        "total_usd",
+        "passed"
+      ],
+      "properties": {
+        "calibration_usd": { "type": "number" },
+        "main_usd": { "type": "number" },
+        "reserve_usd": { "type": "number" },
+        "total_usd": { "type": "number" },
+        "passed": { "type": "boolean" }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["value", "threshold", "comparator", "passed"],
+        "properties": {
+          "value": { "type": "number" },
+          "threshold": { "type": "number" },
+          "comparator": { "enum": [">=", "<=", "="] },
+          "numerator": { "type": "number" },
+          "denominator": { "type": "number" },
+          "passed": { "type": "boolean" }
+        }
+      }
+    },
+    "gate_passed": { "type": "boolean" }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-center.local/schemas/alpha-context-proof/budget-event.schema.json",
+  "title": "Append-only live-eval budget event",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event",
+        "reservation_id",
+        "run_id",
+        "stage",
+        "max_cost_usd",
+        "at"
+      ],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "event": { "const": "reserve" },
+        "reservation_id": { "type": "string" },
+        "run_id": { "type": "string" },
+        "stage": { "enum": ["calibration", "main", "reserve"] },
+        "max_cost_usd": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$" },
+        "at": { "type": "string", "format": "date-time" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event",
+        "reservation_id",
+        "actual_cost_usd",
+        "at"
+      ],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "event": { "const": "settle" },
+        "reservation_id": { "type": "string" },
+        "actual_cost_usd": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?$"
+        },
+        "at": { "type": "string", "format": "date-time" },
+        "reconciled": { "type": "boolean" }
+      }
+    }
+  ]
+}

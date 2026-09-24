@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+  "apps/server",
+  "apps/desktop/src-tauri"
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "UNLICENSED"
+rust-version = "1.91"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"

@@ -1,0 +1,18 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "identifier": "com.aicenter.client",
+  "app": {
+    "windows": [
+      {
+        "title": "AI Center",
+        "fullscreen": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "android": {
+      "minSdkVersion": 24
+    }
+  }
+}

@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title description">
+  <title id="title">AI Center — Alpha Context Proof</title>
+  <desc id="description">Flux de contrôle depuis l'intention jusqu'à la preuve GitHub, la couverture, le Steward et la révision du contexte.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#081120"/>
+      <stop offset="1" stop-color="#111c35"/>
+    </linearGradient>
+    <linearGradient id="control" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#121e39"/>
+      <stop offset="1" stop-color="#17294d"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#020617" flood-opacity="0.35"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7dd3fc"/>
+    </marker>
+    <marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+    <style>
+      .heading { font: 700 36px Inter, ui-sans-serif, system-ui, sans-serif; fill: #f8fafc; }
+      .subtitle { font: 400 18px Inter, ui-sans-serif, system-ui, sans-serif; fill: #a5b4fc; }
+      .section { font: 700 15px Inter, ui-sans-serif, system-ui, sans-serif; letter-spacing: 1.5px; fill: #93c5fd; }
+      .node-title { font: 700 17px Inter, ui-sans-serif, system-ui, sans-serif; fill: #f8fafc; }
+      .node-copy { font: 400 13px Inter, ui-sans-serif, system-ui, sans-serif; fill: #cbd5e1; }
+      .label { font: 600 12px Inter, ui-sans-serif, system-ui, sans-serif; fill: #bae6fd; }
+      .small { font: 500 12px Inter, ui-sans-serif, system-ui, sans-serif; fill: #94a3b8; }
+      .line { fill: none; stroke: #7dd3fc; stroke-width: 2.5; marker-end: url(#arrow); }
+      .muted-line { fill: none; stroke: #94a3b8; stroke-width: 2; stroke-dasharray: 7 7; marker-end: url(#arrow-muted); }
+      .node { fill: #17233f; stroke: #385078; stroke-width: 1.5; rx: 14; filter: url(#shadow); }
+      .core { fill: #172b4f; stroke: #60a5fa; }
+      .external { fill: #182235; stroke: #64748b; }
+      .proof { fill: #143449; stroke: #22d3ee; }
+      .steward { fill: #2b2048; stroke: #a78bfa; }
+      .revision { fill: #3b2434; stroke: #fb7185; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#background)"/>
+  <circle cx="1420" cy="70" r="260" fill="#2563eb" opacity="0.08"/>
+  <circle cx="120" cy="850" r="280" fill="#7c3aed" opacity="0.08"/>
+
+  <text x="56" y="64" class="heading">AI Center — Alpha Context Proof</text>
+  <text x="56" y="96" class="subtitle">Centraliser, compiler, transmettre et challenger le contexte — sans remplacer les outils de travail.</text>
+
+  <rect x="44" y="132" width="1120" height="690" rx="24" fill="url(#control)" stroke="#334d78" stroke-width="2" stroke-dasharray="8 8"/>
+  <text x="72" y="170" class="section">AI CENTER · PLAN DE CONTRÔLE CONTEXTUEL</text>
+
+  <rect class="node" x="76" y="214" width="170" height="112"/>
+  <text x="96" y="247" class="node-title">1 · Intention</text>
+  <text x="96" y="276" class="node-copy">Objectif et tâche</text>
+  <text x="96" y="297" class="node-copy">à clarifier</text>
+
+  <rect class="node core" x="290" y="214" width="210" height="112"/>
+  <text x="310" y="247" class="node-title">2 · Connaissances</text>
+  <text x="310" y="276" class="node-copy">Confirmées, typées,</text>
+  <text x="310" y="297" class="node-copy">sourcées et versionnées</text>
+
+  <rect class="node" x="544" y="214" width="160" height="112"/>
+  <text x="564" y="247" class="node-title">3 · Gate</text>
+  <text x="564" y="276" class="node-copy">Bloque les manques</text>
+  <text x="564" y="297" class="node-copy">sur le graphe courant</text>
+
+  <rect class="node core" x="748" y="214" width="190" height="112"/>
+  <text x="768" y="247" class="node-title">4 · Compiler</text>
+  <text x="768" y="276" class="node-copy">Sélection + budget</text>
+  <text x="768" y="297" class="node-copy">+ raisons d’inclusion</text>
+
+  <rect class="node proof" x="982" y="214" width="150" height="112"/>
+  <text x="1002" y="247" class="node-title">5 · Pack</text>
+  <text x="1002" y="276" class="node-copy">Immutable, versionné</text>
+  <text x="1002" y="297" class="node-copy">et exportable</text>
+
+  <path class="line" d="M246 270 H290"/>
+  <path class="line" d="M500 270 H544"/>
+  <path class="line" d="M704 270 H748"/>
+  <path class="line" d="M938 270 H982"/>
+
+  <rect class="node proof" x="778" y="468" width="240" height="120"/>
+  <text x="798" y="501" class="node-title">8 · Preuves + couverture</text>
+  <text x="798" y="530" class="node-copy">Preuve candidate puis</text>
+  <text x="798" y="551" class="node-copy">validation humaine et mesure</text>
+
+  <rect class="node steward" x="488" y="468" width="240" height="120"/>
+  <text x="508" y="501" class="node-title">9 · Steward</text>
+  <text x="508" y="530" class="node-copy">Contradictions, ambiguïtés</text>
+  <text x="508" y="551" class="node-copy">et projections obsolètes</text>
+
+  <rect class="node revision" x="198" y="468" width="240" height="120"/>
+  <text x="218" y="501" class="node-title">10 · Révision</text>
+  <text x="218" y="530" class="node-copy">Mutation atomique d’une</text>
+  <text x="218" y="551" class="node-copy">connaissance et audit</text>
+
+  <path class="line" d="M778 528 H728"/>
+  <path class="line" d="M488 528 H438"/>
+  <path class="line" d="M318 468 V386 C318 360 342 348 370 348 H395 V326"/>
+  <text x="326" y="385" class="label">nouvelle graph version</text>
+  <path class="muted-line" d="M608 468 V402 C608 376 632 362 662 362 H842 V326"/>
+  <text x="659" y="390" class="small">stale → recompilation</text>
+
+  <rect x="1200" y="132" width="356" height="690" rx="24" fill="#0c1425" stroke="#334155" stroke-width="2"/>
+  <text x="1228" y="170" class="section">OUTILS CANONIQUES EXISTANTS</text>
+
+  <rect class="node external" x="1228" y="214" width="300" height="112"/>
+  <text x="1248" y="247" class="node-title">6 · Outil externe</text>
+  <text x="1248" y="276" class="node-copy">Codex, CLI, IDE ou agent</text>
+  <text x="1248" y="297" class="node-copy">produit le travail hors AI Center</text>
+
+  <rect class="node external" x="1228" y="382" width="300" height="112"/>
+  <text x="1248" y="415" class="node-title">7 · GitHub read-only</text>
+  <text x="1248" y="444" class="node-copy">PR, commit, chemins et checks</text>
+  <text x="1248" y="465" class="node-copy">restent la réalité canonique</text>
+
+  <rect class="node proof" x="1228" y="550" width="300" height="112"/>
+  <text x="1248" y="583" class="node-title">ExternalReference</text>
+  <text x="1248" y="612" class="node-copy">Observation durable, append-only</text>
+  <text x="1248" y="633" class="node-copy">et liée au head SHA exact</text>
+
+  <path class="line" d="M1132 270 H1228"/>
+  <path class="line" d="M1378 326 V382"/>
+  <path class="line" d="M1378 494 V550"/>
+  <path class="line" d="M1228 606 H1100 C1060 606 1038 586 1018 548"/>
+
+  <rect x="72" y="672" width="1060" height="112" rx="14" fill="#0f172a" stroke="#334155"/>
+  <text x="96" y="706" class="node-title">Ligne rouge du MVP</text>
+  <text x="96" y="737" class="node-copy">AI Center pilote le contexte et les preuves. Il ne produit pas le code, n’exécute pas de runner et ne remplace ni GitHub, ni Figma, ni Notion, ni Linear.</text>
+  <text x="96" y="762" class="node-copy">Cible de validation : web desktop + Tauri Linux uniquement. Aucun Android, iOS ou mobile.</text>
+
+  <text x="1228" y="742" class="small">Boucle certifiée attendue</text>
+  <text x="1228" y="767" class="label">Pack → outil → PR → preuve → couverture</text>
+  <text x="56" y="862" class="small">Source versionnée : docs/architecture/context-control-flow.md · Export Alpha Context Proof</text>
+</svg>

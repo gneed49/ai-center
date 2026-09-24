@@ -1,0 +1,9 @@
+[advisories]
+
+# sqlx-macros-core records every SQLx driver in Cargo.lock, including the
+# inactive sqlx-mysql -> rsa edge. AI Center disables SQLx default features and
+# enables only postgres + derive; `cargo tree --target all -i rsa@0.9.10`
+# returns no path in the compiled graph. RustSec explicitly permits an ignore
+# when an advisory is confined to an unused feature/API. Remove this exception
+# if rsa becomes reachable or cargo-audit gains feature-aware lockfile scans.
+ignore = ["RUSTSEC-2023-0071"]

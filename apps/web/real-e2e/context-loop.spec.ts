@@ -1,0 +1,215 @@
+import { expect, test } from "@playwright/test";
+
+test("traverse le vrai backend déterministe jusqu’au plan, à sa couverture et à son historique", async ({
+  page,
+  request,
+}, testInfo) => {
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  const requestFailures: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("requestfailed", (request) => {
+    requestFailures.push(
+      `${request.method()} ${new URL(request.url()).pathname}: ${request.failure()?.errorText ?? "unknown failure"}`,
+    );
+  });
+  const projectName = `Context Proof ${crypto.randomUUID().slice(0, 8)}`;
+
+  await page.goto("/projects/new");
+  await page.getByLabel("Nom du projet").fill(projectName);
+  await page
+    .getByLabel("Objectif initial")
+    .fill("Conserver des décisions validées, durables et traçables.");
+  await page.getByRole("button", { name: "Créer le projet" }).click();
+  await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
+
+  const productScope = page
+    .locator("article")
+    .filter({ has: page.getByRole("heading", { name: "Produit" }) });
+  await productScope.getByRole("button", { name: "Nouvelle session" }).click();
+  await expect(page.getByLabel("Message à l’agent product")).toBeVisible();
+  await page
+    .getByLabel("Message à l’agent product")
+    .fill("Les décisions validées restent consultables sans expiration.");
+  await page.getByRole("button", { name: "Envoyer" }).click();
+
+  const proposals = page.getByRole("button", {
+    name: /^Sélectionner la proposition/,
+  });
+  await expect(proposals).toHaveCount(3);
+  for (let index = 0; index < 3; index += 1) {
+    await proposals.first().click();
+  }
+  await page.getByRole("button", { name: "Confirmer (3)" }).click();
+  await expect(page.getByText("3 connaissance(s) confirmée(s)")).toBeVisible();
+
+  await page.getByRole("link", { name: "Retour au projet" }).click();
+  await expect(page.getByText("graphe v1").first()).toBeVisible();
+  await page.getByRole("button", { name: "Évaluer maintenant" }).click();
+  await expect(
+    page.getByText("Éléments produit prêts à transmettre"),
+  ).toBeVisible();
+
+  await page.getByRole("link", { name: "Transmettre le contexte" }).click();
+  await page
+    .getByRole("button", { name: "Transmettre et ouvrir la session Tech" })
+    .click();
+  await expect(page.getByText("Contexte transmis et à jour")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: /Contexte transmis version/ }),
+  ).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText("Contexte transmis et à jour")).toBeVisible();
+  await expect(page.getByText(/Contexte inclus/)).toBeVisible();
+
+  const projectPath = new URL(page.url()).pathname.replace(/\/handoff$/, "");
+  await page.goto(`${projectPath}/deliverables`);
+  await expect(
+    page.getByRole("heading", { name: "Livrables et couverture" }),
+  ).toBeVisible();
+  const planCard = page.locator("aside > div").filter({
+    has: page.getByRole("heading", {
+      name: "Plan de livraison Tech",
+      exact: true,
+    }),
+  });
+  const generated = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/deliverables/technical-plan") &&
+      response.request().method() === "POST",
+  );
+  await planCard.getByRole("button", { name: "Générer" }).click();
+  const generatedResponse = await generated;
+  expect(generatedResponse.status()).toBe(200);
+  const plan = await generatedResponse.json();
+  expect(plan.coverage_status).toBe("missing");
+  expect(plan.content.coverage_assessment.requirements).toHaveLength(1);
+  expect(plan.content.coverage_assessment.requirements[0].assessment).toBe(
+    "planned",
+  );
+  await page.getByRole("link", { name: /Technical Delivery Plan/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Technical Delivery Plan", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Exigences reliées", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText(
+        "Aucune preuve externe validée n’est encore attachée à cette exigence.",
+      )
+      .first(),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Technical Delivery Plan", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("real-plan-coverage.png"),
+    fullPage: true,
+  });
+  await page.goto(`${projectPath}/history`);
+  await expect(
+    page.getByRole("heading", { name: "Historique du projet" }),
+  ).toBeVisible();
+  const committed = page.getByText("deliverable · committed", { exact: true });
+  await expect(committed).toHaveCount(1);
+  await committed.locator("..").locator("summary").click();
+  await expect(committed.locator("..").locator("pre")).toContainText(
+    "coverage_assessment",
+  );
+  await expect(committed.locator("..").locator("pre")).toContainText(
+    "Technical Delivery Plan",
+  );
+  // Navigate from persisted graph objects to their exact source, not a latest-version alias.
+  const projectId = projectPath.split("/").at(-1)!;
+  const apiUrl =
+    process.env.AI_CENTER_REAL_E2E_API_URL ?? "http://127.0.0.1:4617";
+  const graphResponse = await request.get(
+    `${apiUrl}/api/projects/${projectId}/graph`,
+  );
+  expect(graphResponse.status()).toBe(200);
+  const graph: {
+    nodes: { id: string; kind: string; app_path: string | null }[];
+  } = await graphResponse.json();
+  for (const category of ["knowledge", "context_pack", "session"]) {
+    const node = graph.nodes.find((item) =>
+      category === "context_pack"
+        ? item.app_path?.includes("/sources/context_pack/")
+        : item.kind === category,
+    );
+    expect(node?.app_path).toBeTruthy();
+    await page.goto(`/graph?project=${projectId}`);
+    await page.locator(`[data-node-key="${node!.kind}:${node!.id}"]`).click();
+    await page
+      .getByRole("link", { name: "Ouvrir la source", exact: true })
+      .click();
+    await expect(page).toHaveURL(new RegExp(node!.app_path! + "$"));
+    if (category === "session")
+      await expect(
+        page.getByRole("textbox", { name: /Message à l’agent/ }),
+      ).toBeVisible();
+    else {
+      await expect(
+        page.getByRole("region", { name: "Contenu de la source" }),
+      ).toBeVisible();
+      await page.getByRole("link", { name: "Revenir au graphe" }).click();
+      await expect(page).toHaveURL(
+        new RegExp(`/graph\\?project=${projectId}$`),
+      );
+    }
+  }
+  const libraryResponse = await request.get(
+    `${apiUrl}/api/company/knowledge?project_id=${projectId}`,
+  );
+  expect(libraryResponse.status()).toBe(200);
+  const library: {
+    total: number;
+    items: { public_id: string; title: string }[];
+  } = await libraryResponse.json();
+  expect(library.total).toBe(3);
+  await page.goto(`/knowledge?project=${projectId}`);
+  await page
+    .getByRole("textbox", { name: "Rechercher une connaissance" })
+    .fill(library.items[0].title);
+  await page.getByRole("button", { name: "Rechercher", exact: true }).click();
+  await page
+    .locator(
+      `a[href="/projects/${projectId}/sources/knowledge/${library.items[0].public_id}"]`,
+    )
+    .click();
+  await expect(
+    page.getByRole("heading", { name: library.items[0].title, exact: true }),
+  ).toBeVisible();
+  await page.goto(`${projectPath}/deliverables/${plan.public_id}`);
+  await page
+    .getByRole("button", { name: "Créer un brouillon depuis cette version" })
+    .click();
+  await expect(page.getByText(/Version 1 · Brouillon/)).toBeVisible();
+  const convertedId = new URL(page.url()).pathname.split("/").at(-1)!;
+  const convertedResponse = await request.get(
+    `${apiUrl}/api/artifacts/${convertedId}`,
+  );
+  expect(convertedResponse.status()).toBe(200);
+  const converted = await convertedResponse.json();
+  expect(converted.artifact.artifact_type).toBe("technical_plan");
+  expect(converted.current_version.structured_content.content).toEqual(
+    plan.content,
+  );
+  expect(converted.current_version.sources).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: "deliverable",
+        public_id: plan.public_id,
+      }),
+    ]),
+  );
+  expect(pageErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+  expect(requestFailures).toEqual([]);
+});

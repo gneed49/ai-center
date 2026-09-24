@@ -1,0 +1,218 @@
+# Plan d'implémentation — Alpha Context Proof
+
+> Ce plan est séquentiel. Chaque gate ferme la phase avant l'ouverture de la
+> suivante. Les évaluations OpenAI réelles ne s'exécutent jamais en CI.
+
+## Phase 0 — Contrat et baseline
+
+- Valider `spec.md`, les dix parcours et les trois diagrammes d'architecture.
+- Classer les preuves existantes avec les quatre statuts normatifs.
+- Séparer la baseline documentaire de l'implémentation fonctionnelle.
+
+**Gate G0** : périmètre, ACP, parcours et preuves approuvés.
+
+## Phase 1 — Reproductibilité desktop
+
+- Aligner les environnements sans secret sur `deterministic`.
+- Isoler PostgreSQL/Supabase pour les tests d'intégration.
+- Configurer Vitest et Playwright dans des répertoires de tests distincts.
+- Activer la CI web desktop, Rust, PostgreSQL et Tauri Linux.
+- Conserver Android/iOS/mobile entièrement hors des commandes actives.
+
+**Gate G1** : clone neuf, base neuve, tests et builds desktop verts.
+
+**État au 25 août 2026 : `Vérifié`.** Desktop CI
+[#20](https://github.com/gneed49/ai-center/actions/runs/32876961859) termine
+5/5 jobs et OCI [#19](https://github.com/gneed49/ai-center/actions/runs/32876961945)
+termine 3/3 jobs au commit `2162d60`. La certification pré-alpha manuelle reste
+distincte.
+
+## Phase 2 — Identité et isolation
+
+- Introduire magic link, JWT vérifié côté Axum et `RequestContext`.
+- Ajouter les memberships owner/editor/viewer et les policies RLS.
+- Utiliser un rôle runtime `NOBYPASSRLS` et des transactions scopées.
+- Refuser un bind non-loopback sans configuration sûre.
+
+**Gate G2** : zéro accès inter-workspace/inter-projet dans la matrice de rôles.
+
+## Phase 3 — Commandes fiables
+
+- Ajouter l'idempotence persistée et le contrôle optimiste.
+- Persister les `model_runs` et corréler les request IDs.
+- Transformer les événements en outbox avec lease et reprise.
+- Sortir tous les appels réseau des transactions métier.
+
+**Gate G3** : timeout, crash, double clic et replay sans perte ni duplication.
+
+## Phase 4 — Context Compiler réel
+
+- Séparer les opérations IA et leurs schémas structurés.
+- Compiler les obligations par règles puis les candidats par sélection IA.
+- Enregistrer décisions, raisons, budget et versions sources.
+- Rendre packs, exports et handoffs strictement versionnés et project-scoped.
+- Générer plan et couverture depuis le pack, sans contenu `Credits v2` codé.
+
+**Gate G4** : trois projets distincts produisent des packs sélectifs et sourcés.
+
+## Phase 5 — Steward et obsolescence
+
+- Classifier les paires candidates de façon asynchrone.
+- Persister contradiction, compatibilité et ambiguïté.
+- Distinguer accept, dismiss et resolve.
+- Propager une invalidation ciblée puis obliger la recompilation.
+
+**Gate G5** : contradiction → mutation → stale → recompilation → couverture.
+
+## Phase 6 — Parcours desktop complets
+
+- Fermer les dix parcours avec états pending/success/error/retry.
+- Restaurer handoffs et saisies après reload/offline.
+- Exposer versions, provenance, staleness et raisons de sélection.
+- Corriger accessibilité, clavier, focus et attribution projet.
+
+**Gate G6** : UF-01 à UF-10 passent sur les deux viewports desktop.
+
+## Phase 7 — GitHub read-only
+
+- Ajouter connexions, références externes et observations append-only.
+- Exporter JSON/Markdown puis importer PR, commit et checks allowlistés.
+- Ajouter validation humaine des preuves et refresh ETag/idempotent.
+- Tester permissions read-only, SSRF, rate limits et perte d'accès.
+
+**Gate G7** : ContextPack → outil externe → GitHub → preuve → couverture.
+
+## Phase 8 — Certification déterministe
+
+- Exécuter unités, DB, contrats fournisseurs, Playwright et Tauri Linux.
+- Couvrir succès, blocages, 401/403/404/409/422/429/5xx, offline et retry.
+- Vérifier secret scan, backup et restauration.
+
+**Gate G8** : aucune fuite, duplication, erreur console ou violation axe
+critical/serious.
+
+**État au 25 août 2026 :** la CI de PR est `Vérifiée`; le workflow manuel
+compact/Firefox/Tauri est `Présent mais non reproduit`. G8 reste ouvert jusqu’à
+ce run pré-alpha et au smoke métier Tauri interactif.
+
+## Phase 9 — Campagne réelle comparative
+
+- Créer une clé et un projet OpenAI dédiés hors dépôt.
+- Calibrer au plus deux modèles dans l'enveloppe de 10 USD.
+- Geler modèle, prompts et schémas ; exécuter le protocole A/B.
+- Agréger uniquement des métriques et identifiants expurgés.
+
+**Gate G9** : budget et tous les seuils de `validation.md` respectés.
+
+## Phase 10 — Context Proof propriétaire
+
+- Exécuter dix boucles réelles réparties sur trois projets pendant une semaine.
+- Créer les PR dans les outils externes, jamais depuis AI Center.
+- Corriger les P0 et rejouer toutes les preuves impactées.
+
+**Gate G10** : avantage mesuré et registre de preuves courant.
+
+## Phase 11 — Alpha équipe et décision V1
+
+- Déployer une web privée HTTPS et inviter deux à trois utilisateurs.
+- Activer OpenAI puis GitHub par feature flags.
+- Exploiter deux semaines avec métriques et restauration testée.
+- Classer les constats `prouvé`, `à consolider`, `non prouvé`, `différé`.
+
+**Gate G11** : `v0.2.0-alpha.1` promue ou décision explicite de ne pas
+promouvoir. La V1 est planifiée uniquement à partir de ces preuves.
+
+## Ordre des migrations et compatibilité
+
+1. Modifier le schéma déclaratif.
+2. Générer puis relire la migration SQL.
+3. Ajouter les nouvelles colonnes/tables sans supprimer les anciennes.
+4. Dual-write des références texte et structurées.
+5. Backfill idempotent et contrôles de cardinalité.
+6. Basculer les lectures.
+7. Supprimer l'ancien format dans une migration ultérieure seulement.
+
+Chaque foreign key ajoutée reçoit son index, chaque version durable une
+contrainte unique, et chaque transaction externe suit le pattern
+pending → appel hors transaction → finalisation optimiste.
+
+## Traçabilité
+
+### Reprise du 8 septembre 2026
+
+L'audit de `a22335c` confirme trois corrections logicielles supplémentaires :
+upgrade de toutes les migrations (ACP-T11), identité et contenu des messages
+repris (ACP-T12), transport du harness d'évaluation (ACP-T13). Les critères
+exacts et le graphe sont dans [tickets.md](tickets.md).
+
+1. Réunir T11/T12 dans un worktree dédié au serveur et à la validation DB ;
+   développer T13 indépendamment dans un worktree du harness.
+2. Exécuter les unités et contrats nécessaires, puis les intégrations ciblées
+   sur PostgreSQL jetable ; ne pas lancer les E2E confiés au propriétaire.
+3. Fusionner dans la branche de consolidation, relire selon les axes
+   Standards/Spec, confier les corrections de revue à un seul implémenteur.
+4. Consigner les preuves et l'état réel des gates, puis nettoyer les worktrees.
+
+**Livraison locale du 8 septembre :** T11/T12 (`34af226`) et T13 (`27e3145`)
+sont intégrés à `b20d36f`. Les 7 intégrations DB ciblées, 7 unités de migration,
+17 unités de garde, 5 migrations réelles, restauration SQL 41 tables/98 policies
+et 41 tests Alpha sont réussis, selon les portées du
+[rapport de reprise](review-2026-09-08.md). La revue Spec ne retient aucun
+constat ; l'unique P3 documentaire Standards est corrigé par `662f4e5` et relu
+comme clos. Les documents de
+[semaine propriétaire](owner-proof-template.md) et
+[d'alpha privée](../../docs/operations/private-alpha-handoff.md) sont prêts à
+renseigner. Ils ne ferment pas les gates d'usage réel.
+
+La PR publique est restée au point `91dc76b` lors de la consultation du
+8 septembre ; les ajouts suivants sont locaux. Aucune action distante ni
+promotion n'est impliquée par ces corrections. Les campagnes, observations
+humaines et durées d'usage restent à réaliser selon le plan d'origine.
+
+### Complément documentaire du 8 septembre — ACP-T14
+
+Le décalage entre le lien FigJam historique et le flow Alpha versionné ouvre
+[ACP-T14](tickets.md#acp-t14--vue-figjam-alpha-et-traçabilité-documentaire).
+Ce complément traite le support visuel demandé en phase 0.
+
+1. Conserver les trois sources Mermaid et leurs exports ; relever le contenu
+   du board historique sans le modifier.
+2. Ajouter à côté une vue Alpha alignée sur le flow de bout en bout, puis
+   vérifier les nœuds, connexions et frontières de production/lecture.
+3. Relier directement cette vue depuis les deux index, distinguer l'historique
+   et consigner la preuve datée dans le registre documentaire et le statut.
+4. Vérifier le format, les liens et le diff ; relire le lot selon Standards et
+   Spec avant son intégration locale.
+
+La validation du schéma est indépendante des preuves fonctionnelles : aucun
+test applicatif, E2E, smoke natif ou appel fournisseur réel n'est nécessaire
+à ce lot. Il ne modifie pas l'état des gates d'usage réel ni de promotion.
+
+**Livraison du 8 septembre :** la vue Alpha est ajoutée au board existant,
+reliée directement depuis README et l'index d'architecture, et relue après
+regroupement. La [note documentaire](../../docs/architecture/diagram-validation-2026-09-08.md)
+localise les preuves et distingue le dessin historique conservé. Les sources
+Mermaid et les exports sont inchangés ; la livraison Git reste locale.
+
+### Deux projets fictifs — amendement du 8 septembre
+
+Le propriétaire confie à l'agent le choix et le test de deux cas inventés.
+Le [plan SYN-T01 → SYN-T02](../synthetic-context-cases/plan.md) couvre les
+fixtures Médiathèque Partagée et Atelier Réparable, les contrats unitaires,
+leur coexistence dans PostgreSQL et la résolution ciblée d'une contradiction.
+L'attente du choix de deux projets réels est levée pour cette validation.
+Les E2E restent au propriétaire ; les résultats synthétiques ne sont pas des
+scores comparatifs réels ni une semaine d'usage observée.
+
+**Livré localement :** SYN-T01/T02 sont terminés, tests intégrés à `5e0e98d`.
+Les [preuves datées](../synthetic-context-cases/validation-2026-09-08.md)
+consignent les deux projets testés ensemble, les contrats, les contrôles
+complémentaires et les deux revues sans constat. L'environnement jetable
+et le worktree ont été nettoyés.
+
+### Règle permanente
+
+Toute pull request d'implémentation doit citer au moins un identifiant ACP et
+indiquer : preuves ajoutées, migrations, risques de rollback et statut de la
+validation. Les gates ne sont jamais déclarées atteintes par la seule présence
+de code.

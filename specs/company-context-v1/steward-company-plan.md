@@ -1,0 +1,11 @@
+# Steward société : réalisation complémentaire
+
+Le worker existant reste responsable des leases, reprises après redémarrage, limites et vérification du membre à l'origine de l'événement. Dans une société configurée, une mutation déclenche une recherche bornée dans ses espaces autorisés : règles confirmées, artefacts validés et dernières observations externes conservées. Les anciens workspaces sans contexte société conservent l'analyse locale.
+
+La sélection compare en priorité les objets du projet modifié avec les règles société et les objets ayant un sujet commun. Elle limite les versions, les paires et les extraits transmis. Une analyse n'est jamais présentée comme une certification exhaustive de l'entreprise. Les réponses du modèle doivent couvrir exactement les paires proposées et citer les identités immuables offertes ; une modification de source pendant l'appel interdit la publication du résultat.
+
+Les tables historiques de sources locales conservent leurs contraintes. La table additive `steward_scope_sources` porte l'espace d'origine, la version typée et l'extrait effectivement lu pour chaque source transverse ou externe. Les détails d'alerte et le graphe réunissent les deux provenances. Une source révisée rend l'ancienne alerte obsolète ; une nouvelle analyse produit une nouvelle conclusion, sans réécrire le passé.
+
+Un document Notion, un ticket Linear, une issue ou un statut de PR GitHub décrit ce qui a été observé. Ces métadonnées ne prouvent ni l'exécution d'un test ni le contenu du code. Une observation absente, périmée, indisponible ou insuffisante impose une conclusion ambiguë et un signal à examiner. Une contradiction ouverte reste une suggestion : aucune règle métier ni spécification n'est modifiée automatiquement. Les preuves externes et couvertures existantes gardent leur validation humaine séparée.
+
+Validation attendue : corpus synthétique explicitement marqué `[FICTIF]`, contradictions entre projets, paire compatible, ambiguïté faute de contenu, code non lu ou observation périmée ; contrôle exact des versions, isolation société, bornes, idempotence de l'outbox, rejeu et refus d'une réponse fondée sur une source révisée. Aucun fournisseur payant ni outil métier réel n'est appelé pour ces validations.
