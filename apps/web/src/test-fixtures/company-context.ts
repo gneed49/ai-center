@@ -1,0 +1,70 @@
+import type { CompanyOverview } from "@/api/company-types";
+import { fixtureSnapshot } from "./context-loop";
+
+export const fixtureCompany: CompanyOverview = {
+  workspace: {
+    public_id: "fixture-workspace",
+    name: "[FICTIF] Atelier Exemple",
+    description: "[FICTIF] Décisions partagées de l’atelier",
+    role: "owner",
+  },
+  company_scope: {
+    kind: "company",
+    project_public_id: "fixture-company-scope",
+  },
+  projects: [fixtureSnapshot.project],
+  members: [],
+  setup_complete: true,
+  agents: [
+    {
+      node_public_id: "fixture-general",
+      project_public_id: "fixture-company-scope",
+      scope_kind: "company",
+      node_key: "general",
+      profile_key: "general",
+      name: "Agent généraliste",
+      role: "Généraliste",
+      requires_context_pack: false,
+    },
+    {
+      node_public_id: "fixture-product",
+      project_public_id: "fixture-project",
+      scope_kind: "project",
+      node_key: "product",
+      profile_key: "product",
+      name: "Agent Produit",
+      role: "PM",
+      requires_context_pack: false,
+    },
+    {
+      node_public_id: "fixture-tech",
+      project_public_id: "fixture-project",
+      scope_kind: "project",
+      node_key: "tech",
+      profile_key: "tech",
+      name: "Lead technique",
+      role: "Lead technique",
+      requires_context_pack: true,
+    },
+    {
+      node_public_id: "fixture-dev",
+      project_public_id: "fixture-project",
+      scope_kind: "project",
+      node_key: "dev",
+      profile_key: "developer-agent",
+      name: "Agent Développement",
+      role: "developer",
+      requires_context_pack: true,
+    },
+    {
+      node_public_id: "fixture-sales",
+      project_public_id: "fixture-project",
+      scope_kind: "project",
+      node_key: "sales",
+      profile_key: "sales",
+      name: "Agent Commercial",
+      role: "Commercial",
+      requires_context_pack: false,
+    },
+  ],
+};

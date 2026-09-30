@@ -1,0 +1,74 @@
+name: Manual Linux native business smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_native_smoke:
+        description: Launch the actual Linux client on a disposable deterministic stack
+        type: boolean
+        required: true
+        default: false
+  workflow_call:
+    inputs:
+      run_native_smoke:
+        description: Launch the native smoke from the manual pre-alpha workflow
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    if: ${{ inputs.run_native_smoke }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      CARGO_TERM_COLOR: always
+      AI_CENTER_AGENT_MODE: deterministic
+      SUPABASE_TELEMETRY_DISABLED: "1"
+      DO_NOT_TRACK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.91.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            . -> target/native-smoke
+      - name: Install Linux build, database and native test tools
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+          librsvg2-dev patchelf libxdo-dev postgresql-client
+          webkit2gtk-driver xvfb
+      - run: npm ci
+      - name: Install the pinned native driver
+        run: cargo install tauri-driver --version 2.0.6 --locked
+      - name: Run only offline guard tests before the native smoke
+        run: python3 -m unittest discover -s scripts/tests -p 'test_native_smoke.py'
+      - name: Build and exercise the native client against disposable PostgreSQL
+        run: ./scripts/integration-stack.sh run integration native-e2e
+      - name: Stop only this disposable stack after interruption
+        if: always()
+        run: ./scripts/integration-stack.sh stop
+      - name: Preserve the synthetic native result and screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-business-smoke
+          path: |
+            .run/native-smoke/artifacts/*/result.json
+            .run/native-smoke/artifacts/*/screen.png
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7

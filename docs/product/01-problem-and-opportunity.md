@@ -1,209 +1,270 @@
 # AI Center — Problème et opportunité
 
-> Statut : brouillon de travail — version 0.1  
-> Date : 8 août 2026  
-> Périmètre : le problème initial de mobilité et de supervision ; la problématique contextuelle de long terme est décrite séparément afin de ne pas diluer la validation du MVP.
+> Statut : problème consolidé — version 0.2
+>
+> Date : 24 août 2026
+>
+> Périmètre : maîtrise du contexte IA entre équipes, agents, projets et outils existants.
 
 ## Synthèse
 
-Les agents IA savent désormais effectuer une part croissante du travail de développement : explorer un dépôt, modifier des fichiers, lancer des commandes, utiliser des outils et demander des arbitrages. Pourtant, leur utilisation reste fortement liée au poste de travail et à des interfaces conçues pour une présence continue devant l'écran.
+Les entreprises n’ont pas besoin d’un nouvel outil isolé pour produire du code,
+des tickets, des documents ou des designs. Elles disposent déjà de GitHub,
+Linear, Jira, Notion, Confluence, Figma, de bases de données, de CLI et d’agents
+spécialisés.
 
-Lorsqu'un développeur s'éloigne de son ordinateur, il perd soit la capacité d'agir, soit la richesse d'interaction, soit la visibilité et le contrôle nécessaires pour déléguer du vrai travail. Les solutions disponibles couvrent chacune une partie du besoin — chat mobile, bureau distant, terminal mobile, agent cloud ou dispatch vers un ordinateur — sans fournir une boucle mobile complète, cohérente et extensible.
+Le problème apparaît lorsque l’IA devient centrale dans le travail : chaque
+personne construit un contexte différent dans ses propres conversations, les
+décisions sont recopiées entre les outils, les handoffs perdent leur provenance
+et personne ne possède une vue fiable de ce que les agents savent, supposent ou
+ont réellement prouvé.
 
-L'opportunité d'AI Center est de transformer le téléphone en cockpit de supervision d'un runtime IA situé sur la machine de travail, puis d'utiliser cette première boucle opérationnelle comme fondation d'un système de gestion de projet et de contexte plus profond.
-
-## Situation actuelle
-
-Un développeur utilise couramment plusieurs surfaces :
-
-- un IDE et un terminal sur sa machine ;
-- un ou plusieurs agents de code en CLI ou dans une application desktop ;
-- une application mobile généraliste pour réfléchir ou discuter ;
-- GitHub et d'autres outils de projet pour inspecter les résultats ;
-- parfois un bureau distant pour retrouver l'ensemble de l'environnement.
-
-Le passage d'une surface à l'autre fracture le travail. Le contexte doit être reformulé, les sessions ne se poursuivent pas toujours, les actions nécessitent de revenir devant la machine et le téléphone offre rarement la même capacité d'exécution ou de supervision.
+L’opportunité d’AI Center est de devenir la couche de pilotage contextuel qui
+redonne à l’entreprise la maîtrise de cette intelligence collective, sans lui
+demander de remplacer ses systèmes existants.
 
 ## Problème principal
 
-> Comment continuer à faire avancer un projet logiciel depuis un téléphone, en exploitant la puissance et l'environnement réel de sa machine de travail, tout en gardant une compréhension claire et un contrôle explicite des actions de l'agent ?
+> Comment conserver un contexte d’entreprise partagé, propre, challengeable et
+> traçable entre humains, agents, projets et outils, puis fournir à chaque
+> spécialiste uniquement ce dont il a besoin sans perdre l’intention commune ?
 
-Le problème ne se résume pas à envoyer un message à distance. Pour qu'une délégation soit utile, la boucle entière doit fonctionner :
+Ce problème ne se résume pas à retrouver un document ou à enrichir un prompt. La
+boucle complète doit permettre de :
 
-- atteindre le bon projet et la bonne session ;
-- transmettre une intention suffisamment riche ;
-- exécuter avec les bons outils et permissions ;
-- diffuser l'état du travail malgré un réseau mobile instable ;
-- solliciter l'utilisateur quand une décision est nécessaire ;
-- permettre l'arrêt ou la reprise ;
-- présenter les changements sous une forme lisible sur mobile ;
-- conserver une trace durable et exploitable.
+- capter les décisions, contraintes, exigences et questions ouvertes ;
+- distinguer une proposition d’une connaissance confirmée ;
+- relier chaque élément à sa source et à ses versions ;
+- compiler le contexte adapté à un rôle, une tâche et un outil ;
+- transmettre ce contexte sans copier-coller ni reformulation ;
+- rattacher le résultat externe à l’intention qui l’a provoqué ;
+- détecter contradictions, dérives et absences de preuve ;
+- permettre à l’humain de challenger, résoudre et auditer le système.
 
-## Douleurs observées ou fortement présumées
+## Situation actuelle
 
-### 1. Le travail IA reste attaché au bureau
+Un projet logiciel moderne peut répartir son travail entre :
 
-Un agent peut fonctionner de façon semi-autonome, mais l'utilisateur doit fréquemment rester à proximité pour répondre à une question, autoriser une commande, corriger une direction ou inspecter le résultat. Une autonomie théorique de vingt minutes peut donc exiger une présence humaine discontinue de vingt minutes.
+- conversations avec des assistants généralistes ;
+- agents Produit, Design, Tech ou Opérations ;
+- Codex, Claude Code, Cursor, OpenCode ou des CLI internes ;
+- GitHub ou GitLab ;
+- Linear, Jira ou un autre outil de tickets ;
+- Notion, Confluence ou Drive ;
+- Figma ;
+- Supabase et d’autres bases ou plateformes métier.
 
-### 2. Les interfaces mobiles sont souvent des versions réduites
+Chacun de ces systèmes est utile et souvent déjà profondément intégré aux
+habitudes de l’équipe. Aucun ne possède toutefois à lui seul la continuité
+décisionnelle du projet et la façon dont elle doit être distribuée aux agents.
 
-Elles permettent de converser, parfois de déclencher une tâche distante, mais n'exposent pas toujours les fonctions nécessaires à un travail sérieux : sélection du projet, suivi structuré, terminal ou événements, demandes d'autorisation, diff, tests, interruption et reprise fidèle.
+## Douleurs observées ou à valider
 
-### 3. Le bureau distant transporte l'écran, pas l'intention
+### 1. Le contexte est individuel au lieu d’être organisationnel
 
-Une solution de bureau distant donne accès à tout, mais impose de manipuler une interface desktop depuis un petit écran. Elle est utile comme solution de secours, peu adaptée à des interactions fréquentes et brèves en mobilité, et ne transforme pas l'exécution de l'agent en objets compréhensibles ou actionnables.
+Chaque collaborateur explique le projet à son agent dans son propre chat. Les
+itérations utiles restent locales, difficiles à partager et rarement
+réutilisables par le reste de l’équipe.
 
-### 4. Le terminal mobile est puissant mais peu supervisable
+### 2. Les handoffs reconstruisent l’histoire
 
-SSH ou une application terminal peuvent lancer des outils, mais la lecture de flux longs, l'inspection de modifications, la gestion de plusieurs sessions et les validations deviennent vite inconfortables. L'utilisateur doit connaître la mécanique technique plutôt que piloter le résultat attendu.
+Produit transmet une spécification à Tech, Tech la reformule pour un agent de
+code, puis les résultats sont résumés dans un ticket ou une PR. À chaque étape,
+des nuances, contraintes et décisions se perdent.
 
-### 5. Le contexte se fragmente entre les outils
+### 3. Les sources de vérité sont multiples mais non reliées
 
-Le chat, le terminal, le dépôt, les décisions et les livrables vivent dans des systèmes différents. Même quand une session est accessible, elle ne s'inscrit pas toujours dans une continuité de projet structurée.
+Le ticket, la maquette, le document, le commit et le résultat de test peuvent
+tous être corrects localement sans former une chaîne traçable de l’intention à
+la preuve.
 
-### 6. La confiance chute lorsque l'exécution est opaque
+### 4. Les contradictions apparaissent trop tard
 
-Une promesse d'autonomie ne suffit pas. Sans visibilité sur le plan, les actions, les changements et les points de décision, l'utilisateur hésite soit à déléguer, soit à accorder les permissions nécessaires.
+Une décision Produit peut contredire une règle Tech ou un comportement existant
+sans être détectée avant l’implémentation, la revue ou la production.
 
-## Travaux à accomplir — formulation provisoire
+### 5. Le volume n’est pas le bon contexte
 
-Les travaux à accomplir seront précisés et hiérarchisés avec les personas. À ce stade, les hypothèses principales sont :
+Copier davantage de documents dans un prompt augmente le bruit, les coûts et les
+risques de fuite sans garantir que l’agent reçoive les éléments applicables à sa
+tâche.
 
-### Travail fonctionnel
+### 6. L’entreprise perd la maîtrise de l’usage de l’IA
 
-> Lorsque je ne suis pas devant mon ordinateur, je veux confier ou poursuivre une tâche de développement sur mon vrai environnement, afin que le projet avance sans attendre mon retour au bureau.
+Sans couche commune, il est difficile de savoir quelles sources ont été
+utilisées, quelles décisions ont été prises, quelles permissions ont été
+accordées et pourquoi un résultat existe.
 
-### Travail de contrôle
+### 7. Changer d’outil détruit la continuité
 
-> Lorsque l'agent travaille à distance, je veux voir son état, comprendre ses actions et pouvoir intervenir, afin de déléguer sans abandonner mon autorité.
+Lorsque la connaissance appartient à un fournisseur ou à un transcript, changer
+de modèle, d’agent ou de système oblige à reconstruire une partie du contexte.
+
+## Jobs to be done
+
+### Travail de maîtrise
+
+> Lorsque plusieurs personnes et agents travaillent sur un projet, je veux un
+> contexte commun dont les sources, décisions et versions sont explicites, afin
+> que l’entreprise reste maîtresse de ce que l’IA utilise.
 
 ### Travail de continuité
 
-> Lorsque ma connexion ou mon attention est interrompue, je veux retrouver une session cohérente et son historique, afin de reprendre sans reconstruire le contexte.
+> Lorsque je passe de Produit à Tech ou d’un agent à un autre, je veux transmettre
+> un contexte adapté sans réexpliquer le projet, afin d’éviter les pertes et les
+> divergences.
+
+### Travail d’intégration
+
+> Lorsque mon équipe utilise déjà GitHub, Linear, Notion, Figma ou d’autres
+> systèmes, je veux les relier au contexte IA sans migrer ni dupliquer leurs
+> objets canoniques.
+
+### Travail de contrôle
+
+> Lorsqu’une décision change ou qu’un outil externe produit un résultat, je veux
+> voir les impacts, contradictions et preuves manquantes, afin d’intervenir avant
+> que le projet ne dérive.
 
 ### Travail de confiance
 
-> Lorsque l'agent demande une action sensible, je veux recevoir une demande intelligible et proportionnée au risque, afin d'autoriser rapidement ce qui est sûr et de bloquer le reste.
+> Lorsque du contexte est transmis à un agent ou à un outil, je veux savoir
+> exactement quelles informations et permissions il reçoit, afin d’adopter l’IA
+> sans abandonner la gouvernance.
 
 ## Alternatives actuelles
 
-| Alternative | Ce qu'elle résout | Limite supposée par rapport au besoin |
+| Alternative | Ce qu’elle résout | Limite par rapport au besoin |
 | --- | --- | --- |
-| Application mobile généraliste d'IA | Conversation, réflexion, parfois tâches distantes | Accès incomplet au runtime, au projet ou aux fonctions de supervision |
-| Fonction de dispatch vers un ordinateur | Déclenchement d'un agent local depuis le mobile | Périmètre et profondeur d'interaction variables ; dépendance à un fournisseur |
-| Bureau distant | Accès complet à la machine | UX desktop sur petit écran, faible structuration du travail agentique |
-| SSH / terminal mobile | Contrôle technique direct | Lecture, validation, diff et multi-session peu adaptés au mobile |
-| Agent de code cloud | Exécution indépendante de la machine locale | Environnement, secrets, données, coûts ou fidélité au poste local différents |
-| GitHub depuis mobile | Revue des commits, PR et résultats | Intervient surtout après l'exécution et ne couvre pas toute la boucle interactive |
-| Automatisations par messagerie | Déclenchement simple depuis n'importe où | Faible observabilité, commandes limitées et modèle d'autorisation rudimentaire |
+| Chat ou assistant généraliste | Réflexion et production ponctuelle | Contexte local au transcript et faible continuité organisationnelle |
+| Agent de code / IDE agentique | Production de code dans un dépôt | Ne possède pas tout le contexte Produit, Design et entreprise |
+| Linear / Jira | Tâches, statuts et coordination | Trace imparfaite des décisions et interactions agentiques |
+| Notion / Confluence / Drive | Documentation et recherche | Documents peu opérationnels pour les handoffs et le contrôle continu |
+| GitHub / GitLab | Code, PR, CI et collaboration | Arrive tard dans la chaîne intention → preuve |
+| Figma | Source de vérité du design | Ne relie pas seul décisions, exigences et implémentation |
+| Recherche d’entreprise / RAG | Retrouver des informations multi-sources | Recherche des contenus sans modéliser nécessairement décisions, gates et impacts |
+| Suite intégrée nouvelle | Réduit le nombre d’outils | Exige une migration coûteuse et reproduit des fonctions déjà matures |
 
-Ces limites sont des hypothèses à vérifier par une étude concurrentielle ciblée et par des tests réels. Elles ne doivent pas être traitées comme des vérités acquises.
-
-## Pourquoi maintenant
-
-Plusieurs évolutions convergent :
-
-- les agents de code deviennent capables de travailler plus longtemps et d'utiliser davantage d'outils ;
-- les CLI et SDK agentiques rendent leur intégration plus accessible ;
-- les développeurs acceptent progressivement un mode de travail fondé sur la délégation et la revue ;
-- les réseaux privés maillés simplifient l'accès sécurisé à une machine personnelle ;
-- le téléphone est déjà la surface naturelle des validations rapides, notifications et interactions vocales ;
-- plus les agents gagnent en autonomie, plus le besoin se déplace de la saisie de code vers la supervision, l'arbitrage et la gestion du contexte.
-
-Cette dernière évolution est centrale : une interface mobile devient crédible non pas parce qu'elle sait afficher un IDE miniature, mais parce qu'une part croissante du travail humain consiste à donner une direction et à contrôler un résultat.
+AI Center ne cherche pas à éliminer ces alternatives. Il les relie en possédant
+la continuité contextuelle qu’aucune ne peut fournir seule.
 
 ## Opportunité produit immédiate
 
-Construire une expérience mobile spécialisée autour d'une boucle courte et fiable :
+Prouver une boucle étroite et réelle sur un projet logiciel :
 
-1. choisir un projet ;
-2. confier une tâche ;
-3. suivre son exécution sur le Mac ;
-4. répondre aux demandes de l'agent ;
-5. examiner et valider le résultat.
+1. cadrer une intention dans le scope Produit ;
+2. transformer la conversation en connaissances confirmées ;
+3. compiler un `ContextPack` pour la Tech ;
+4. effectuer le handoff sans reformulation ;
+5. transmettre le contexte à un outil spécialisé existant ;
+6. rattacher une preuve réelle produite dans cet outil ;
+7. mesurer la couverture et détecter une contradiction ;
+8. résoudre ou accepter l’écart avec une trace durable.
 
-Le runtime macOS conserve l'accès aux dépôts, outils et configurations existants. L'application Android présente non pas l'écran du Mac, mais une vue sémantique du travail : sessions, événements, actions, autorisations, changements et résultats.
+La preuve de valeur ne dépend pas d’AI Center produisant du code. Elle dépend de
+sa capacité à préserver l’intention et la cohérence d’un bout à l’autre.
 
 ## Opportunité stratégique
 
-Le cockpit génère naturellement une matière structurée : intentions, plans, commandes, décisions, fichiers modifiés, résultats de tests, erreurs, validations et livrables. Ces événements peuvent devenir la base factuelle du futur système contextuel.
+Si la première boucle fonctionne, AI Center peut devenir la couche de contexte
+partagée de l’entreprise :
 
-La trajectoire peut donc rester cohérente :
+- plusieurs projets reliés sans graphe monolithique ;
+- agents spécialisés alimentés par le même contexte canonique ;
+- connecteurs vers les systèmes déjà adoptés ;
+- politiques de permissions et de partage ;
+- décisions et contradictions transverses ;
+- métriques sur la qualité des handoffs et des résultats ;
+- fonctions natives optionnelles pour les équipes sans système existant.
 
-- le MVP résout la mobilité et le contrôle ;
-- les itérations suivantes structurent les sessions en projets, tâches et artefacts ;
-- le système contextuel relie ensuite ces éléments à des sources et à des nœuds spécialisés ;
-- des agents spécialisés peuvent enfin gérer ou exploiter les différentes zones du projet.
-
-Le cockpit n'est alors pas un détour : il est le premier point de captation du travail réel.
+Le produit gagne alors de la valeur à mesure que les outils et agents se
+multiplient : leur diversité ne fragmente plus le contexte, car AI Center assure
+la continuité entre eux.
 
 ## Avantage potentiel
 
-L'avantage durable ne viendra probablement ni du chat ni de l'accès distant seuls. Il pourrait émerger de la combinaison suivante :
+L’avantage durable peut émerger de la combinaison suivante :
 
-- une expérience mobile conçue pour la supervision agentique ;
-- un runtime local extensible et indépendant d'un unique agent ;
-- un protocole d'événements et d'autorisations commun aux outils ;
-- une continuité robuste entre appareils et sessions ;
-- un modèle de projet qui transforme progressivement l'historique d'exécution en contexte exploitable ;
-- une architecture de confiance adaptée aux usages personnels puis aux organisations.
+- une ontologie opérationnelle reliant intentions, décisions, exigences,
+  tâches, artefacts et preuves ;
+- un Context Compiler qui sélectionne un contexte minimal, sourcé et adapté ;
+- une boucle de feedback sur les contradictions, faux positifs et résolutions ;
+- une traçabilité multi-outils indépendante des fournisseurs ;
+- des operating models réutilisables par type de projet ;
+- une expérience où l’humain contrôle les mutations importantes sans maintenir
+  manuellement le graphe.
+
+Les données et systèmes canoniques restent la propriété des utilisateurs. Le
+moat vient de la qualité du pilotage, pas de l’enfermement.
 
 ## Risques et contre-hypothèses
 
-### Le besoin peut être fréquent mais peu important
+### Le problème peut rester trop abstrait
 
-Les utilisateurs peuvent apprécier de vérifier une tâche depuis leur téléphone sans vouloir y initier un travail complexe. Le produit devrait alors privilégier notifications, réponses rapides et revue plutôt qu'un chat exhaustif.
+« Gérer le contexte » ne suffit pas comme promesse. Le MVP doit démontrer des
+résultats concrets : moins de reformulation, meilleur handoff, contradiction
+utile et preuve retrouvable.
 
-### Les solutions existantes peuvent combler rapidement l'écart
+### La structuration peut devenir une charge
 
-Les principaux fournisseurs d'agents peuvent enrichir leurs applications mobiles et fonctions de dispatch. AI Center doit donc tester une valeur différenciante plus profonde que la seule disponibilité sur Android : interopérabilité, runtime contrôlé, observabilité et structuration de projet.
+Si l’utilisateur doit classer chaque phrase ou dessiner le graphe, l’adoption
+échouera. L’IA doit proposer ; l’humain confirme les mutations importantes.
 
-### Le runtime domestique peut être une contrainte excessive
+### Les connecteurs peuvent devenir le produit
 
-Une machine éteinte, endormie, hors ligne ou mal configurée dégrade la promesse. La disponibilité, la reconnexion et la récupération doivent être considérées comme des fonctions produit, pas seulement comme des détails d'infrastructure.
+Multiplier les intégrations avant de prouver le cœur créerait une plateforme
+large et fragile. Un seul connecteur étroit suffit pour l’alpha.
 
-### La sécurité peut détruire la fluidité
+### Les systèmes établis peuvent étendre leur propre contexte
 
-Trop peu de contrôles rend le produit dangereux ; trop de confirmations le rend inutilisable. Les autorisations devront être contextuelles, regroupables et compréhensibles, avec des valeurs par défaut prudentes.
+Atlassian, Notion, GitHub ou les fournisseurs d’agents peuvent enrichir leurs
+graphes et workflows. AI Center doit exceller dans la continuité transverse et
+rester portable entre fournisseurs.
 
-### Le flux brut est illisible sur mobile
+### La proactivité peut produire du bruit
 
-Transposer la sortie d'un terminal ne suffit pas. Le système devra produire des événements structurés et des résumés, tout en permettant d'accéder aux détails lorsque nécessaire.
+Une alerte sans sources, impact ni action détruit la confiance. La précision et
+la capacité de résolution priment sur le nombre d’insights.
 
-### Le périmètre long terme peut distraire le MVP
+### La copie des données peut créer un risque de sécurité
 
-Le graphe de connaissances et l'organisation multi-agent sont prometteurs, mais ils peuvent conduire à construire une infrastructure abstraite avant d'avoir validé un usage quotidien. Ils doivent rester une contrainte d'extensibilité, pas une dépendance du premier produit.
+Le produit doit minimiser le contexte transmis, préférer les références et
+exposer clairement fraîcheur, provenance, permissions et rétention.
 
 ## Hypothèses de valeur à tester en priorité
 
-1. L'utilisateur rencontre chaque semaine plusieurs situations où une tâche pourrait avancer s'il pouvait piloter son agent depuis son téléphone.
-2. Les interactions nécessaires sont majoritairement des intentions, réponses, validations et revues — donc compatibles avec une UX mobile spécialisée.
-3. Une session persistante et observable apporte nettement plus de valeur qu'un simple déclenchement à distance.
-4. Le contrôle des projets locaux et des permissions constitue un bénéfice perçu, et pas seulement une complexité technique.
-5. Une première intégration avec un seul agent de code suffit à démontrer la promesse.
-6. Le texte permet de valider le cœur du produit avant une intégration vocale complète.
+1. Un `ContextPack` réduit réellement la reformulation lors d’un handoff.
+2. Le contexte sélectionné est jugé plus pertinent qu’un transcript ou un dump
+   documentaire.
+3. Une contradiction générique et sourcée provoque une correction utile.
+4. Une preuve externe peut être rattachée sans dupliquer son objet canonique.
+5. L’utilisateur comprend ce que l’agent a reçu et pourquoi.
+6. La boucle reste utile sur plusieurs projets réels et des données non seedées.
+7. Les équipes préfèrent connecter leur stack plutôt que migrer vers une suite
+   intégrée.
 
 ## Signaux de validation proposés
 
-Avant de définir des métriques définitives, les signaux suivants peuvent guider les premiers essais :
+- baisse mesurée du nombre de reformulations Produit → Tech ;
+- temps plus court pour reprendre une session ou un projet ;
+- ContextPack jugé pertinent et sans données superflues ;
+- contradictions utiles nettement plus nombreuses que les faux warnings ;
+- lien retrouvable entre décision, livrable externe et preuve ;
+- capacité à expliquer quel outil détient l’objet canonique ;
+- adoption possible sans remplacer GitHub, Linear, Notion ou Figma ;
+- réutilisation du même contexte par plusieurs agents ou rôles.
 
-- l'utilisateur choisit spontanément AI Center plutôt qu'un bureau distant pour une tâche agentique ;
-- au moins une tâche réelle est initiée ou poursuivie loin du Mac plusieurs fois par semaine ;
-- une session interrompue est reprise sans reformulation importante ;
-- l'utilisateur comprend l'état du travail et sait quand intervenir ;
-- les demandes d'autorisation sont traitées rapidement sans devenir irritantes ;
-- le résultat peut être évalué sur mobile dans une proportion significative des cas ;
-- le système permet effectivement de gagner du temps ou de supprimer une attente jusqu'au retour au bureau.
+## Frontières de la consolidation
 
-## Ce que la prochaine étape doit décider
+Ne font pas partie de la consolidation actuelle :
 
-Le travail sur les personas et cas d'usage devra éviter une cible générique de « développeur mobile ». Il devra préciser :
+- un IDE ou un terminal dans AI Center ;
+- un runner de code détenu par AI Center ;
+- le remplacement complet d’un outil de tickets, documents, design ou code ;
+- un catalogue large de connecteurs ;
+- la collaboration entreprise complète ;
+- Android, iOS et tout test mobile.
 
-- qui ressent le problème le plus intensément ;
-- dans quelles situations concrètes il quitte son poste ;
-- quelles tâches sont réellement délégables depuis un téléphone ;
-- quel niveau de risque et de complexité il accepte ;
-- quelle alternative il utilise aujourd'hui ;
-- quel cas d'usage est assez fréquent, douloureux et démontrable pour devenir le cœur du MVP ;
-- quels cas doivent être volontairement exclus, même s'ils sont séduisants.
-
+La prochaine étape est de solidifier la boucle contextuelle actuelle, la tester
+sur de vraies données, puis de la fermer avec un premier connecteur externe
+minimal.

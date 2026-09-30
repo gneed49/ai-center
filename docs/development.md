@@ -1,0 +1,113 @@
+# Développement local unifié
+
+Le lanceur `./dev` démarre l'environnement Linux complet depuis n'importe quel
+répertoire courant : Supabase/PostgreSQL, le serveur Rust et l'application
+Tauri, qui démarre elle-même le frontend Vite.
+
+## Démarrage
+
+```bash
+./dev
+```
+
+`./dev` et `./dev linux` sont équivalents. Le moteur agentique déterministe est
+utilisé par défaut afin que le démarrage fonctionne sans clé ni coût API.
+
+Pour utiliser vos clés personnelles, ouvrez **Réglages IA** dans l'application,
+ajoutez une connexion et choisissez-la dans **Connexion utilisée**. Cela
+fonctionne avec le démarrage `./dev` ; le mode par défaut du serveur ne remplace
+pas votre choix personnel. Les connexions OpenAI, Anthropic, Kimi, DeepSeek et
+OpenRouter sont configurées dans ce formulaire.
+
+Les abonnements locaux compatibles apparaissent également dans les réglages.
+Le client officiel Claude doit être installé séparément ; AI Center explique
+une capacité absente ou incompatible. Voir la
+[configuration du serveur et du stockage sécurisé](../specs/provider-connections/backend.md)
+et le [contrat des abonnements](../specs/provider-connections/subscriptions.md).
+Conservez le secret de chiffrement local avec vos sauvegardes, séparément de
+la base : supprimer son répertoire empêche de relire les clés enregistrées.
+
+Pour conserver plutôt une configuration OpenAI par défaut du serveur avec la
+clé dans `.env.local` :
+
+```bash
+./dev linux --agent openai
+```
+
+Le premier lancement installe les dépendances npm si nécessaire et peut prendre
+plusieurs minutes pendant le téléchargement des images Supabase. Les lancements
+suivants réutilisent les dépendances et la base existantes.
+
+Si Docker est installé mais arrêté, le lanceur tente `systemctl start docker`
+sans interaction lorsque les droits `sudo` le permettent. Sinon, il indique la
+commande exacte à exécuter manuellement.
+
+## Mettre à jour une base locale existante
+
+Le lanceur réutilise une base déjà active. Il n'applique pas les migrations en
+attente. Après avoir récupéré cette version du dépôt, arrêter l'ancien serveur
+et appliquer les migrations locales avant de redémarrer :
+
+```bash
+./dev stop
+npm run supabase -- start
+npm run supabase -- migration up --local
+./dev
+```
+
+Cette séquence conserve les données et applique les migrations en attente, sans
+réinitialiser la base. Le serveur et le schéma doivent être mis à jour ensemble :
+les réglages IA nécessitent les tables de connexions personnelles. Conserver une
+sauvegarde de la base et de la clé de chiffrement avant une mise à jour.
+
+## Commandes
+
+| Commande | Effet |
+| --- | --- |
+| `./dev` | Démarre l'environnement Linux complet |
+| `./dev linux --verbose` | Démarre avec les journaux Tauri détaillés |
+| `./dev doctor` | Vérifie les prérequis sans rien modifier |
+| `./dev doctor --json` | Même diagnostic, lisible par un agent |
+| `./dev status` | Affiche l'état de la base, de l'API et de l'app |
+| `./dev status --json` | Retourne un objet JSON stable |
+| `./dev logs` | Suit les journaux serveur et application |
+| `./dev logs server` | Suit uniquement le serveur Rust |
+| `./dev stop` | Arrête l'environnement et conserve la base |
+
+Les alias npm `debug`, `debug:linux`, `dev:doctor`, `dev:status` et `dev:stop`
+exposent la même interface. Les commandes historiques restent disponibles.
+
+## Cycle de vie
+
+- `Ctrl+C` ou la fermeture de Tauri arrête l'application et le serveur lancés
+  pendant la session ; Supabase reste actif pour accélérer la reprise.
+- `./dev stop` arrête également Supabase. La CLI conserve ses volumes et donc
+  les données locales.
+- Aucun lancement normal n'exécute `supabase db reset` ou `supabase stop
+  --no-backup`.
+- `.env.local` existant n'est jamais remplacé. S'il manque, une copie privée de
+  `.env.example` est créée.
+
+Les PID, empreintes et journaux sont stockés sous `.run/ai-center/`, qui n'est
+pas versionné. En cas d'échec :
+
+```bash
+./dev status
+./dev logs
+./dev stop
+```
+
+## Prérequis Linux
+
+- Node.js 24+ et npm ;
+- Rust 1.91+ avec Cargo ;
+- Docker accessible par l'utilisateur ;
+- GTK 3, WebKitGTK 4.1, `pkg-config`, `curl` et `setsid`.
+
+`./dev doctor` identifie précisément un prérequis absent.
+
+## Android
+
+Cette interface ne sélectionne pas encore de téléphone. Les commandes Android
+existantes (`npm run dev:android`, `build:android:debug` et `verify:android`)
+restent inchangées. La connexion USB sera ajoutée dans une itération dédiée.

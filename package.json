@@ -1,0 +1,40 @@
+{
+  "name": "ai-center",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.6.1",
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "tauri": "tauri",
+    "debug": "./dev",
+    "debug:linux": "./dev linux",
+    "dev:doctor": "./dev doctor",
+    "dev:status": "./dev status",
+    "dev:stop": "./dev stop",
+    "dev": "npm run dev -w @ai-center/web",
+    "dev:web": "npm run dev -w @ai-center/web",
+    "dev:server": "cargo run -p ai-center-server",
+    "dev:desktop": "tauri dev --config apps/desktop/src-tauri/tauri.conf.json",
+    "android": "bash scripts/android.sh",
+    "android:init": "npm run android -- init --ci --skip-targets-install",
+    "dev:android": "npm run android -- dev",
+    "build:android": "npm run android -- build --apk --aab --target aarch64 x86_64",
+    "build:android:debug": "npm run android -- build --debug --apk --split-per-abi --target aarch64 x86_64",
+    "verify:android": "bash scripts/verify-android-artifacts.sh",
+    "build": "npm run build:web && cargo build --workspace",
+    "build:web": "npm run build -w @ai-center/web",
+    "build:desktop": "tauri build --config apps/desktop/src-tauri/tauri.conf.json",
+    "lint": "npm run lint -w @ai-center/web && cargo clippy --workspace --all-targets -- -D warnings",
+    "format": "npm run format -w @ai-center/web && cargo fmt --all",
+    "test": "npm run test -w @ai-center/web && cargo test --workspace",
+    "test:e2e": "npm run test:e2e -w @ai-center/web",
+    "supabase": "supabase"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
+    "supabase": "2.114.0"
+  }
+}

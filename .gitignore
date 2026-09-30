@@ -7,11 +7,16 @@ build/
 .next/
 .turbo/
 coverage/
+target/
 
 # Environment and secrets
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
 
 # Editors and operating systems
 .DS_Store
@@ -24,4 +29,10 @@ coverage/
 *.log
 tmp/
 .cache/
-
+playwright-report/
+test-results/
+.run/
+# Private Alpha Context Proof corpus, plans, raw outputs, blind artifacts and ledgers
+.run/alpha-context-proof/
+__pycache__/
+*.py[cod]

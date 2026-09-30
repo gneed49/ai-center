@@ -1,0 +1,22 @@
+[
+  {
+    "synthetic": true,
+    "name": "Médiathèque Partagée",
+    "objective": "Une association suit les prêts de ses ouvrages et consulte leur historique.",
+    "rule": "L'historique des prêts de la médiathèque reste consultable sans expiration.",
+    "unconfirmed_note": "Brouillon non validé : envoyer chaque samedi un classement des lecteurs par SMS.",
+    "historical_technical_note": "Ancien prototype : les couvertures des ouvrages étaient affichées en carrousel.",
+    "contradictory_rule": "Purger automatiquement l'historique des prêts de la médiathèque après 30 jours.",
+    "corrected_rule": "L'historique des prêts de la médiathèque reste consultable sans expiration ; aucune purge automatique."
+  },
+  {
+    "synthetic": true,
+    "name": "Atelier Réparable",
+    "objective": "Un atelier suit les réparations d'appareils et les photos de diagnostic.",
+    "rule": "Les photos de diagnostic de l'atelier sont supprimées après 30 jours.",
+    "unconfirmed_note": "Brouillon non validé : publier le numéro de série des appareils sur un tableau public.",
+    "historical_technical_note": "Ancien prototype : les références des tournevis étaient affichées en grille.",
+    "contradictory_rule": null,
+    "corrected_rule": null
+  }
+]

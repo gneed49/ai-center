@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "enables the default permissions",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://claude.com/cai/oauth/authorize[?]*" },
+        { "url": "https://claude.ai/oauth/authorize[?]*" },
+        { "url": "https://claude.ai/oauth/authorize/[?]*" },
+        { "url": "https://platform.claude.com/oauth/authorize[?]*" },
+        { "url": "https://platform.claude.com/oauth/authorize/[?]*" },
+        { "url": "https://console.anthropic.com/oauth/authorize[?]*" },
+        { "url": "https://console.anthropic.com/oauth/authorize/[?]*" }
+      ]
+    }
+  ]
+}

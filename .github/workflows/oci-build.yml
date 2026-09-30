@@ -1,0 +1,55 @@
+name: OCI images
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "feat/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oci-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-checks:
+    name: Packaging policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n scripts/check-oci-packaging.sh
+      - run: ./scripts/check-oci-packaging.sh
+
+  build:
+    name: Build ${{ matrix.image }} image
+    needs: static-checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            dockerfile: deploy/oci/server.Dockerfile
+          - image: web
+            dockerfile: deploy/oci/web.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          tags: ai-center-${{ matrix.image }}:ci
+          build-args: |
+            OCI_VERSION=ci
+            OCI_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=oci-${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=oci-${{ matrix.image }}
+          provenance: false
+          sbom: false

@@ -1,0 +1,32 @@
+# HTTPS terminates at the operator's reverse proxy on the host.
+# Set image tags/digests and the path of a private runtime env file outside Git.
+services:
+  api:
+    image: ${AI_CENTER_API_IMAGE:?Set a verified API image tag or digest}
+    env_file:
+      - ${AI_CENTER_RUNTIME_ENV_FILE:?Set the absolute private runtime env path}
+    environment:
+      AI_CENTER_BIND: 0.0.0.0:4317
+      AI_CENTER_AUTH_MODE: supabase
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:size=32m,mode=1777]
+    stop_grace_period: 40s
+    networks: [application]
+  web:
+    image: ${AI_CENTER_WEB_IMAGE:?Set the matching verified web image tag or digest}
+    environment:
+      AI_CENTER_API_UPSTREAM: http://api:4317
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:${AI_CENTER_WEB_PORT:-8080}:8080
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [application]
+networks:
+  application:
