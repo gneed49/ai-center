@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/app/page";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  generationScopeKey,
   generationStorageKey,
   readGenerationCommand,
   saveGenerationCommand,
@@ -21,18 +22,45 @@ type GeneratorProps = {
   type: ArtifactType;
   sessions: SessionSummary[];
   selectedSessionId?: string;
+  typeChangePending?: boolean;
+  isSelectedType?: (type: ArtifactType) => boolean;
 };
 export function ArtifactGenerator(props: GeneratorProps) {
+  return (
+    <GeneratorDraft key={generationScopeKey(props.projectId)} {...props} />
+  );
+}
+function GeneratorDraft(props: GeneratorProps) {
+  const [chosen, setChosen] = useState(props.selectedSessionId ?? "");
+  const [instructions, setInstructions] = useState("");
   const storageKey = generationStorageKey(props.projectId, props.type);
-  return <Generator key={storageKey} {...props} storageKey={storageKey} />;
+  // Type changes replace command recovery, while the user's unsent text survives.
+  return (
+    <Generator
+      key={storageKey}
+      {...props}
+      storageKey={storageKey}
+      draft={{ chosen, instructions, setChosen, setInstructions }}
+    />
+  );
 }
 function Generator({
   projectId,
   type,
   sessions,
-  selectedSessionId,
   storageKey,
-}: GeneratorProps & { storageKey: string }) {
+  draft,
+  typeChangePending,
+  isSelectedType,
+}: GeneratorProps & {
+  storageKey: string;
+  draft: {
+    chosen: string;
+    instructions: string;
+    setChosen: (value: string) => void;
+    setInstructions: (value: string) => void;
+  };
+}) {
   const navigate = useNavigate();
   const cache = useQueryClient();
   const technical = type === "technical_plan" || type === "technical_tickets";
@@ -44,15 +72,11 @@ function Generator({
   const [saved, setSaved] = useState(() =>
     readGenerationCommand(storageKey, type),
   );
-  const [chosen, setChosen] = useState(
-    saved?.input.session_id ?? selectedSessionId ?? "",
-  );
+  const chosen = saved?.input.session_id ?? draft.chosen;
   const sessionId = eligible.some((session) => session.public_id === chosen)
     ? chosen
     : "";
-  const [instructions, setInstructions] = useState(
-    saved?.input.instructions ?? "",
-  );
+  const instructions = saved?.input.instructions ?? draft.instructions;
   const receipt = useQuery({
     queryKey: ["artifact-generation", projectId, saved?.key],
     enabled: Boolean(saved),
@@ -68,6 +92,10 @@ function Generator({
 
   const generate = useMutation({
     mutationFn: () => {
+      if (isSelectedType?.(type) === false)
+        throw new Error(
+          "Le type de livrable a changé. Vérifiez le type sélectionné avant de générer.",
+        );
       const command: GenerationCommand = saved ?? {
         key: createIdempotencyKey(),
         createdAt: Date.now(),
@@ -109,7 +137,7 @@ function Generator({
         <select
           className="min-h-11 w-full rounded-md border bg-white px-3"
           value={sessionId}
-          onChange={(event) => setChosen(event.target.value)}
+          onChange={(event) => draft.setChosen(event.target.value)}
           disabled={generate.isPending || Boolean(saved)}
         >
           <option value="">Choisir une conversation</option>
@@ -131,7 +159,7 @@ function Generator({
         Ce que le document doit préparer
         <Textarea
           value={instructions}
-          onChange={(event) => setInstructions(event.target.value)}
+          onChange={(event) => draft.setInstructions(event.target.value)}
           maxLength={8000}
           disabled={generate.isPending || Boolean(saved)}
           placeholder="Le public, le résultat attendu et les points à approfondir…"
@@ -143,15 +171,20 @@ function Generator({
           !sessionId ||
           !instructions.trim() ||
           generate.isPending ||
+          typeChangePending ||
           Boolean(saved && !recoverable)
         }
-        onClick={() => generate.mutate()}
+        onClick={() => {
+          if (isSelectedType?.(type) !== false) generate.mutate();
+        }}
       >
-        {generate.isPending
-          ? "Préparation du brouillon…"
-          : saved
-            ? "Reprendre la même demande"
-            : "Générer le brouillon avec l’agent"}
+        {typeChangePending
+          ? "Changement de type…"
+          : generate.isPending
+            ? "Préparation du brouillon…"
+            : saved
+              ? "Reprendre la même demande"
+              : "Générer le brouillon avec l’agent"}
       </Button>
       {saved ? (
         <div
@@ -187,6 +220,8 @@ function Generator({
               variant="ghost"
               onClick={() => {
                 localStorage.removeItem(storageKey);
+                draft.setChosen(saved.input.session_id);
+                draft.setInstructions(saved.input.instructions);
                 setSaved(null);
               }}
             >

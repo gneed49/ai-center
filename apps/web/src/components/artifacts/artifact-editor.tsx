@@ -1,9 +1,11 @@
-import { typedDraft, draftMarkdown } from "./typed-draft";
+import { typedDraft } from "./typed-draft";
 import { TypedDraftEditor } from "./typed-draft-editor";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { prepareEditedDraft, type DraftErrors } from "./draft-edit-validation";
 import type { FormEvent } from "react";
 import type {
   ArtifactContent,
+  ArtifactType,
   ArtifactSource,
   ArtifactSourceInput,
 } from "@/api/artifact-types";
@@ -14,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 export function ArtifactEditor({
   initial,
+  artifactType,
   snapshot,
   sourceSnapshots = [],
   conversation,
@@ -22,6 +25,7 @@ export function ArtifactEditor({
   submitLabel,
 }: {
   initial: ArtifactContent;
+  artifactType?: ArtifactType;
   snapshot?: ProjectSnapshot;
   sourceSnapshots?: ArtifactSource[];
   conversation?: SessionView;
@@ -32,6 +36,15 @@ export function ArtifactEditor({
   const [draft, setDraft] = useState(() =>
     typedDraft(initial.structured_content),
   );
+  const [errors, setErrors] = useState<DraftErrors>({});
+  const [submission, setSubmission] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
+  useLayoutEffect(() => {
+    if (Object.keys(errors).length)
+      formRef.current
+        ?.querySelector<HTMLElement>('[aria-invalid="true"]')
+        ?.focus();
+  }, [errors]);
   const [title, setTitle] = useState(initial.title);
   const [body, setBody] = useState(initial.body_markdown);
   const [sources, setSources] = useState<ArtifactSourceInput[]>(() =>
@@ -86,24 +99,29 @@ export function ArtifactEditor({
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!title.trim() || busy) return;
-    onSubmit({
-      title: title.trim(),
-      body_markdown: draft ? draftMarkdown(draft) : body,
-      structured_content: draft
-        ? {
-            ...initial.structured_content,
-            draft: { ...draft, title: title.trim() },
-          }
-        : initial.structured_content,
-      sources,
-    });
+    if (draft) {
+      const prepared = prepareEditedDraft(draft, title, initial, artifactType);
+      setErrors(prepared.errors);
+      if (Object.keys(prepared.errors).length) return;
+      setSubmission((value) => value + 1);
+      onSubmit(prepared.content);
+    } else
+      onSubmit({
+        title: title.trim(),
+        body_markdown: body,
+        structured_content: initial.structured_content,
+        sources,
+      });
   }
+
   const lastResponse = conversation?.messages
     .filter((message) => message.role === "assistant")
     .at(-1);
   return (
     <form
       onSubmit={submit}
+      ref={formRef}
+      noValidate={Boolean(draft)}
       className="space-y-6"
       aria-label="Édition du livrable"
       aria-busy={busy}
@@ -117,15 +135,51 @@ export function ArtifactEditor({
         </label>
         <Input
           id="artifact-title"
+          aria-invalid={Boolean(errors.title)}
+          aria-describedby={errors.title ? "artifact-title-error" : undefined}
           value={title}
-          onChange={(event) => setTitle(event.target.value)}
+          onChange={(event) => {
+            setTitle(event.target.value);
+            setErrors({});
+          }}
           maxLength={200}
           required
           disabled={busy}
         />
+        {errors.title ? (
+          <p
+            id="artifact-title-error"
+            className="mt-2 text-sm text-destructive"
+          >
+            {errors.title}
+          </p>
+        ) : null}
       </div>
+      {Object.keys(errors).length ? (
+        <p
+          role="alert"
+          className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-900"
+        >
+          {errors.document ??
+            "Complétez ou raccourcissez les champs signalés avant d’enregistrer."}
+        </p>
+      ) : null}
       {draft ? (
-        <TypedDraftEditor value={draft} onChange={setDraft} busy={busy} />
+        <TypedDraftEditor
+          value={draft}
+          onChange={(value) => {
+            setDraft(value);
+            setErrors({});
+          }}
+          busy={busy}
+          artifactType={
+            initial.structured_content.artifact_type === artifactType
+              ? artifactType
+              : undefined
+          }
+          errors={errors}
+          submission={submission}
+        />
       ) : (
         <div>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -158,19 +212,22 @@ export function ArtifactEditor({
           </p>
         </div>
       )}
-      <fieldset
-        disabled={busy || Boolean(draft)}
-        className="rounded-lg border p-4"
-      >
+      <fieldset className="rounded-lg border p-4">
         <legend className="px-1 text-sm font-medium">
           Sources de cette version
         </legend>
         {options.size ? (
-          <div className="max-h-64 space-y-3 overflow-y-auto">
+          <div
+            role="region"
+            aria-label="Liste des sources de cette version"
+            tabIndex={0}
+            className="max-h-64 space-y-3 overflow-y-auto rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
             {Array.from(options, ([key, option]) => (
               <label key={key} className="flex items-start gap-3 text-sm">
                 <input
                   type="checkbox"
+                  disabled={busy || Boolean(draft)}
                   checked={sources.some(
                     (source) =>
                       source.kind === option.source.kind &&

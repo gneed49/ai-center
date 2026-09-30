@@ -180,8 +180,12 @@ AES-256-GCM côté Rust sont distincts des chiffrements PGP concernés. Cela ne
 dispense pas d'inspecter une cible existante, qui peut héberger d'autres objets.
 Ne réindexer ou rechiffrer que ce que les détections officielles identifient.
 
-La configuration de test demande le major 17 ; elle ne prouve pas à elle seule
-la version mineure. La CLI figée 2.114.0 inspectée embarque une référence 17.6.1.158.
-Après le gel T17, aligner la dépendance de test sur une version corrigée supportée,
-enregistrer le tag/digest réellement exécuté et rejouer migrations, RLS/Auth et
-restauration. La qualification locale T17 ne ferme pas ce contrôle de la cible.
+La [stack de test isolée](isolated-integration.md) conserve la CLI 2.114.0 et
+le major 17, mais sélectionne explicitement l'image officielle PostgreSQL
+17.11.0.002 par le pin de workdir reconnu par la CLI. Ses gardes vérifient
+conteneur, image, digest et version serveur 170011 avant les phases SQL et
+conservent un reçu privé de cette vérification. La [recette locale du 30 septembre](../../specs/ticket-entry-editing/validation-2026-09-30.md)
+a rejoué les 23 migrations du socle T17, RLS, Auth, TLS et la restauration de
+60 tables et 143 politiques sur cette image attestée. Cette preuve locale doit
+rester rattachée au candidat testé ; elle ne ferme pas le contrôle de la cible
+hébergée.

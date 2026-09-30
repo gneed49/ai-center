@@ -97,9 +97,51 @@ un checkout donné.
 Le template `supabase/config.integration.toml` est indépendant du fichier de
 développement. Seuls `roles.sql`, `seed.sql`, `migrations/`, `schemas/` et
 `tests/` sont copiés ; `.env`, les identifiants de projet distant et `.temp`
-ne le sont jamais. La base neuve utilise donc les sources SQL du checkout
+ne le sont jamais. `prepare` crée lui-même le seul pin PostgreSQL décrit
+ci-dessous dans le `.temp` CI. La base neuve utilise les sources SQL du checkout
 courant. Des fichiers dotenv vides empêchent le serveur de remonter vers les
 secrets du développement lorsqu’il démarre dans la stack jetable.
+
+## Version PostgreSQL et preuve de l'image
+
+La CLI reste figée à **2.114.0** et le major à **17**. Le lifecycle produit
+`supabase/.temp/postgres-version` avec **17.11.0.002** dans le seul workdir CI.
+Cette sélection est lue par le [code officiel de la CLI](https://github.com/supabase/cli/blob/v2.114.0/apps/cli/src/legacy/shared/legacy-db-image.ts#L95)
+et son [bootstrap](https://github.com/supabase/cli/blob/v2.114.0/apps/cli/src/legacy/shared/db-bootstrap/bootstrap-config.ts#L284),
+y compris lors d'un reset. Il n'y a ni changement de moteur, ni retag, ni lien
+vers une base distante. La [release Supabase PostgreSQL](https://github.com/supabase/postgres/releases/tag/v17.11.0.002-cli)
+inclut PostgreSQL 17.11 ; Docker Hub et le miroir ECR officiel publient les images
+Linux AMD64 et ARM64.
+
+Le marqueur de workdir version 2 engage ce pin et le digest d'index
+`sha256:0450166354dc9c1d25f0322ac8b580774d4fb0184d2b087f6e4fe9499c66cf53`.
+Un ancien marqueur version 1 exact peut être arrêté ou préparé vers la version 2 ;
+un marqueur courant dont le pin manque ou a changé est refusé. Les liens
+symboliques et les métadonnées de liaison distante sont également refusés.
+La préparation seule ne prouve pas qu'une image a démarré.
+
+Après démarrage, après chaque reset et avant les phases SQL, le contrôle exige
+le conteneur courant, son label de checkout, une image officielle 17.11.0.002,
+son ID et l'un des digests officiels autorisés pour son architecture. Il lit
+ensuite `server_version_num`, attendu à **170011**, sur le serveur du conteneur.
+Le reçu privé `.run/integration-stack/postgres-image.json` contient la date,
+les identités d'image, l'architecture, le digest et la version constatés ; aucun
+environnement de conteneur ou secret n'est inspecté. Aucun reçu antérieur
+n'autorise une action ; chaque contrôle atteste à nouveau le serveur courant.
+Le contrôle ne tire aucune image
+lui-même : le démarrage habituel de Supabase effectue les téléchargements requis.
+
+Les overrides de binaire CLI, registre d'image, OrioleDB et stack expérimentale
+sont refusés ; `SUPABASE_DB_MAJOR_VERSION`, si présent, doit être `17`.
+La récupération Podman garde le code `LegacyStopVolumePruneError`, les labels et
+les deux seuls volumes autorisés. L'arrêt ne dépend pas d'une base vivante ou
+d'une attestation d'image réussie. Ne pas élargir ce nettoyage aux volumes
+historiques qui ne portent pas les marqueurs requis.
+
+Les tests hors réseau vérifient ces refus et le raccord au reset avec des doubles.
+Seul un nouveau lifecycle complet qualifie l'image corrigée avec migrations,
+Auth, RLS, TLS et restauration ; les journaux antérieurs sur 17.6 ne le prouvent
+pas. La version d'une cible hébergée doit être vérifiée séparément.
 
 ## Gardes avant mutation
 

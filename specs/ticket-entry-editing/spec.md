@@ -1,6 +1,6 @@
 # Spécification — Ajouter et retirer des entrées de tickets
 
-> Statut : conception, avant implémentation
+> Statut : qualifié localement sur API/DB, navigateur et revue ; CI du commit en attente
 > Responsable : coordination Company Context V1
 > Dernière mise à jour : 2026-09-30
 
@@ -118,6 +118,13 @@ l'édition rend le focus à son déclencheur. Les champs et actions restent lisi
 
 ## Limites et validation
 
-Amendement UX autorisé à préparer ; aucune implémentation livrée par ce document.
-Pas de migration attendue. Les simulations et l'API locale ne qualifient pas les
-comptes externes ni la production. [Plan de réalisation](plan.md).
+L'éditeur propose l'ajout en fin, le retrait et sa restauration locale, avec des
+identités de champs stables et des contrôles de contenu avant enregistrement.
+Les tests de composants et de page couvrent les bornes, les sources conservées,
+les erreurs, le conflit de version, l'annulation et le focus. Le parcours TP-011
+utilise désormais l'éditeur pour ses entrées supplémentaires ; son exécution
+contre l'API et la base locales reste à confirmer avant clôture de ce lot.
+
+Aucune migration ni modification serveur. Les fixtures sont **[FICTIF]** ; les
+simulations et l'API locale ne qualifient pas les comptes externes ni la production.
+[Plan, état de réalisation et preuves](plan.md).

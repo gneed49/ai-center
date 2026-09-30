@@ -91,7 +91,7 @@ class MigrationPlanTests(unittest.TestCase):
         env.update(PATH=str(bin_dir) + os.pathsep + env["PATH"],
                    UPGRADE_TEST_LOG=str(log),
                    AI_CENTER_ADMIN_DATABASE_URL="postgresql://postgres:fixture@127.0.0.1:55322/postgres")
-        for executable in ["supabase", "psql", "createdb", "dropdb"]:
+        for executable in ["supabase", "docker", "psql", "createdb", "dropdb"]:
             stub = bin_dir / executable
             stub.write_text("""#!/usr/bin/env python3
 import json,os,pathlib,sys
@@ -100,6 +100,18 @@ args=sys.argv[1:]
 if name=='supabase':
  print(json.dumps({'DB_URL':'postgresql://postgres:postgres@127.0.0.1:55322/postgres',
                    'API_URL':'http://127.0.0.1:55321'}))
+elif name=='docker':
+ marker=json.loads(pathlib.Path('.run/integration-stack/target.json').read_text())
+ image_id='sha256:'+'a'*64
+ if args[0]=='container':
+  print(json.dumps({'name':'/supabase_db_'+marker['project_id'], 'image_id':image_id,
+                   'image':'supabase/postgres:'+marker['postgres_version'], 'running':True,
+                   'labels':{'com.supabase.cli.project':marker['project_id']}}))
+ elif args[0]=='image':
+  print(json.dumps({'id':image_id, 'architecture':'amd64', 'os':'linux',
+                   'digests':['supabase/postgres@'+marker['postgres_index_digest']]}))
+ elif args[0]=='exec': print('170011')
+ else: raise SystemExit(92)
 else:
  files=[arg.split('=',1)[1] for arg in args if arg.startswith('--file=')]
  with open(os.environ['UPGRADE_TEST_LOG'],'a') as log:
@@ -115,7 +127,7 @@ else:
         result = subprocess.run(["bash", "scripts/baseline-alpha-upgrade-smoke.sh"],
                                 cwd=repo, env=env, capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 93, result.stderr)
-        self.assertNotIn("vérifié", result.stdout)
+        self.assertNotIn("Upgrade baseline→courant vérifié", result.stdout)
         calls = [json.loads(line) for line in log.read_text().splitlines()]
         migrations = [Path(path).name for call in calls for path in call["files"]
                       if path.startswith("supabase/migrations/")]

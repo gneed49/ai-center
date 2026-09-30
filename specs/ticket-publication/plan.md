@@ -427,3 +427,11 @@ de réintroduire un binaire qui ignore la granularité des jobs.
   pas cette commande au produit pendant son gel.
 
 Qualification intégrée : [rapport du 24 septembre](validation-2026-09-24.md).
+
+Complément du 30 septembre : l'amélioration d'édition différée ci-dessus est
+implémentée dans [T19](../ticket-entry-editing/spec.md). Sa recette TP-011 crée
+les deux puis trois entrées dans l'interface, et vérifie retrait, version/index
+historiques et cinq issues, avec API/DB locales et fournisseurs **[FICTIF]**.
+[Rapport et qualification finale](../ticket-entry-editing/validation-2026-09-30.md).
+La préparation directe par API décrite pour T16 reste une preuve historique,
+elle n'est plus celle du scénario actuel.

@@ -9,9 +9,12 @@ export interface GenerationCommand {
     instructions: string;
   };
 }
-export function generationStorageKey(project: string, type: ArtifactType) {
+export function generationScopeKey(project: string) {
   const identity = draftStorageIdentity();
-  return `ai-center.artifact-generation:${identity.actorId}:${identity.workspaceId}:${project}:${type}`;
+  return `ai-center.artifact-generation:${identity.actorId}:${identity.workspaceId}:${project}`;
+}
+export function generationStorageKey(project: string, type: ArtifactType) {
+  return `${generationScopeKey(project)}:${type}`;
 }
 export function readGenerationCommand(
   key: string,

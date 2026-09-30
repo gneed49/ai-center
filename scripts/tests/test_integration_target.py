@@ -36,7 +36,8 @@ class IntegrationTargetTests(unittest.TestCase):
                 shutil.copyfile(source, destination)
         shutil.copytree(REPO / "scripts", self.repo / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
         self.env = {name: value for name, value in os.environ.items()
-                    if not name.startswith(("AI_CENTER_", "DATABASE_URL"))}
+                    if not name.startswith(("AI_CENTER_", "DATABASE_URL", "SUPABASE_"))}
+        self.env["DOCKER_HOST"] = "unix:///tmp/integration-fictitious.sock"
         self.log = self.repo / "called.jsonl"
         self.env["INTEGRATION_TEST_LOG"] = str(self.log)
         self.bin = self.repo / "node_modules/.bin"
@@ -77,6 +78,207 @@ if 'status' in sys.argv:
 
     def test_checkouts_have_distinct_container_identities(self):
         self.assertNotEqual(target.project_id(self.repo), target.project_id(self.repo.parent / "other"))
+
+    def test_prepare_writes_only_the_official_pin_and_versions_its_marker(self):
+        development_temp = self.repo / "supabase/.temp"
+        development_temp.mkdir()
+        (development_temp / "postgres-version").write_text("unexpected")
+        (development_temp / "project-ref").write_text("do-not-copy")
+        prepared = self.prepare()
+        self.assertEqual((prepared / "supabase/.temp/postgres-version").read_text(), "17.11.0.002\n")
+        self.assertEqual(json.loads((prepared / "target.json").read_text()), target.marker(self.repo))
+        self.assertEqual([p.name for p in (prepared / "supabase/.temp").iterdir()], ["postgres-version"])
+        self.assertEqual((development_temp / "postgres-version").read_text(), "unexpected")
+
+    def test_intact_legacy_workdir_can_stop_then_prepare_without_database_access(self):
+        prepared = self.prepare()
+        (prepared / "target.json").write_text(json.dumps(target.marker(self.repo, 1)))
+        (prepared / "supabase/.temp/postgres-version").unlink()
+        with self.assertRaises(target.TargetError):
+            target.guard(self.repo, self.env)
+        stopped = self.command("integration-stack.sh", "stop")
+        self.assertEqual(stopped.returncode, 0, stopped.stderr)
+        with mock.patch.object(target.subprocess, "run") as command:
+            self.prepare()
+            command.assert_not_called()
+        target.guard(self.repo, self.env)
+
+    def test_new_marker_missing_or_changed_pin_is_not_silently_repaired(self):
+        prepared = self.prepare()
+        pin = prepared / "supabase/.temp/postgres-version"
+        for value in ("17.6.1.158\n", "17.11.0.002@sha256:forged\n", "17.11.0.002\n\n", None):
+            with self.subTest(value=value):
+                if value is None:
+                    pin.unlink()
+                else:
+                    pin.write_text(value)
+                for check in (target.guard, target.prepare):
+                    with self.assertRaises(target.TargetError):
+                        check(self.repo, self.env)
+        self.assertFalse(self.log.exists())
+
+    def test_pin_and_temp_directory_symlinks_are_refused_before_write(self):
+        prepared = self.prepare()
+        pin = prepared / "supabase/.temp/postgres-version"
+        outside = self.repo / "keep.txt"
+        outside.write_text("keep")
+        pin.unlink()
+        pin.symlink_to(outside)
+        with self.assertRaises(target.TargetError):
+            self.prepare()
+        self.assertEqual(outside.read_text(), "keep")
+        pin.unlink()
+        pin.parent.rmdir()
+        pin.parent.symlink_to(self.repo, target_is_directory=True)
+        with self.assertRaises(target.TargetError):
+            self.prepare()
+        self.assertFalse((self.repo / "postgres-version").exists())
+
+    def test_image_overrides_and_linked_projects_are_refused_before_cli(self):
+        prepared = self.prepare()
+        for name, value in (("SUPABASE_DB_MAJOR_VERSION", "15"),
+                            ("SUPABASE_EXPERIMENTAL_ORIOLEDB_VERSION", "17.11.0.002"),
+                            ("SUPABASE_CLI_BINARY_OVERRIDE", "/unexpected"),
+                            ("SUPABASE_INTERNAL_IMAGE_REGISTRY", "example.invalid"),
+                            ("SUPABASE_EXPERIMENTAL_STACK", "true"),
+                            ("SUPABASE_USE_SLIM_IMAGES", "true")):
+            with self.subTest(name=name):
+                result = self.command("integration-stack.sh", "prepare", **{name: value})
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(self.log.exists())
+        (prepared / "supabase/.temp/project-ref").write_text("foreign")
+        with self.assertRaises(target.TargetError):
+            target.guard(self.repo, self.env)
+
+    def postgres_fixture(self, architecture="amd64"):
+        self.prepare()
+        detail = {"name": "/supabase_db_" + target.project_id(self.repo),
+                  "image_id": "sha256:" + "a" * 64,
+                  "image": "public.ecr.aws/supabase/postgres:17.11.0.002",
+                  "labels": {"com.supabase.cli.project": target.project_id(self.repo)}, "running": True}
+        metadata = {"id": detail["image_id"], "architecture": architecture, "os": "linux",
+                    "digests": ["public.ecr.aws/supabase/postgres@" + target.POSTGRES_PLATFORM_DIGESTS[architecture]]}
+        return detail, metadata
+
+    def verify_fixture(self, detail, metadata, version="170011"):
+        results = [subprocess.CompletedProcess([], 0, json.dumps(detail), ""),
+                   subprocess.CompletedProcess([], 0, json.dumps(metadata), ""),
+                   subprocess.CompletedProcess([], 0, version, "")]
+        return mock.patch.object(target.subprocess, "run", side_effect=results)
+
+    def test_running_postgres_attestation_checks_digest_and_version_without_private_inspect(self):
+        for architecture in ("amd64", "arm64"):
+            with self.subTest(architecture=architecture):
+                detail, metadata = self.postgres_fixture(architecture)
+                with self.verify_fixture(detail, metadata) as command:
+                    proof = target.verify_postgres(self.repo, self.env)
+                self.assertEqual(proof["architecture"], architecture)
+                self.assertEqual(proof["server_version_num"], "170011")
+                self.assertEqual(proof["repo_digest"], metadata["digests"][0])
+                commands = [call.args[0] for call in command.call_args_list]
+                self.assertEqual(commands[-1][-1], "show server_version_num")
+                for args in commands[:2]:
+                    self.assertIn("--format", args)
+                    self.assertNotIn(".Env", " ".join(args))
+                proof_path = self.repo / ".run/integration-stack/postgres-image.json"
+                self.assertEqual(json.loads(proof_path.read_text()), proof)
+                self.assertEqual(proof_path.stat().st_mode & 0o777, 0o600)
+
+    def test_foreign_stopped_or_old_container_never_reaches_image_or_sql_checks(self):
+        for changes in ({"name": "/supabase_db_AICenter"}, {"running": False},
+                        {"labels": {"com.supabase.cli.project": "other"}},
+                        {"image": "supabase/postgres:17.6.1.158"}):
+            with self.subTest(changes=changes):
+                detail, metadata = self.postgres_fixture()
+                with self.verify_fixture({**detail, **changes}, metadata) as command:
+                    with self.assertRaises(target.TargetError):
+                        target.verify_postgres(self.repo, self.env)
+                    self.assertEqual(command.call_count, 1)
+
+    def test_podman_attestation_uses_the_same_explicit_socket_as_supabase(self):
+        detail, metadata = self.postgres_fixture()
+        with mock.patch.object(target.shutil, "which", return_value=None):
+            with self.verify_fixture(detail, metadata) as command:
+                target.verify_postgres(self.repo, self.env)
+        for call in command.call_args_list:
+            self.assertEqual(call.args[0][:4],
+                ["podman", "--remote", "--url", "unix:///tmp/integration-fictitious.sock"])
+
+    def test_unverified_digest_architecture_and_image_id_never_reach_sql(self):
+        for changes in ({"digests": []}, {"digests": ["supabase/postgres@sha256:" + "0" * 64]},
+                        {"architecture": "riscv64"}, {"id": "sha256:" + "b" * 64}):
+            with self.subTest(changes=changes):
+                detail, metadata = self.postgres_fixture()
+                with self.verify_fixture(detail, {**metadata, **changes}) as command:
+                    with self.assertRaises(target.TargetError):
+                        target.verify_postgres(self.repo, self.env)
+                    self.assertEqual(command.call_count, 2)
+
+    def test_old_effective_server_version_does_not_write_a_success_receipt(self):
+        detail, metadata = self.postgres_fixture()
+        with self.verify_fixture(detail, metadata):
+            target.verify_postgres(self.repo, self.env)
+        with self.verify_fixture(detail, metadata, "170006"):
+            with self.assertRaises(target.TargetError):
+                target.verify_postgres(self.repo, self.env)
+        self.assertFalse((self.repo / ".run/integration-stack/postgres-image.json").exists())
+        # A failed image/version check must not prevent exact-target recovery.
+        stopped = self.command("integration-stack.sh", "stop")
+        self.assertEqual(stopped.returncode, 0, stopped.stderr)
+
+    def test_reset_rechecks_running_postgres_before_the_next_sql_phase(self):
+        detail, metadata = self.postgres_fixture()
+        docker = self.bin / "docker"
+        docker.write_text("""#!/usr/bin/env python3
+import json, os, pathlib, sys
+args=sys.argv[1:]
+with open(os.environ['INTEGRATION_RUNTIME_LOG'], 'a') as out:
+ out.write(json.dumps(args)+'\\n')
+if args[0]=='container': print(os.environ['INTEGRATION_CONTAINER'])
+elif args[0]=='image': print(os.environ['INTEGRATION_IMAGE'])
+elif args[0]=='exec': print(os.environ['INTEGRATION_SERVER_VERSION'])
+else: raise SystemExit(90)
+""")
+        docker.chmod(0o755)
+        runtime_log = self.repo / "runtime-called.jsonl"
+        env = {**self.env, "PATH": str(self.bin) + os.pathsep + self.env["PATH"],
+               "INTEGRATION_RUNTIME_LOG": str(runtime_log),
+               "INTEGRATION_CONTAINER": json.dumps(detail), "INTEGRATION_IMAGE": json.dumps(metadata)}
+        script = ("source scripts/integration-common.sh\nintegration_environment\n"
+                  "integration_supabase db reset --local --yes\nprintf 'NEXT_SQL_PHASE\\n'\n")
+        for version, succeeds in (("170011", True), ("170006", False)):
+            with self.subTest(version=version):
+                runtime_log.unlink(missing_ok=True)
+                result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script],
+                    cwd=self.repo, env={**env, "INTEGRATION_SERVER_VERSION": version},
+                    text=True, capture_output=True, timeout=15)
+                self.assertEqual(result.returncode == 0, succeeds, result.stderr)
+                self.assertEqual("NEXT_SQL_PHASE" in result.stdout, succeeds)
+                calls = [json.loads(line) for line in runtime_log.read_text().splitlines()]
+                self.assertEqual([args[0] for args in calls], ["container", "image", "exec"])
+                self.assertEqual(calls[-1][-1], "show server_version_num")
+
+    def test_attestation_refuses_a_symlink_receipt_before_contacting_runtime(self):
+        prepared = self.prepare()
+        outside = self.repo / "keep-proof.txt"
+        outside.write_text("keep")
+        (prepared / "postgres-image.json").symlink_to(outside)
+        with mock.patch.object(target.subprocess, "run") as command:
+            with self.assertRaises(target.TargetError):
+                target.verify_postgres(self.repo, self.env)
+            command.assert_not_called()
+        self.assertEqual(outside.read_text(), "keep")
+
+    def test_failed_or_timed_out_verification_does_not_repeat_private_output(self):
+        self.prepare()
+        for effect in (subprocess.CompletedProcess([], 1, "PRIVATE", "PRIVATE"),
+                       subprocess.TimeoutExpired("PRIVATE", 20, output="PRIVATE")):
+            with self.subTest(effect=type(effect).__name__):
+                kwargs = {"side_effect": effect} if isinstance(effect, Exception) else {"return_value": effect}
+                with mock.patch.object(target.subprocess, "run", **kwargs):
+                    with self.assertRaises(target.TargetError) as caught:
+                        target.verify_postgres(self.repo, self.env)
+                self.assertNotIn("PRIVATE", str(caught.exception))
 
     def test_prepare_removes_obsolete_test_migrations_only(self):
         prepared = self.prepare()

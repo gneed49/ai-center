@@ -43,3 +43,17 @@ Aucun manifeste, version majeure imposée ou seuil d'audit n'a été modifié.
 La CI doit être relue sur le nouveau commit avant de fermer la qualification
 distante. Un audit sans alerte connue ne certifie ni une absence exhaustive de
 vulnérabilités ni un déploiement en production.
+
+## Qualification distante du correctif
+
+Le commit `82c3173040c6507f1b8261af5b3f5165d4630702` a **16 jobs réussis**,
+huit contrôles distincts sur push et sur PR : qualité web/Rust, intégration
+PostgreSQL, Chromium, Tauri Linux, audit dépendances/secrets, politique packaging
+et constructions API/web. Les audits npm, Rust et secrets ont donc été exécutés
+et réussis à distance. Preuves : [CI PR](https://github.com/gneed49/ai-center/actions/runs/36703719351),
+[CI push](https://github.com/gneed49/ai-center/actions/runs/36703713966),
+[images PR](https://github.com/gneed49/ai-center/actions/runs/36703719367),
+[images push](https://github.com/gneed49/ai-center/actions/runs/36703714003).
+
+Cela clôt la qualification distante T17. Les travaux T18/T19 et le pin PostgreSQL
+17.11 n’appartiennent pas à ce commit et conservent leurs propres gates.

@@ -21,6 +21,7 @@ import {
   fixtureArtifactVersion,
   fixtureOldArtifactVersion,
 } from "@/test-fixtures/artifacts";
+import { draftMarkdown, typedDraft } from "@/components/artifacts/typed-draft";
 import { ArtifactPage } from "./artifact-page";
 
 vi.mock("@/components/work-tools/artifact-publications", () => ({
@@ -219,4 +220,148 @@ it("does not substitute current content for an inaccessible historical ticket li
   expect(
     screen.queryByRole("button", { name: "Nouvelle révision" }),
   ).toBeNull();
+});
+
+function ticketDocument() {
+  const source = fixtureArtifactVersion.sources[0].public_id;
+  const draft = {
+    title: "[FICTIF] Tickets à réviser",
+    summary: "[FICTIF] Préparer le travail",
+    sections: [
+      {
+        key: "objective",
+        title: "Objectif",
+        body: "[FICTIF] Section à conserver",
+        source_ids: [source],
+      },
+    ],
+    open_questions: [],
+    tickets: [1, 2].map((i) => ({
+      title: `[FICTIF] Ticket ${i}`,
+      description: `Description ${i}`,
+      acceptance_criteria: [`Critère ${i}`],
+      source_ids: [source],
+    })),
+  };
+  return {
+    artifact: {
+      ...fixtureArtifact.artifact,
+      artifact_type: "product_tickets" as const,
+    },
+    current_version: {
+      ...fixtureArtifactVersion,
+      title: draft.title,
+      body_markdown: draftMarkdown(draft),
+      structured_content: {
+        format: "agent-artifact-v1",
+        artifact_type: "product_tickets",
+        draft,
+      },
+    },
+  };
+}
+it("abandons added and removed entries without a save and restores focus before reopening the recorded version", async () => {
+  vi.mocked(artifactsApi.detail).mockResolvedValue(ticketDocument());
+  openPage();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Nouvelle révision" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Ajouter un ticket" }),
+  );
+  fireEvent.change(screen.getByRole("textbox", { name: "Titre du ticket 3" }), {
+    target: { value: "[FICTIF] Saisie abandonnée" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Retirer le ticket 1" }));
+  fireEvent.click(screen.getByRole("button", { name: "Annuler l’édition" }));
+  const trigger = screen.getByRole("button", { name: "Nouvelle révision" });
+  expect(document.activeElement).toBe(trigger);
+  expect(artifactsApi.save).not.toHaveBeenCalled();
+  fireEvent.click(trigger);
+  await screen.findByRole("textbox", { name: "Titre du ticket 1" });
+  expect(
+    (
+      screen.getByRole("textbox", {
+        name: "Titre du ticket 1",
+      }) as HTMLInputElement
+    ).value,
+  ).toBe("[FICTIF] Ticket 1");
+  expect(
+    screen.queryByRole("textbox", { name: "Titre du ticket 3" }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Annuler le retrait" }),
+  ).toBeNull();
+});
+it("preserves ticket edits, their sources and original base during a concurrent-version conflict, without implicit validation", async () => {
+  const original = ticketDocument();
+  vi.mocked(artifactsApi.detail).mockResolvedValue(original);
+  vi.mocked(artifactsApi.save).mockRejectedValue(
+    new ApiError("[FICTIF] Une nouvelle version existe", 409, "conflict"),
+  );
+  openPage();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Nouvelle révision" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Retirer le ticket 1" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Ajouter un ticket" }));
+  for (const [name, value] of [
+    ["Titre du ticket 2", "[FICTIF] Travail manuel"],
+    ["Description du ticket 2", "[FICTIF] Description"],
+    [
+      "Critères d’acceptation du ticket 2 · un par ligne",
+      "[FICTIF] Vérification",
+    ],
+  ])
+    fireEvent.change(screen.getByRole("textbox", { name }), {
+      target: { value },
+    });
+  await act(async () => {
+    client.setQueryData(["artifact", "fixture-artifact"], {
+      ...original,
+      current_version: {
+        ...original.current_version,
+        public_id: "fixture-concurrent-version",
+        version: 3,
+      },
+    });
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Enregistrer la nouvelle version" }),
+  );
+  await screen.findByText("[FICTIF] Une nouvelle version existe");
+  const sent = vi.mocked(artifactsApi.save).mock.calls[0][1],
+    draft = typedDraft(sent.structured_content)!;
+  expect(sent.expected_version_id).toBe(original.current_version.public_id);
+  expect(sent.sources).toEqual(
+    original.current_version.sources.map(({ kind, public_id }) => ({
+      kind,
+      public_id,
+    })),
+  );
+  expect(draft.tickets[0]).toEqual(
+    typedDraft(original.current_version.structured_content)!.tickets[1],
+  );
+  expect(draft.tickets[1].source_ids).toEqual([]);
+  expect(draft.sections).toEqual(
+    typedDraft(original.current_version.structured_content)!.sections,
+  );
+  expect(sent.body_markdown).toBe(draftMarkdown(draft));
+  expect(
+    (
+      screen.getByRole("textbox", {
+        name: "Titre du ticket 2",
+      }) as HTMLInputElement
+    ).value,
+  ).toBe("[FICTIF] Travail manuel");
+  expect(artifactsApi.validate).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Enregistrer la nouvelle version" }),
+  );
+  await waitFor(() => expect(artifactsApi.save).toHaveBeenCalledTimes(2));
+  expect(vi.mocked(artifactsApi.save).mock.calls[1]).toEqual(
+    vi.mocked(artifactsApi.save).mock.calls[0],
+  );
 });

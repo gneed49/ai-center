@@ -15,8 +15,8 @@ import {
 
 // Real scoped HTTP API and disposable PostgreSQL. Only external tool HTTP endpoints
 // and the agent are deterministic fixtures. The model generates ONE ticket; this
-// test explicitly adds authored [FICTIF] entries by the real revision API, before
-// human review/validation/publication in the browser. It does not prove a live
+// test explicitly adds authored [FICTIF] entries through the revision editor,
+// before human review/validation/publication in the browser. It does not prove a live
 // model generates N tickets, and does not replace the API or publication receipts.
 const api = process.env.E2E_API_URL ?? process.env.AI_CENTER_REAL_E2E_API_URL!;
 async function post<T>(
@@ -72,38 +72,120 @@ async function generate(
   return detail;
 }
 async function authoredTickets(
+  page: Page,
   request: APIRequestContext,
   generated: ArtifactDetail,
   count: number,
   label: string,
 ) {
-  const draft = typedDraft(generated.current_version.structured_content)!;
-  draft.title = `[FICTIF] ${label} · ${count} tickets relus`;
-  draft.tickets = Array.from({ length: count }, (_, index) => ({
-    ...draft.tickets[0],
-    title: `[FICTIF] ${label} ${index + 1}`,
-    description: `[FICTIF] Réaliser le travail ${index + 1} pour le parcours d’invitation.`,
-    acceptance_criteria: [
-      `[FICTIF] Le résultat ${index + 1} est vérifié contre les sources.`,
-    ],
-  }));
-  return post<ArtifactDetail>(
-    request,
-    `/api/artifacts/${generated.artifact.public_id}/draft`,
-    {
-      expected_version_id: generated.current_version.public_id,
-      title: draft.title,
-      body_markdown: draftMarkdown(draft),
-      structured_content: {
-        ...generated.current_version.structured_content,
-        draft,
-      },
-      sources: generated.current_version.sources.map((source) => ({
-        kind: source.kind,
-        public_id: source.public_id,
-      })),
-    },
+  await page.goto(`/artifacts/${generated.artifact.public_id}`);
+  await page.getByRole("button", { name: "Nouvelle révision" }).click();
+  await page
+    .getByLabel("Titre du livrable")
+    .fill(`[FICTIF] ${label} · ${count} tickets relus`);
+  for (let i = 0; i < count; i++) {
+    if (i > 0) {
+      await page.getByRole("button", { name: "Ajouter un ticket" }).click();
+      await expect(
+        page.getByRole("textbox", {
+          name: `Titre du ticket ${i + 1}`,
+          exact: true,
+        }),
+      ).toBeFocused();
+    }
+    await page
+      .getByRole("textbox", { name: `Titre du ticket ${i + 1}`, exact: true })
+      .fill(`[FICTIF] ${label} ${i + 1}`);
+    await page
+      .getByRole("textbox", {
+        name: `Description du ticket ${i + 1}`,
+        exact: true,
+      })
+      .fill(
+        `[FICTIF] Réaliser le travail ${i + 1} pour le parcours d’invitation.`,
+      );
+    await page
+      .getByRole("textbox", {
+        name: `Critères d’acceptation du ticket ${i + 1} · un par ligne`,
+        exact: true,
+      })
+      .fill(`[FICTIF] Le résultat ${i + 1} est vérifié contre les sources.`);
+  }
+  if (count === 3) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    const sources = page.getByRole("region", {
+      name: "Liste des sources de cette version",
+    });
+    await page
+      .getByRole("textbox", { name: "Points à clarifier · un par ligne" })
+      .focus();
+    await page.keyboard.press("Tab");
+    await expect(sources).toBeFocused();
+    expect(
+      await sources.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    ).toBe(true);
+    await sources.press("End");
+    await expect
+      .poll(() => sources.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    const axe = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+      .analyze();
+    expect(axe.violations).toEqual([]);
+    await page.screenshot({
+      path: "/tmp/t19-ticket-editor-mobile.png",
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response
+        .url()
+        .endsWith(`/artifacts/${generated.artifact.public_id}/draft`),
   );
+  await page
+    .getByRole("button", { name: "Enregistrer la nouvelle version" })
+    .click();
+  const response = await saved;
+  expect(response.status()).toBe(200);
+  const result = (await response.json()) as ArtifactDetail;
+  const draft = typedDraft(result.current_version.structured_content)!;
+  expect(draft.tickets).toHaveLength(count);
+  expect(draft.tickets[0].source_ids).toEqual(
+    typedDraft(generated.current_version.structured_content)!.tickets[0]
+      .source_ids,
+  );
+  for (const ticket of draft.tickets.slice(1))
+    expect(ticket.source_ids).toEqual([]);
+  expect(draft.sections).toEqual(
+    typedDraft(generated.current_version.structured_content)!.sections,
+  );
+  expect(result.current_version.body_markdown).toBe(draftMarkdown(draft));
+  expect(result.current_version.sources).toEqual(
+    generated.current_version.sources,
+  );
+  expect(result.current_version.status).toBe("draft");
+  const original = await get<ArtifactDetail["current_version"]>(
+    request,
+    `/api/artifacts/${generated.artifact.public_id}/versions/${generated.current_version.public_id}`,
+  );
+  expect(original).toEqual(generated.current_version);
+  return result;
 }
 async function reviewAndValidate(
   page: Page,
@@ -305,7 +387,7 @@ test("PM 2 tickets Linear puis lead 3 tickets GitHub conservent leurs versions e
   );
   const product = await reviewAndValidate(
     page,
-    await authoredTickets(request, pm, 2, "Produit"),
+    await authoredTickets(page, request, pm, 2, "Produit"),
     2,
   );
   const productJobs = await publishAndRecover(
@@ -341,7 +423,7 @@ test("PM 2 tickets Linear puis lead 3 tickets GitHub conservent leurs versions e
   );
   const lead = await reviewAndValidate(
     page,
-    await authoredTickets(request, technical, 3, "Technique"),
+    await authoredTickets(page, request, technical, 3, "Technique"),
     3,
   );
   const techJobs = await publishAndRecover(
@@ -352,6 +434,35 @@ test("PM 2 tickets Linear puis lead 3 tickets GitHub conservent leurs versions e
     "github",
     true,
   );
+  // Removing from the new draft never changes the old version/index receipts.
+  await page.goto(`/artifacts/${lead.artifact.public_id}`);
+  await page.getByRole("button", { name: "Nouvelle révision" }).click();
+  await page.getByRole("button", { name: "Retirer le ticket 2" }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Titre du ticket 2", exact: true }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole("textbox", { name: "Titre du ticket 2", exact: true }),
+  ).toHaveValue("[FICTIF] Technique 3");
+  const removal = page.waitForResponse(
+    (r) =>
+      r.request().method() === "POST" &&
+      r.url().endsWith(`/artifacts/${lead.artifact.public_id}/draft`),
+  );
+  await page
+    .getByRole("button", { name: "Enregistrer la nouvelle version" })
+    .click();
+  const removalResponse = await removal;
+  expect(removalResponse.status()).toBe(200);
+  const reduced = (await removalResponse.json()) as ArtifactDetail;
+  const reducedDraft = typedDraft(reduced.current_version.structured_content)!;
+  expect(reduced.current_version.version).toBe(4);
+  expect(reducedDraft.tickets).toEqual(
+    typedDraft(lead.current_version.structured_content)!.tickets.filter(
+      (_, i) => i !== 1,
+    ),
+  );
+  expect(reduced.current_version.sources).toEqual(lead.current_version.sources);
   const sourceLink = page
     .getByRole("region", { name: "Suivi des tickets demandés" })
     .getByRole("link", { name: "Ouvrir la version source · ticket 3" });
@@ -360,6 +471,57 @@ test("PM 2 tickets Linear puis lead 3 tickets GitHub conservent leurs versions e
     `/artifacts/${lead.artifact.public_id}?version=${lead.current_version.public_id}&ticket=2`,
   );
   await sourceLink.click();
+  await expect(
+    page.getByRole("article", { name: "Ticket 3 · version 3", exact: true }),
+  ).toBeFocused();
+  // The newest version needs a fresh human validation and T16 extra-issue warning.
+  await page.goto(`/artifacts/${lead.artifact.public_id}`);
+  const validateReduced = page.waitForResponse(
+    (r) =>
+      r.request().method() === "POST" &&
+      r.url().endsWith(`/artifacts/${lead.artifact.public_id}/validate`),
+  );
+  await page.getByRole("button", { name: "Valider cette version" }).click();
+  expect((await validateReduced).status()).toBe(200);
+  await expect(page.getByText(/Version 5 · Validée/)).toBeVisible();
+  await page
+    .getByRole("button", { name: "Préparer une autre sélection" })
+    .click();
+  await page
+    .getByRole("checkbox", {
+      name: "Sélectionner Ticket 2 — [FICTIF] Technique 3",
+      exact: true,
+    })
+    .check();
+  await page.getByRole("button", { name: "Préparer les 1 tickets" }).click();
+  const extraPreview = page.getByRole("region", {
+    name: "Confirmation des tickets",
+  });
+  await expect(extraPreview).toContainText(
+    "Les nouvelles issues s’ajouteront aux anciennes.",
+  );
+  const extraConfirm = extraPreview.getByRole("button", {
+    name: "Confirmer la création de 1 tickets dans GitHub",
+    exact: true,
+  });
+  await expect(extraConfirm).toBeDisabled();
+  await extraPreview
+    .getByRole("checkbox", {
+      name: /Je confirme la création de nouveaux tickets/,
+    })
+    .check();
+  await expect(extraConfirm).toBeEnabled();
+  // Do not create a sixth issue: preview and acknowledgment are local preparation.
+  const remaining = await get<{ items: Publication[] }>(
+    request,
+    `/api/artifacts/${lead.artifact.public_id}/publications`,
+  );
+  expect(remaining.items.map((job) => job.public_id).sort()).toEqual(
+    techJobs.map((job) => job.public_id).sort(),
+  );
+  await page.goto(
+    `/artifacts/${lead.artifact.public_id}?version=${lead.current_version.public_id}&ticket=2`,
+  );
   await expect(
     page.getByRole("article", { name: "Ticket 3 · version 3", exact: true }),
   ).toBeFocused();
@@ -394,6 +556,10 @@ test("PM 2 tickets Linear puis lead 3 tickets GitHub conservent leurs versions e
         agent_mode: "deterministic",
         generated_tickets_per_document: 1,
         authored_fictitious_tickets: { product: 2, technical: 3 },
+        preparation: "human_revision_editor",
+        added_ticket_source_ids: [],
+        removed_ticket_index_in_new_revision: 1,
+        historical_issue_version: 3,
         product_publication_ids: productJobs.map((job) => job.public_id),
         technical_publication_ids: techJobs.map((job) => job.public_id),
       },

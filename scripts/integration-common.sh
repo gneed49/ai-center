@@ -25,22 +25,30 @@ integration_environment() {
 }
 
 integration_supabase() {
-  python3 "${integration_target_tool}" guard || return
+  local integration_guard_action=guard
+  if [[ "${1:-}" == stop ]]; then integration_guard_action=guard-cleanup; fi
+  python3 "${integration_target_tool}" "${integration_guard_action}" || return
   # An explicit workdir overrides SUPABASE_WORKDIR and never loads the repo .env.
   (cd -- "${AI_CENTER_INTEGRATION_WORKDIR}" && \
     "${integration_repo_dir}/node_modules/.bin/supabase" \
-      --workdir "${AI_CENTER_INTEGRATION_WORKDIR}" "$@")
+      --workdir "${AI_CENTER_INTEGRATION_WORKDIR}" "$@") || return
+  # A local reset recreates the container; verify its replacement before tests
+  # or runtime grants can execute against it. Cleanup does not need a live DB.
+  if [[ "${1:-}" == db && "${2:-}" == reset ]]; then
+    python3 "${integration_target_tool}" verify-postgres || return
+  fi
 }
 
 integration_require_stack() {
   integration_environment || return
   python3 "${integration_target_tool}" guard || return
   integration_supabase status -o json 2>/dev/null \
-    | python3 "${integration_target_tool}" status
+    | python3 "${integration_target_tool}" status || return
+  python3 "${integration_target_tool}" verify-postgres
 }
 
 integration_stop() {
-  python3 "${integration_target_tool}" guard || return
+  python3 "${integration_target_tool}" guard-cleanup || return
   local integration_stop_log="${AI_CENTER_INTEGRATION_WORKDIR}/stop-cli.log"
   if integration_supabase stop --project-id "${integration_project_id}" --no-backup \
     >"${integration_stop_log}" 2>&1; then

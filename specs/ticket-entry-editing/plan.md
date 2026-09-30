@@ -1,6 +1,6 @@
 # Plan — Édition du nombre d'entrées de tickets
 
-> Statut : conception, avant implémentation
+> Statut : frontend, TP-011 et quatre parcours métier qualifiés localement ; CI en attente
 > Spec liée : [spec.md](spec.md)
 > Dernière mise à jour : 2026-09-30
 
@@ -73,7 +73,59 @@ brouillon si nécessaires, `artifact-page.tsx` pour le focus, leurs tests et le
 parcours TP-011. Le format `agent-artifact-v1`, les APIs, quotas, index et snapshots
 serveur restent compatibles. Aucun secret, appel IA ou accès distant additionnel.
 
-Attendre la fin du gel T17 avant de modifier ces interfaces partagées. Livrer le
-client vérifié avec le serveur actuel ; aucune migration. Un retour au client
+Le développement a commencé après la fin du gel T17. Livrer le client vérifié
+avec le serveur actuel ; aucune migration. Un retour au client
 précédent enlève les nouvelles commandes mais conserve les documents enregistrés,
 versions, reçus et issues. Il ne retire aucune entrée déjà sauvegardée.
+
+## Réalisation et preuves locales — 2026-09-30
+
+- `TypedDraftEditor` expose les commandes pour les deux types de tickets
+  correspondant au type réel du livrable. Chaque ligne conserve une identité de
+  rendu locale ; retirer ou restaurer une ligne ne réattribue pas ses champs ou
+  ses citations aux autres. Le focus suit l'ajout, le retrait et la restauration.
+  Un enregistrement invalide l'annulation du retrait ; abandonner l'édition rend
+  le focus au bouton « Nouvelle révision » et ne transmet aucune commande.
+- `prepareEditedDraft` centralise les erreurs de contenu et les bornes UTF-8,
+  normalise les lignes de critères avant de calculer le Markdown et conserve la
+  liste globale des sources. Les ajouts commencent avec `source_ids=[]`.
+  `ArtifactEditor` associe les erreurs aux champs, conserve le texte invalide et
+  dirige le focus vers le premier champ signalé.
+- 14 tests de composant supplémentaires couvrent les limites 1/29/30, les types
+  non concernés, le retrait du milieu, la restauration sans écrasement d'une autre
+  saisie, les citations, l'état occupé et les limites de contenu. Deux tests de
+  page vérifient l'abandon/réouverture et le conflit avec une nouvelle version,
+  en conservant le brouillon, la version de départ et la reprise idempotente.
+- Suite web complète : **208 tests réussis dans 51 fichiers**. Lint et
+  construction TypeScript/Vite réussis. Ces résultats sont des preuves locales
+  du client ; ils ne prouvent pas une publication ni des comptes externes réels.
+- `ticket-real-e2e/workflow.spec.ts` prépare désormais ses deux tickets produit
+  et trois tickets techniques dans l'UI, avec contrôle du focus, des citations
+  vides des ajouts, des sections et sources globales conservées, du Markdown et
+  de l'ancienne version inchangée. Il prévoit ensuite le retrait de l'entrée du
+  milieu en version 4, l'ouverture du lien historique version 3/index 2, puis la
+  validation de la version 5 et l'avertissement T16 avant nouvelle publication.
+  Cette dernière confirmation n'est pas envoyée : le scénario conserve ses
+  cinq issues attendues. Mobile à 390 px et contrôle axe sont intégrés au parcours.
+
+La recette TP-011 est ensuite passée sur API/DB locale : deux tickets produit,
+trois techniques, cinq créations/reçus, retrait et lien historique conservé.
+La capture mobile a été inspectée et axe ne trouve aucune violation après
+correction de l'accès clavier à la région des sources. La revue indépendante
+a également corrigé la conservation de critères multilignes déjà enregistrés.
+[Preuves et limites](validation-2026-09-30.md).
+
+La suite métier a révélé une perte de consigne lors du changement du type de
+livrable. Les clés du formulaire séparent maintenant saisie locale et reçu de
+commande ; un garde synchrone empêche aussi l'admission de l'ancien type avant
+la fin de navigation, pour la génération et la création manuelle. Les sept
+régressions supplémentaires portent la suite du snapshot à **216 tests web** ;
+lint et construction passent. Quatorze tests de cette couture ont été relancés
+par la contre-revue. La recette navigateur finale est conduite par le coordinateur.
+
+Les quatre parcours métier passent sur ce snapshot corrigé en **47,2 s**. Les
+18 fichiers de code/opérations sélectionnés dans l'index sont identiques à
+ceux du snapshot qualifié ; les ajouts T18 simultanés sont exclus de ce jalon.
+
+**Reste à qualifier avant clôture :** commit et CI du candidat exact. La
+qualification de comptes réels reste séparée.

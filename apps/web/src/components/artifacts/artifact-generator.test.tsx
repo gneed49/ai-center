@@ -10,6 +10,8 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { artifactsApi } from "@/api/artifacts";
+import type { ArtifactType } from "@/api/artifact-types";
+import { setRequestIdentity } from "@/api/request-context";
 import { fixtureSession } from "@/test-fixtures/context-loop";
 import { ArtifactGenerator } from "./artifact-generator";
 import { ArtifactEditor } from "./artifact-editor";
@@ -18,12 +20,128 @@ vi.mock("@/api/artifacts", () => ({
 }));
 beforeEach(() => {
   localStorage.clear();
+  setRequestIdentity("fixture-actor", "fixture-workspace", null);
   vi.mocked(artifactsApi.generationReceipt).mockResolvedValue({
     status: "interrupted",
     can_retry: true,
     result: null,
   });
 });
+
+it("keeps unsent text across type changes while restoring each type's exact command", async () => {
+  vi.mocked(artifactsApi.generate).mockRejectedValue(
+    new Error("[FICTIF] Réponse perdue"),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const view = (type: ArtifactType) => (
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <ArtifactGenerator
+          projectId="fixture-project"
+          type={type}
+          sessions={[fixtureSession.session]}
+          selectedSessionId={fixtureSession.session.public_id}
+        />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+  const rendered = render(view("specification"));
+  fireEvent.change(screen.getByLabelText("Ce que le document doit préparer"), {
+    target: { value: "[FICTIF] Première demande" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Générer le brouillon avec l’agent" }),
+  );
+  await screen.findByText("Le brouillon n’a pas pu être confirmé");
+  const first = vi.mocked(artifactsApi.generate).mock.calls[0];
+  rendered.rerender(view("product_tickets"));
+  expect(
+    (
+      screen.getByLabelText(
+        "Ce que le document doit préparer",
+      ) as HTMLTextAreaElement
+    ).value,
+  ).toBe("[FICTIF] Première demande");
+  fireEvent.change(screen.getByLabelText("Ce que le document doit préparer"), {
+    target: { value: "[FICTIF] Tickets à préparer" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Générer le brouillon avec l’agent" }),
+  );
+  await screen.findByText("Le brouillon n’a pas pu être confirmé");
+  expect(artifactsApi.generate).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(artifactsApi.generate).mock.calls[1][1]).toMatchObject({
+    artifact_type: "product_tickets",
+    instructions: "[FICTIF] Tickets à préparer",
+  });
+  expect(vi.mocked(artifactsApi.generate).mock.calls[1][2]).not.toBe(first[2]);
+  rendered.rerender(view("specification"));
+  const restored = screen.getByLabelText(
+    "Ce que le document doit préparer",
+  ) as HTMLTextAreaElement;
+  expect(restored.value).toBe("[FICTIF] Première demande");
+  expect(restored.disabled).toBe(true);
+  await waitFor(() =>
+    expect(artifactsApi.generationReceipt).toHaveBeenCalledWith(
+      "fixture-project",
+      first[2],
+    ),
+  );
+  expect(artifactsApi.generate).toHaveBeenCalledTimes(2);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Préparer une nouvelle demande" }),
+  );
+  expect(restored.value).toBe("[FICTIF] Première demande");
+  expect(restored.disabled).toBe(false);
+});
+
+it.each(["actor", "workspace", "project"])(
+  "does not carry an unsent draft into another %s",
+  (boundary) => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = (projectId: string) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ArtifactGenerator
+            projectId={projectId}
+            type="specification"
+            sessions={[fixtureSession.session]}
+            selectedSessionId={fixtureSession.session.public_id}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const rendered = render(view("fixture-project"));
+    fireEvent.change(
+      screen.getByLabelText("Ce que le document doit préparer"),
+      { target: { value: "[FICTIF] Saisie du contexte précédent" } },
+    );
+    setRequestIdentity(
+      boundary === "actor" ? "fixture-other-actor" : "fixture-actor",
+      boundary === "workspace"
+        ? "fixture-other-workspace"
+        : "fixture-workspace",
+      null,
+    );
+    rendered.rerender(
+      view(
+        boundary === "project" ? "fixture-other-project" : "fixture-project",
+      ),
+    );
+    expect(
+      (
+        screen.getByLabelText(
+          "Ce que le document doit préparer",
+        ) as HTMLTextAreaElement
+      ).value,
+    ).toBe("");
+    expect(artifactsApi.generate).not.toHaveBeenCalled();
+  },
+);
 afterEach(() => {
   cleanup();
   vi.resetAllMocks();

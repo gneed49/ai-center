@@ -18,7 +18,7 @@ case "${1:-help}" in
   prepare)
     lock_integration
     python3 "${integration_target_tool}" prepare
-    printf 'Stack CI préparée : %s ; PostgreSQL 55322, Supabase 55321, API 4617, web 5183.\n' "${integration_project_id}"
+    printf 'Stack CI préparée : %s ; pin PostgreSQL vérifié, image en attente de démarrage ; ports DB 55322, API 55321.\n' "${integration_project_id}"
     ;;
   stop)
     lock_integration

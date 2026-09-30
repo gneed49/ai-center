@@ -132,7 +132,11 @@ Un résultat incertain est vérifié individuellement avant toute autre action.
 La reprise d’une commande lit son reçu sans envoyer de nouvelles créations.
 Le graphe, l’historique et les exports conservent la version et le numéro exacts
 de chaque entrée. L’interface permet de lire et modifier les entrées déjà
-présentes ; l’ajout et le retrait d’entrées dans cet éditeur restent à compléter.
+présentes. Dans une nouvelle révision, il permet aussi d'ajouter des tickets vides
+en fin de liste et d'en retirer, entre 1 et 30 entrées, avec annulation du dernier
+retrait. Les autres textes et citations sont conservés ; un ajout manuel n'hérite
+d'aucune citation. Les anciennes versions et leurs issues restent intactes.
+La liste des sources reste consultable au clavier lorsque ses cases sont verrouillées.
 
 ### Utiliser les documents et tickets déjà présents dans les outils
 

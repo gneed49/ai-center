@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, FileText, Plus, Search, Settings2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, useTransition } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, ApiError, createIdempotencyKey } from "@/api/client";
 import { companyApi } from "@/api/company";
@@ -56,6 +56,11 @@ export function ArtifactsPage() {
   const type =
     artifactTypes.find((item) => item === params.get("draft_type")) ??
     "specification";
+  const selectedType = useRef(type);
+  const [typeChangePending, startTypeChange] = useTransition();
+  useLayoutEffect(() => {
+    selectedType.current = type;
+  }, [type]);
   const filterType = artifactTypes.find((item) => item === params.get("type"));
   const status =
     params.get("status") === "validated"
@@ -98,6 +103,10 @@ export function ArtifactsPage() {
   const previous = useRef<{ payload: string; key: string } | null>(null);
   const create = useMutation({
     mutationFn: (input: CreateArtifact) => {
+      if (selectedType.current !== input.artifact_type)
+        throw new Error(
+          "Le type de livrable a changé. Vérifiez le type sélectionné avant de créer le brouillon.",
+        );
       const payload = JSON.stringify({ scopeId, input });
       if (previous.current?.payload !== payload)
         previous.current = { payload, key: createIdempotencyKey() };
@@ -252,9 +261,13 @@ export function ArtifactsPage() {
             <select
               id="artifact-type"
               value={type}
-              onChange={(event) =>
-                updateFilters({ draft_type: event.target.value })
-              }
+              onChange={(event) => {
+                const nextType = artifactTypes.find(
+                  (item) => item === event.target.value,
+                )!;
+                selectedType.current = nextType;
+                startTypeChange(() => updateFilters({ draft_type: nextType }));
+              }}
               disabled={create.isPending}
               className="min-h-11 w-full rounded-md border bg-white px-3 text-sm"
             >
@@ -278,9 +291,13 @@ export function ArtifactsPage() {
           ) : (
             <>
               <ArtifactGenerator
-                key={`${scopeId}:${type}:${sourceSessionId ?? ""}`}
+                key={`generator:${scopeId}:${sourceSessionId ?? ""}`}
                 projectId={scopeId}
                 type={type}
+                typeChangePending={typeChangePending}
+                isSelectedType={(requestedType) =>
+                  selectedType.current === requestedType
+                }
                 sessions={snapshot.data?.sessions ?? []}
                 selectedSessionId={sourceSessionId ?? undefined}
               />
@@ -289,11 +306,12 @@ export function ArtifactsPage() {
                 initial={initial}
                 snapshot={snapshot.data}
                 conversation={conversation.data}
-                busy={create.isPending}
+                busy={create.isPending || typeChangePending}
                 submitLabel="Créer le brouillon"
-                onSubmit={(content) =>
-                  create.mutate({ ...content, artifact_type: type })
-                }
+                onSubmit={(content) => {
+                  if (selectedType.current === type)
+                    create.mutate({ ...content, artifact_type: type });
+                }}
               />
             </>
           )}

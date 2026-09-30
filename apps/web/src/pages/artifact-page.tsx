@@ -71,6 +71,8 @@ function ArtifactView({ artifactId }: { artifactId: string }) {
     queryFn: () => api.snapshot(detail.data!.artifact.project_id),
     enabled: Boolean(detail.data && editingVersion),
   });
+  const revisionButton = useRef<HTMLButtonElement | null>(null);
+  const restoreRevisionFocus = useRef(false);
   const previous = useRef<{ payload: string; key: string } | null>(null);
   const validationCommand = useRef<{ versionId: string; key: string } | null>(
     null,
@@ -194,6 +196,13 @@ function ArtifactView({ artifactId }: { artifactId: string }) {
             <Button
               variant="outline"
               disabled={busy}
+              ref={(element) => {
+                revisionButton.current = element;
+                if (element && restoreRevisionFocus.current) {
+                  element.focus();
+                  restoreRevisionFocus.current = false;
+                }
+              }}
               onClick={() => {
                 save.reset();
                 setEditingVersion(current);
@@ -321,14 +330,18 @@ function ArtifactView({ artifactId }: { artifactId: string }) {
       ) : null}
       {editingVersion && canEdit ? (
         <section className="space-y-5 rounded-lg border p-6">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <h2 className="text-xl font-semibold">
               Préparer une nouvelle révision
             </h2>
             <Button
               variant="ghost"
               disabled={busy}
-              onClick={() => setEditingVersion(null)}
+              onClick={() => {
+                restoreRevisionFocus.current = true;
+                setEditingVersion(null);
+                save.reset();
+              }}
             >
               Annuler l’édition
             </Button>
@@ -348,6 +361,7 @@ function ArtifactView({ artifactId }: { artifactId: string }) {
             <ArtifactEditor
               key={editingVersion.public_id}
               initial={editingVersion}
+              artifactType={artifact.artifact_type}
               sourceSnapshots={editingVersion.sources}
               snapshot={snapshot.data}
               busy={busy}

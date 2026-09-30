@@ -46,6 +46,12 @@ test("retrouve le brouillon de l’agent après réponse perdue puis le révise 
   await page
     .getByLabel("Ce que le document doit préparer")
     .fill("[FICTIF] Préparer les tickets d’accès au portail.");
+  await expect(page.getByLabel("Type de livrable")).toHaveValue(
+    "product_tickets",
+  );
+  await expect(page.getByLabel("Ce que le document doit préparer")).toHaveValue(
+    "[FICTIF] Préparer les tickets d’accès au portail.",
+  );
   await page
     .getByRole("button", { name: "Générer le brouillon avec l’agent" })
     .click();
