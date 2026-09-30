@@ -167,6 +167,7 @@ describe("manual artifact creation", () => {
     const instructions = await screen.findByRole("textbox", {
       name: "Ce que le document doit préparer",
     });
+    instructions.focus();
     act(() => {
       fireEvent.change(screen.getByLabelText("Type de livrable"), {
         target: { value: "product_tickets" },
@@ -180,6 +181,10 @@ describe("manual artifact creation", () => {
     expect(
       (screen.getByLabelText("Type de livrable") as HTMLSelectElement).value,
     ).toBe("product_tickets");
+    expect(screen.getByLabelText("Ce que le document doit préparer")).toBe(
+      instructions,
+    );
+    expect(document.activeElement).toBe(instructions);
     expect(
       (
         screen.getByRole("textbox", {

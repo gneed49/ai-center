@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router";
 import { artifactsApi } from "@/api/artifacts";
 import { createIdempotencyKey } from "@/api/client";
 import type { ArtifactType } from "@/api/artifact-types";
+import { artifactTypes } from "@/api/artifact-types";
 import type { SessionSummary } from "@/api/types";
 import { ErrorState } from "@/components/app/page";
 import { Button } from "@/components/ui/button";
@@ -30,53 +31,136 @@ export function ArtifactGenerator(props: GeneratorProps) {
     <GeneratorDraft key={generationScopeKey(props.projectId)} {...props} />
   );
 }
-function GeneratorDraft(props: GeneratorProps) {
-  const [chosen, setChosen] = useState(props.selectedSessionId ?? "");
-  const [instructions, setInstructions] = useState("");
-  const storageKey = generationStorageKey(props.projectId, props.type);
-  // Type changes replace command recovery, while the user's unsent text survives.
-  return (
-    <Generator
-      key={storageKey}
-      {...props}
-      storageKey={storageKey}
-      draft={{ chosen, instructions, setChosen, setInstructions }}
-    />
-  );
-}
-function Generator({
+function GeneratorDraft({
   projectId,
   type,
   sessions,
-  storageKey,
-  draft,
+  selectedSessionId,
   typeChangePending,
   isSelectedType,
-}: GeneratorProps & {
-  storageKey: string;
-  draft: {
-    chosen: string;
-    instructions: string;
-    setChosen: (value: string) => void;
-    setInstructions: (value: string) => void;
-  };
-}) {
-  const navigate = useNavigate();
-  const cache = useQueryClient();
+}: GeneratorProps) {
+  const [draftSession, setDraftSession] = useState(selectedSessionId ?? "");
+  const [draftInstructions, setDraftInstructions] = useState("");
+  const [commands, setCommands] = useState<
+    Partial<Record<ArtifactType, GenerationCommand | null>>
+  >(() =>
+    Object.fromEntries(
+      artifactTypes.map((artifactType) => [
+        artifactType,
+        readGenerationCommand(
+          generationStorageKey(projectId, artifactType),
+          artifactType,
+        ),
+      ]),
+    ),
+  );
+  const saved = commands[type] ?? null;
+  const storageKey = generationStorageKey(projectId, type);
   const technical = type === "technical_plan" || type === "technical_tickets";
   const eligible = sessions.filter((session) =>
     technical
       ? ["tech", "dev"].includes(session.scope_kind)
       : ["general", "product", "sales"].includes(session.scope_kind),
   );
-  const [saved, setSaved] = useState(() =>
-    readGenerationCommand(storageKey, type),
-  );
-  const chosen = saved?.input.session_id ?? draft.chosen;
+  const chosen = saved?.input.session_id ?? draftSession;
   const sessionId = eligible.some((session) => session.public_id === chosen)
     ? chosen
     : "";
-  const instructions = saved?.input.instructions ?? draft.instructions;
+  const instructions = saved?.input.instructions ?? draftInstructions;
+  const setSaved = (command: GenerationCommand | null) =>
+    setCommands((current) => ({ ...current, [type]: command }));
+  // Keep the editable DOM in the scope-stable component. Replacing it during a
+  // type transition can detach the focused textarea before native input arrives.
+  return (
+    <section
+      className="space-y-4 rounded-lg border bg-muted/30 p-5"
+      aria-label="Préparation avec un agent"
+    >
+      <h3 className="font-semibold">Demander un brouillon à un agent</h3>
+      <p className="text-sm text-muted-foreground">
+        L’agent prépare un brouillon structuré (
+        {artifactLabels[type].toLocaleLowerCase()}) à partir de cette
+        conversation et de ses sources. Vous pourrez la modifier et la valider
+        avant toute publication.
+      </p>
+      <label className="block space-y-2 text-sm font-medium">
+        Conversation de départ
+        <select
+          className="min-h-11 w-full rounded-md border bg-white px-3"
+          value={sessionId}
+          onChange={(event) => setDraftSession(event.target.value)}
+          disabled={Boolean(saved)}
+        >
+          <option value="">Choisir une conversation</option>
+          {eligible.map((session) => (
+            <option key={session.public_id} value={session.public_id}>
+              {session.title}
+            </option>
+          ))}
+        </select>
+      </label>
+      {!eligible.length ? (
+        <p className="text-sm text-muted-foreground">
+          {technical
+            ? "Préparez une transmission vers le lead technique ou le développeur pour commencer."
+            : "Commencez une conversation avec un agent du projet, puis revenez préparer le document."}
+        </p>
+      ) : null}
+      <label className="block space-y-2 text-sm font-medium">
+        Ce que le document doit préparer
+        <Textarea
+          value={instructions}
+          onChange={(event) => setDraftInstructions(event.target.value)}
+          maxLength={8000}
+          disabled={Boolean(saved)}
+          placeholder="Le public, le résultat attendu et les points à approfondir…"
+        />
+      </label>
+      <GenerationActions
+        key={storageKey}
+        projectId={projectId}
+        type={type}
+        storageKey={storageKey}
+        sessionId={sessionId}
+        instructions={instructions}
+        saved={saved}
+        setSaved={setSaved}
+        typeChangePending={typeChangePending}
+        isSelectedType={isSelectedType}
+        prepareNew={(command) => {
+          setDraftSession(command.input.session_id);
+          setDraftInstructions(command.input.instructions);
+          setSaved(null);
+        }}
+      />
+    </section>
+  );
+}
+
+function GenerationActions({
+  projectId,
+  type,
+  storageKey,
+  sessionId,
+  instructions,
+  saved,
+  setSaved,
+  prepareNew,
+  typeChangePending,
+  isSelectedType,
+}: Pick<
+  GeneratorProps,
+  "projectId" | "type" | "typeChangePending" | "isSelectedType"
+> & {
+  storageKey: string;
+  sessionId: string;
+  instructions: string;
+  saved: GenerationCommand | null;
+  setSaved: (command: GenerationCommand) => void;
+  prepareNew: (command: GenerationCommand) => void;
+}) {
+  const navigate = useNavigate();
+  const cache = useQueryClient();
   const receipt = useQuery({
     queryKey: ["artifact-generation", projectId, saved?.key],
     enabled: Boolean(saved),
@@ -121,50 +205,7 @@ function Generator({
     },
   });
   return (
-    <section
-      className="space-y-4 rounded-lg border bg-muted/30 p-5"
-      aria-label="Préparation avec un agent"
-    >
-      <h3 className="font-semibold">Demander un brouillon à un agent</h3>
-      <p className="text-sm text-muted-foreground">
-        L’agent prépare un brouillon structuré (
-        {artifactLabels[type].toLocaleLowerCase()}) à partir de cette
-        conversation et de ses sources. Vous pourrez la modifier et la valider
-        avant toute publication.
-      </p>
-      <label className="block space-y-2 text-sm font-medium">
-        Conversation de départ
-        <select
-          className="min-h-11 w-full rounded-md border bg-white px-3"
-          value={sessionId}
-          onChange={(event) => draft.setChosen(event.target.value)}
-          disabled={generate.isPending || Boolean(saved)}
-        >
-          <option value="">Choisir une conversation</option>
-          {eligible.map((session) => (
-            <option key={session.public_id} value={session.public_id}>
-              {session.title}
-            </option>
-          ))}
-        </select>
-      </label>
-      {!eligible.length ? (
-        <p className="text-sm text-muted-foreground">
-          {technical
-            ? "Préparez une transmission vers le lead technique ou le développeur pour commencer."
-            : "Commencez une conversation avec un agent du projet, puis revenez préparer le document."}
-        </p>
-      ) : null}
-      <label className="block space-y-2 text-sm font-medium">
-        Ce que le document doit préparer
-        <Textarea
-          value={instructions}
-          onChange={(event) => draft.setInstructions(event.target.value)}
-          maxLength={8000}
-          disabled={generate.isPending || Boolean(saved)}
-          placeholder="Le public, le résultat attendu et les points à approfondir…"
-        />
-      </label>
+    <>
       <Button
         type="button"
         disabled={
@@ -220,9 +261,7 @@ function Generator({
               variant="ghost"
               onClick={() => {
                 localStorage.removeItem(storageKey);
-                draft.setChosen(saved.input.session_id);
-                draft.setInstructions(saved.input.instructions);
-                setSaved(null);
+                prepareNew(saved);
               }}
             >
               Préparer une nouvelle demande
@@ -241,6 +280,6 @@ function Generator({
           error={generate.error}
         />
       ) : null}
-    </section>
+    </>
   );
 }
