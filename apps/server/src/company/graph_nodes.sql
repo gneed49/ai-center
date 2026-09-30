@@ -43,9 +43,28 @@ objects as (
   where exists(select 1 from app.steward_scope_sources s where s.external_observation_id=o.id)
   union all
   select o.public_id,'external_reference',p.public_id,p.scope_kind,coalesce(o.snapshot->>'title',j.title),
-    case when not exists(select 1 from app.publication_observations newer where newer.publication_job_id=j.id and newer.id>o.id) then o.observation_kind else 'stale' end,
+    case when j.provider in('notion','linear') then case when app.publication_observation_current(o.id) then 'observed' when o.observation_kind='unavailable' then 'unavailable' else 'historical' end
+      when not exists(select 1 from app.publication_observations newer where newer.publication_job_id=j.id and newer.id>o.id) then o.observation_kind else 'stale' end,
     o.public_id,o.external_url,4
   from app.publication_observations o join app.publication_jobs j on j.id=o.publication_job_id join scopes p on p.id=j.project_id
+  where j.provider='github' or exists(select 1 from app.publication_source_observations v where v.id=o.id and v.id=v.canonical_observation_id)
+    or exists(select 1 from app.context_pack_scope_sources s where s.publication_observation_id=o.id)
+    or exists(select 1 from app.artifact_version_sources s where s.publication_observation_id=o.id)
+    or exists(select 1 from app.steward_scope_sources s where s.publication_observation_id=o.id)
+  union all
+  select r.public_id,'external_reference',p.public_id,p.scope_kind,coalesce(nullif(o.title,''),r.provider||' — '||r.external_id::text),
+    r.status,null,r.canonical_url,4
+  from app.tool_source_references r join scopes p on p.id=r.project_id
+  join app.tool_source_observations o on o.id=r.current_observation_id
+  union all
+  select o.public_id,'external_reference',p.public_id,p.scope_kind,coalesce(nullif(o.title,''),o.provider||' — '||o.external_id::text),
+    case when app.tool_source_observation_current(o.id) then 'observed' when o.availability='unavailable' then 'unavailable' else 'historical' end,
+    o.public_id,o.canonical_url,4
+  from app.tool_source_observations o join app.tool_source_references r on r.id=o.reference_id join scopes p on p.id=o.project_id
+  where o.id=r.current_observation_id or exists(select 1 from app.context_pack_scope_sources s where s.tool_source_observation_id=o.id)
+    or exists(select 1 from app.artifact_version_sources s where s.tool_source_observation_id=o.id)
+    or exists(select 1 from app.steward_scope_sources s where s.tool_source_observation_id=o.id)
+    or exists(select 1 from app.edges e where e.source_public_id=o.public_id or e.target_public_id=o.public_id)
   union all
   select f.public_id,'external_reference',p.public_id,p.scope_kind,c.repository||'@'||c.commit_sha||':'||f.path,
     case when exists(select 1 from app.github_code_file_observations newer join app.github_code_corpora nc on nc.id=newer.corpus_id
@@ -67,6 +86,8 @@ select id,kind,project_public_id,scope_kind,label,status,version_public_id,sourc
     select v.version_number from app.knowledge_entry_versions v where v.public_id=objects.version_public_id and objects.kind='knowledge'
     union all select v.version from app.artifact_document_versions v where v.public_id=objects.version_public_id and objects.kind='artifact'
     union all select d.version from app.deliverables d where d.public_id=objects.version_public_id and objects.kind='artifact'
+    union all select o.version from app.tool_source_observations o where o.public_id=objects.version_public_id and objects.kind='external_reference'
+    union all select o.version from app.publication_source_observations o where o.public_id=objects.version_public_id and objects.kind='external_reference'
     union all select c.version from app.context_packs c where c.public_id=objects.version_public_id and objects.kind='artifact'
   ) exact_version limit 1) as version_number,
   case when kind='artifact' then coalesce(
@@ -77,6 +98,9 @@ select id,kind,project_public_id,scope_kind,label,status,version_public_id,sourc
   ) when kind in ('knowledge','task') then '/projects/'||project_public_id||'/sources/'||kind||'/'||id
   when kind='session' then '/projects/'||project_public_id||'/sessions/'||id
   when kind='external_reference' then coalesce(
+    (select '/sources/'||r.public_id from app.tool_source_references r where r.public_id=objects.id),
+    (select '/source-observations/'||o.public_id from app.tool_source_observations o where o.public_id=objects.id),
+    (select '/publication-observations/'||o.public_id from app.publication_source_observations o where o.public_id=objects.id),
     (select '/projects/'||objects.project_public_id||'/code?observation='||c.public_id||'&file='||f.public_id
       from app.github_code_file_observations f join app.github_code_corpora c on c.id=f.corpus_id
       where f.public_id=objects.id),

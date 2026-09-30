@@ -85,7 +85,7 @@ async fn provider(State(remote): State<BrowserRemote>, request: Request) -> Resp
 
 // The browser scenario never invokes a production API adapter from these routes.
 // Publication creation is only drained by our explicitly loopback client below.
-async fn block_official_reads(request: Request, next: Next) -> Response {
+pub(super) async fn block_official_reads(request: Request, next: Next) -> Response {
     let path = request.uri().path();
     if request.method() == axum::http::Method::POST
         && ((path.starts_with("/api/work-tools/connections/") && path.ends_with("/test"))
@@ -99,7 +99,7 @@ async fn block_official_reads(request: Request, next: Next) -> Response {
 }
 
 #[derive(Default)]
-struct Tasks(Vec<tokio::task::JoinHandle<()>>);
+pub(super) struct Tasks(pub(super) Vec<tokio::task::JoinHandle<()>>);
 impl Drop for Tasks {
     fn drop(&mut self) {
         for task in &self.0 {
@@ -108,8 +108,8 @@ impl Drop for Tasks {
     }
 }
 
-struct Process {
-    child: tokio::process::Child,
+pub(super) struct Process {
+    pub(super) child: tokio::process::Child,
     #[cfg(unix)]
     group: nix::unistd::Pid,
 }
@@ -121,7 +121,7 @@ impl Drop for Process {
     }
 }
 
-fn node(
+pub(super) fn node(
     root: &Path,
     args: &[&str],
     environment: &[(&str, String)],

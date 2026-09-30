@@ -92,6 +92,13 @@ jobs:
           name: ticket-browser-diagnostics
           path: /tmp/ai-center-ticket-real-playwright-results
           if-no-files-found: ignore
+      - name: Upload synthetic source browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-browser-diagnostics
+          path: /tmp/ai-center-source-real-playwright-results
+          if-no-files-found: ignore
       - name: Stop only this disposable stack after interruption
         if: always()
         run: ./scripts/integration-stack.sh stop

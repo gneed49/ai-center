@@ -15,6 +15,7 @@ Usage:
   ./scripts/ci-desktop.sh quality
   ./scripts/ci-desktop.sh integration
   ./scripts/integration-stack.sh run schema-review
+  ./scripts/integration-stack.sh run tool-sources
   ./scripts/ci-desktop.sh tls-smoke
   ./scripts/ci-desktop.sh backup-restore
   ./scripts/ci-desktop.sh auth-smoke
@@ -22,6 +23,7 @@ Usage:
   ./scripts/ci-desktop.sh e2e
   ./scripts/ci-desktop.sh real-e2e
   ./scripts/integration-stack.sh run ticket-browser
+  ./scripts/integration-stack.sh run source-browser
   ./scripts/ci-desktop.sh desktop
   ./scripts/ci-desktop.sh native-build
   ./scripts/integration-stack.sh run integration native-e2e
@@ -364,6 +366,15 @@ case "${1:-}" in
   integration)
     integration
     ;;
+  tool-sources)
+    integration_require_stack
+    export DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL:?}"
+    export AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime AI_CENTER_AGENT_MODE=deterministic
+    export AI_CENTER_AI_CALLS_PER_HOUR=10000 AI_CENTER_AI_ACTOR_CALLS_PER_HOUR=10000
+    cargo test -p ai-center-server --test company_context tool_source -- --test-threads=1
+    cargo test -p ai-center-server --test company_context publication_context_groups -- --test-threads=1
+    cargo test -p ai-center-server --test work_tools sources:: -- --test-threads=1
+    ;;
   schema-review)
     integration_require_stack
     ./scripts/baseline-alpha-upgrade-smoke.sh
@@ -405,6 +416,17 @@ case "${1:-}" in
       AI_CENTER_AI_CALLS_PER_HOUR=10000 AI_CENTER_AI_ACTOR_CALLS_PER_HOUR=10000 \
       cargo test -p ai-center-server --test work_tools \
         ticket_publication_browser -- --ignored --test-threads=1 --nocapture
+    ;;
+  source-browser)
+    integration_require_stack
+    require_command npm
+    require_command cargo
+    DATABASE_URL="${AI_CENTER_RUNTIME_DATABASE_URL:?}" \
+      AI_CENTER_EXPECT_DATABASE_ROLE=ai_center_runtime \
+      AI_CENTER_AGENT_MODE=deterministic \
+      AI_CENTER_AI_CALLS_PER_HOUR=10000 AI_CENTER_AI_ACTOR_CALLS_PER_HOUR=10000 \
+      cargo test -p ai-center-server --test work_tools \
+        existing_sources_browser -- --ignored --test-threads=1 --nocapture
     ;;
   desktop)
     desktop

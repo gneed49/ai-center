@@ -190,13 +190,7 @@ async fn assert_provenance(owner: &AppState, source: &Fixture) -> Result<()> {
         assert_eq!(node.kind, "external_reference");
         assert_eq!(
             node.app_path.as_deref(),
-            Some(
-                format!(
-                    "/artifacts/{}?version={}&ticket={index}",
-                    source.artifact, source.version
-                )
-                .as_str()
-            )
+            Some(format!("/publication-observations/{observation}").as_str())
         );
     }
     Ok(())
@@ -437,5 +431,88 @@ async fn erasing_ticket_publications_waits_for_active_jobs_and_preserves_neighbo
         .await?,
         foreign_before
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn publication_context_groups_unchanged_receipts_without_inventing_legacy_authority()
+-> Result<()> {
+    let actor = isolated_actor().await?;
+    let owner = create(&actor, Uuid::new_v4()).await?;
+    let foreign = create(&actor, Uuid::new_v4()).await?;
+    let source = fixture(&owner).await?;
+    let job = source.jobs[0];
+    let original = source.observations[0];
+    let mut tx = scoped(&owner).await?;
+    let eligible: bool = sqlx::query_scalar("select app.publication_observation_current(id) from app.publication_observations where public_id=$1").bind(original).fetch_one(&mut *tx).await?;
+    assert!(!eligible, "legacy receipt has no attestation");
+    let a: Value =
+        sqlx::query_scalar("select snapshot from app.publication_observations where public_id=$1")
+            .bind(original)
+            .fetch_one(&mut *tx)
+            .await?;
+    tx.commit().await?;
+    let mut b = a.clone();
+    b["body_markdown"] = json!("[FICTIF] Le contenu distant a changé.");
+    let mut canonical = Vec::new();
+    let mut snapshots = vec![a.clone(), a.clone(), b, a];
+    for (index, snapshot) in snapshots.drain(..).enumerate() {
+        let mut tx = scoped(&owner).await?;
+        let before: i64 =
+            sqlx::query_scalar("select graph_version from app.projects where public_id=$1")
+                .bind(source.project)
+                .fetch_one(&mut *tx)
+                .await?;
+        let receipt:Uuid=sqlx::query_scalar("insert into app.publication_observations(workspace_id,publication_job_id,observation_kind,external_id,external_url,snapshot,connection_id,connection_revision)
+            select j.workspace_id,j.id,'unchanged',j.external_id,j.external_url,$2,c.id,c.revision from app.publication_jobs j join app.work_tool_connections c on c.id=j.connection_id where j.public_id=$1 returning public_id")
+            .bind(job).bind(snapshot).fetch_one(&mut *tx).await?;
+        let (identity,version,current):(Uuid,i32,bool)=sqlx::query_as("select canonical_observation_public_id,version,app.publication_observation_current(id) from app.publication_source_observations where public_id=$1")
+            .bind(receipt).fetch_one(&mut *tx).await?;
+        assert!(current);
+        if index < 2 {
+            assert_eq!(identity, original);
+            assert_eq!(version, 1);
+        } else {
+            assert_eq!(version, i32::try_from(index)?);
+            assert_eq!(identity, receipt);
+        }
+        let after: i64 =
+            sqlx::query_scalar("select graph_version from app.projects where public_id=$1")
+                .bind(source.project)
+                .fetch_one(&mut *tx)
+                .await?;
+        if index == 1 {
+            assert_eq!(
+                before, after,
+                "unchanged same authority does not wake a new scan"
+            );
+        }
+        canonical.push(identity);
+        tx.commit().await?;
+    }
+    assert_ne!(
+        canonical[0], canonical[3],
+        "A→B→A is new evidence, never an old head"
+    );
+    let mut tx = scoped(&owner).await?;
+    assert!(!sqlx::query_scalar::<_,bool>("select app.publication_observation_current(id) from app.publication_observations where public_id=$1").bind(original).fetch_one(&mut *tx).await?);
+    sqlx::query("update app.work_tool_connections set revision=revision+1 where public_id=$1")
+        .bind(source.connection)
+        .execute(&mut *tx)
+        .await?;
+    assert!(!sqlx::query_scalar::<_,bool>("select app.publication_observation_current(id) from app.publication_observations where public_id=$1").bind(canonical[3]).fetch_one(&mut *tx).await?);
+    tx.commit().await?;
+    let mut tx = scoped(&foreign).await?;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "select count(*) from app.publication_source_observations where public_id=$1"
+        )
+        .bind(original)
+        .fetch_one(&mut *tx)
+        .await?,
+        0,
+        "view must preserve caller RLS"
+    );
+    tx.commit().await?;
     Ok(())
 }

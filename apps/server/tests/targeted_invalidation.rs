@@ -388,6 +388,8 @@ async fn knowledge(f: &Fixture, entry_type: &str, statement: &str) -> Result<Kno
         id,
         version_id,
         candidate: ContextCandidate {
+            source_kind: ai_center_server::context::ContextSourceKind::KnowledgeEntryVersion,
+            observation: None,
             knowledge_public_id: public_id,
             version_public_id,
             version_number: 1,

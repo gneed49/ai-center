@@ -4,6 +4,8 @@ export interface WorkToolConnection {
   provider: WorkToolProvider;
   name: string;
   enabled: boolean;
+  allow_existing_reads?: boolean;
+  read_retry_after?: string | null;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -32,6 +34,7 @@ export interface WorkToolSettings {
     read: boolean;
     reconcile: boolean;
     update: boolean;
+    read_existing?: boolean;
   }[];
 }
 export interface SaveWorkToolConnection {
@@ -40,6 +43,7 @@ export interface SaveWorkToolConnection {
   name: string;
   expected_revision: number;
   api_key?: string;
+  allow_existing_reads?: boolean;
 }
 export interface WorkToolTest {
   ok: boolean;

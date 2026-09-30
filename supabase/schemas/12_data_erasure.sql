@@ -36,6 +36,8 @@ returns text[] language sql immutable security invoker set search_path='' as $$
   'idempotency_records',
   'provider_connections',
   'publication_observations',
+  'tool_source_observations',
+  'tool_source_references',
   'artifacts',
   'deliverable_sections',
   'github_code_corpora',

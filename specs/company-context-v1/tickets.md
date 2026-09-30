@@ -1,7 +1,7 @@
 # Tickets — Company Context V1
 
-> Réalisation autonome en cours sur `feat/company-context-v1` ; aucune ouverture de production déclarée.  
-> Dernière mise à jour : 2026-09-22  
+> Réalisation autonome en cours sur `feat/company-context-v1` ; aucune ouverture de production déclarée.
+> Dernière mise à jour : 2026-09-30
 > Contrat : [spec.md](spec.md) ; séquence : [plan.md](plan.md)
 
 Ce registre formalise des travaux autorisés. `pending` signifie non encore
@@ -27,11 +27,13 @@ coordinateur ; ils n'introduisent pas de nouvelles attentes d'approbation.
 | CC-T10 | Parcours web et graphe interactif — frontend               | CC-004,022,033,044,053           | T03, T04, T05, T08 ; T09 pour inbox finale | review       |
 | CC-T11 | Reprise, quotas, arrêt et usage — backend + frontend       | CC-050 à 053                     | T02 ; intégration avec T04/T06/T09         | review       |
 | CC-T12 | Données et préparation exploitation — backend/Ops          | CC-054 à 056                     | T03, T05, T06, T11                         | review       |
-| CC-T13 | Candidate intégrée, revue et publication — QA/coordination | CC-057, CC-G1                    | T03 à T12, T16 et T17                       | in_progress  |
+| CC-T13 | Candidate intégrée, revue et publication — QA/coordination | CC-057, CC-G1                    | T03 à T12, T16 à T19                       | in_progress  |
 | CC-T14 | Qualification réelle et ouverture contrôlée — Ops/produit  | CC-014,026,027,055,056, CC-G2/G3 | T13 + accès/cible/budget identifiés        | pending      |
 | CC-T15 | Pilote et décision V1 — produit/pilotes                    | CC-G4                            | T14 + temps et participants réels          | pending      |
-| CC-T16 | Tickets distincts vers les outils — backend + web          | CC-020,026,028,031,050,054        | T05, T06, T07 ; local réussi, CI à suivre   | in_progress  |
-| CC-T17 | Contexte Notion/Linear existant — backend + web            | CC-012,020,023,025,027,029,031,054 | T04 à T09 ; après T16                       | pending      |
+| CC-T16 | Tickets distincts vers les outils — backend + web          | CC-020,026,028,031,050,054        | T05, T06, T07 ; local et CI f0f771b réussis | done         |
+| CC-T17 | Contexte Notion/Linear existant — backend + web            | CC-012,020,023,025,027,029,031,054 | Local qualifié ; publication/CI            | review       |
+| CC-T18 | Contexte GitHub dans le parcours PM/lead — backend + web   | CC-020,023,029,031,043,054        | T17 qualifié ; conception relue            | pending      |
+| CC-T19 | Ajout/retrait d'entrées de tickets — web                   | CC-020,022,028,053               | T16, fin du gel T17 ; amendement UX         | pending      |
 
 ### Amendement de granularité — CC-T16
 
@@ -67,11 +69,25 @@ vers agents, artefacts et handoffs. Deux petites tables dédiées évitent d'aff
 les contraintes GitHub ou les reçus de publication. Connexions, quotas, commandes,
 graphe et steward existants sont réutilisés ; pas de synchronisation globale.
 
-**État : conception seulement**, aucun code ou SQL dans cette passe. Le lot se
+**État : implémenté et qualifié localement, publication/CI en cours**. Le lot se
 réalise après T16 et participe à CC-T13/CC-G1 ; la recette précédente ne le ferme
-pas. Fin : ETC-001 à ETC-012 avec fixtures marquées, recette isolée, preuves de
+pas. [Preuves courantes](../existing-tool-context/validation-2026-09-30.md).
+Fin : ETC-001 à ETC-012 avec fixtures marquées, recette isolée, preuves de
 révocation/couverture/confiance et export/effacement. La qualification des objets
 réels reste une preuve distincte de CC-T14.
+
+### Compléments du parcours — CC-T18 et CC-T19
+
+La [spécification GitHub](../github-context-consumers/spec.md) et son
+[plan](../github-context-consumers/plan.md) raccordent les métadonnées, fichiers
+ciblés et issues publiées au même catalogue de contexte. Les versions exactes,
+attestations et budgets sont conservés ; aucun IDE, crawler ou runner ajouté.
+
+L'[amendement de l'éditeur](../ticket-entry-editing/spec.md) et son
+[plan](../ticket-entry-editing/plan.md) permettent de compléter et réduire le lot
+de tickets dans l'interface existante. Ils conservent versions, citations et
+reçus externes, sans créer un gestionnaire de tâches. Ces deux lots sont conçus,
+pas encore implémentés ; leur préparation ne les fait pas passer à `done`.
 
 ## CC-T01 — Base, contrats et amendements
 

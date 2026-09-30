@@ -1,7 +1,8 @@
 # Plan de raccordement du contexte — T17
 
-> 2026-09-24 — préparation concrète, **aucune implémentation pipeline dans ce lot
-> documentaire**. Feu vert de root requis après commit T16. Références :
+> 2026-09-24 — implémentation pipeline autorisée après commit T16 `442860b`.
+> Le 30 septembre, parcours vertical et barrières d'autorité passent sur base
+> jetable ; qualification intégrée et clôture restent en cours. Références :
 > [spec](spec.md), [contrat API](api-contract.md), [plan](plan.md),
 > [revue de conception](design-review.md). SQL, migrations, recette et clôture
 > restent propriété de root ; lecteurs entrants et observations HTTP appartiennent
@@ -45,7 +46,7 @@ consommateurs historiques.
 | --- | --- |
 | `app.tool_source_observation_current(bigint) RETURNS boolean` | **Nom confirmé.** ID SQL exact de l'observation, invoker/RLS, sans mutation ni réseau. False si invisible/inconnue, projet inactif, référence retirée, head différent, observation indisponible, connexion désactivée/étrangère, capacité retirée ou révision actuelle non attestée. Partial disponible peut être éligible. |
 | `app.publication_observation_current(bigint) RETURNS boolean` | Même nature. Appartenance au groupe sémantique courant disponible, connexion actuellement attestée/active de même société/fournisseur. Ne pas imposer `allow_existing_reads` aux publications. Legacy sans attestation n'est pas éligible avant relecture autorisée. |
-| Projection SQL commune des observations de publication | Groupes **contigus** métier/couverture/identité ; premier ID/UUID canonique, version locale ordinale, projet/société via job, contenu et hashes, attestation actuelle du groupe. Une observation historique exacte garde son UUID propre ; A→B→A crée trois groupes. Nom et shape final à figer par root, pas de seconde implémentation Rust des groupes. |
+| Projection SQL commune des observations de publication | Groupes **contigus** métier/couverture/identité ; premier ID/UUID canonique, version locale ordinale, projet/société via job, contenu et hashes, attestation actuelle du groupe. Une observation historique exacte garde son UUID propre ; A→B→A crée trois groupes. `app.publication_source_observations`, vue invoker définie dans le schéma 22 ; sélection `id=canonical_observation_id`. Pas de seconde implémentation Rust des groupes. |
 | `context_pack_scope_sources` | Ajouter les deux types et deux FKs exclusives ; noms proposés `tool_source_observation_id`, `publication_observation_id`. Source publique/projet/société contrôlés ; décisions inclus/exclus existantes conservées. |
 | `artifact_version_sources` | Les mêmes deux colonnes exclusives et types ; snapshot exact dans le champ existant, sans source remplacée par le head à la validation. |
 | Validateurs / courant | Étendre `validate_scope_source_identity`, validateur de provenance d'artefact et `context_pack_scopes_current`. Seules les sources **incluses** gouvernent la fraîcheur persistante ; exclues restent un reçu de sélection. |
@@ -84,7 +85,7 @@ un titre externe prétendant être obligatoire.
 
 Avant la sélection, dédupliquer l'objet `(projet,fournisseur,external_id)` entre
 source rattachée et publication : observation éligible la plus récente puis ordre
-stable type/UUID. Garder le type et l'UUID réels du candidat retenu ; ne pas fusionner
+stable type/ID de capture. Garder le type et l'UUID réels du candidat retenu ; ne pas fusionner
 les provenances historiques. Les compteurs indiquent candidats éligibles, doublons,
 exclusions par plafond/portée et extraits ; la sélection n'est pas exhaustive.
 
@@ -96,14 +97,13 @@ exhaustive du dépôt ou type distant inventé n'est inclus dans ce raccordement
 
 `graph_version` est nécessaire à la cohérence du snapshot mais insuffisant pour
 une révocation de connexion. Ajouter un petit module partagé, par exemple
-`scope_context/authority.rs`, avec un type interne `ObservedAuthorityStamp` :
+`scope_context/authority.rs`, avec un type interne `ObservationAuthority` :
 
 ```text
-source_kind, source_id, source_public_id, source_project_id,
-reference_public_id | publication_public_id,
-connection_public_id, connection_revision
+source_kind, source_public_id, connection_public_id, connection_revision
 ```
 
+Les projets internes sont résolus sous RLS au moment du garde et ne sont pas sérialisés.
 Ce type n'est ni un secret ni une autorisation reçue du client. Il est produit par
 une lecture jointe sous RLS du registre exact fourni au modèle. Le snapshot garde
 ces stamps ; la branche pack les recharge depuis ses seules sources incluses.
@@ -197,3 +197,29 @@ doit être explicitement réservée lors du feu vert pour éviter un conflit d'o
 Pas de nouveau moteur de recherche/vectorisation, file, tâche autonome, fournisseur
 ou secret requis. Le code peut commencer après confirmation des coutures SQL et
 ownership ; les résultats de ce document sont une préparation, pas un PASS T17.
+
+## 7. État de réalisation pipeline et frontière des preuves
+
+Le candidat porte `source_kind` et `observation` (DTO `SourceObservation` du backend,
+sans copie d’extrait ; `statement` porte les 8 Kio conservés). Les réponses conservent
+ce DTO dans `metadata.source_provenance[].observation`. Les artefacts conservent le
+DTO avec `kind` et `project_id` ; éditions et validations gardent la capture initiale.
+`retrieval` compte les objets éligibles, les doublons supprimés, les sources omises
+et la troncature ; aucune absence de candidat ne signifie absence du contenu distant.
+Le pack ne garde la provenance et les stamps publics que des sources incluses ;
+le garde du sélecteur reste fondé sur tous les candidats réellement envoyés.
+
+Le module `authority` capture une identité d’autorisation séparée du hash métier.
+Le chat, le compilateur, le générateur d’artefact et les deux phases du plan technique
+la recontrôlent ; les chemins d’erreur qui pourraient enregistrer une sortie de modèle
+emploient le même garde. La création du handoff verrouille les projets dans l’ordre,
+puis les connexions. Les métadonnées de coût restent enregistrables avec une sortie
+vide en cas de perte d’autorité. Les artefacts et exports ne remplacent jamais l’UUID
+cité par le head courant.
+
+Premier passage local non DB : 186 unités passées, 10 ignorées ; il inclut les tests
+optionnel/obligatoire, conservation de source partielle, budget de métadonnées,
+compatibilité de candidat historique, UTF-8, refus d’attestation legacy et projection
+de citations externes dans un ticket T16. Ce résultat précède les compteurs finaux
+et ne qualifie **ni SQL runtime, ni droits réels, ni fournisseur, ni déploiement**.
+Les vérifications finales sont à reporter après gel des lots backend/UI et recette root.

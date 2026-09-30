@@ -18,7 +18,7 @@ pub(super) const TABLES: &[(&str, &str)] = &[
     ),
     (
         "artifact_version_sources",
-        "id,workspace_id,version_id,source_project_id,source_kind,knowledge_version_id,context_pack_id,deliverable_id,session_id,source_artifact_version_id,source_public_id,snapshot",
+        "id,workspace_id,version_id,source_project_id,source_kind,knowledge_version_id,context_pack_id,deliverable_id,session_id,source_artifact_version_id,tool_source_observation_id,publication_observation_id,source_public_id,snapshot",
     ),
     (
         "artifacts",
@@ -34,7 +34,7 @@ pub(super) const TABLES: &[(&str, &str)] = &[
     ),
     (
         "context_pack_scope_sources",
-        "id,workspace_id,project_id,context_pack_id,source_project_id,source_kind,source_public_id,knowledge_version_id,artifact_version_id,decision,reason_code,explanation,rank,estimated_tokens,is_mandatory",
+        "id,workspace_id,project_id,context_pack_id,source_project_id,source_kind,source_public_id,knowledge_version_id,artifact_version_id,tool_source_observation_id,publication_observation_id,decision,reason_code,explanation,rank,estimated_tokens,is_mandatory",
     ),
     (
         "context_pack_scope_versions",
@@ -150,7 +150,7 @@ pub(super) const TABLES: &[(&str, &str)] = &[
     ),
     (
         "publication_observations",
-        "id,public_id,workspace_id,publication_job_id,observed_at,observation_kind,external_id,external_url,remote_updated_at,snapshot",
+        "id,public_id,workspace_id,publication_job_id,observed_at,observation_kind,external_id,external_url,remote_updated_at,snapshot,connection_id,connection_revision",
     ),
     (
         "requirement_coverage",
@@ -178,7 +178,15 @@ pub(super) const TABLES: &[(&str, &str)] = &[
     ),
     (
         "steward_scope_sources",
-        "id,workspace_id,project_id,assessment_id,source_project_id,source_role,source_kind,source_public_id,knowledge_version_id,artifact_version_id,external_observation_id,publication_observation_id,github_code_file_observation_id,source_snapshot",
+        "id,workspace_id,project_id,assessment_id,source_project_id,source_role,source_kind,source_public_id,knowledge_version_id,artifact_version_id,external_observation_id,publication_observation_id,github_code_file_observation_id,tool_source_observation_id,source_snapshot",
+    ),
+    (
+        "tool_source_references",
+        "id,public_id,workspace_id,project_id,provider,object_kind,external_id,canonical_url,connection_id,connection_revision,created_by_actor_id,created_at,updated_at,status,revision,current_observation_id,last_attempt_at,last_checked_at,last_check_status,last_check_error_code",
+    ),
+    (
+        "tool_source_observations",
+        "id,public_id,workspace_id,project_id,reference_id,version,provider,object_kind,external_id,canonical_url,connection_id,connection_revision,observed_at,remote_updated_at,title,body_markdown,availability,coverage,omission_reasons,projection_version,content_hash,snapshot_hash,metadata",
     ),
     (
         "tasks",

@@ -1,4 +1,5 @@
 import type { ArtifactVersion } from "@/api/artifact-types";
+import { SourceCitation } from "@/components/tool-sources/source-citation";
 
 export function VersionComparison({
   before,
@@ -72,8 +73,23 @@ export function VersionComparison({
                     key={`${source.kind}:${source.public_id}`}
                     className="break-all"
                   >
-                    {source.title} · {source.public_id}
-                    {source.version ? ` · v${source.version}` : ""}
+                    {source.kind === "tool_source_observation" ||
+                    source.kind === "publication_observation" ? (
+                      <SourceCitation
+                        kind={source.kind}
+                        publicId={source.public_id}
+                        title={source.title}
+                        observation={{
+                          ...source,
+                          version: source.version ?? undefined,
+                        }}
+                      />
+                    ) : (
+                      <>
+                        {source.title} · {source.public_id}
+                        {source.version ? ` · v${source.version}` : ""}
+                      </>
+                    )}
                   </li>
                 ))}
                 {!version.sources.length ? (

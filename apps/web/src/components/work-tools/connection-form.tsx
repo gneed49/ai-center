@@ -26,6 +26,9 @@ export function WorkToolConnectionForm({
     connection?.provider ?? "notion",
   );
   const [name, setName] = useState(connection?.name ?? "");
+  const [existingReads, setExistingReads] = useState(
+    connection?.allow_existing_reads ?? false,
+  );
   const secretInput = useRef<HTMLInputElement>(null);
   const [id] = useState(() => connection?.public_id ?? createIdempotencyKey());
   const pending = useRef<RetryIdentity>(undefined);
@@ -42,6 +45,10 @@ export function WorkToolConnectionForm({
       name: name.trim(),
       expected_revision: connection?.revision ?? 0,
       ...(secret ? { api_key: secret } : {}),
+      ...(provider !== "github" &&
+      existingReads !== (connection?.allow_existing_reads ?? false)
+        ? { allow_existing_reads: existingReads }
+        : {}),
     };
     void save.run(
       async () => {
@@ -143,6 +150,26 @@ export function WorkToolConnectionForm({
             : "Utilisez une clé dédiée aux destinations que votre équipe souhaite utiliser."}
         </p>
       </div>
+      {provider !== "github" ? (
+        <label className="flex items-start gap-3 rounded border p-4 text-sm leading-6">
+          <input
+            type="checkbox"
+            className="mt-1 size-4 shrink-0"
+            checked={existingReads}
+            onChange={(event) => setExistingReads(event.target.checked)}
+            disabled={save.busy}
+          />
+          <span>
+            Autoriser la lecture de documents et tickets existants
+            <span className="mt-2 block text-xs text-muted-foreground">
+              Les membres pouvant ajouter des sources pourront partager les
+              documents accessibles à cette connexion dans AI Center.
+              L’enregistrement ne lance aucune lecture. Une modification peut
+              imposer une nouvelle vérification des sources déjà rattachées.
+            </span>
+          </span>
+        </label>
+      ) : null}
       {connection && !connection.enabled ? (
         <p className="text-sm text-amber-900">
           L’enregistrement réactivera cette connexion.

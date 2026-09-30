@@ -6,6 +6,7 @@ mod code_privacy;
 pub mod models;
 mod publications;
 pub mod reliability;
+pub mod sources;
 pub mod ticket_models;
 mod ticket_projection;
 pub mod tickets;
@@ -36,7 +37,7 @@ use serde_json::{Value, json};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
-const CONNECTION_SELECT: &str = "select public_id,provider,name,enabled,revision,created_at,updated_at from app.work_tool_connections";
+const CONNECTION_SELECT: &str = "select public_id,provider,name,enabled,allow_existing_reads,null::timestamptz as read_retry_after,revision,created_at,updated_at from app.work_tool_connections";
 pub(crate) fn cipher(state: &AppState) -> AppResult<&CredentialCipher> {
     state
         .providers
@@ -66,8 +67,12 @@ pub(crate) async fn audit(
 }
 pub async fn settings(state: &AppState) -> AppResult<Settings> {
     let mut tx = state.begin_request().await?;
-    let connections=sqlx::query_as(&format!("{CONNECTION_SELECT} where workspace_id=app.current_workspace_id() order by provider,name,public_id"))
+    let mut connections:Vec<Connection>=sqlx::query_as(&format!("{CONNECTION_SELECT} where workspace_id=app.current_workspace_id() order by provider,name,public_id"))
         .fetch_all(&mut *tx).await?;
+    for connection in &mut connections {
+        connection.read_retry_after =
+            reliability::read_retry_after(&mut tx, connection.public_id).await?;
+    }
     let usage = reliability::usage(&mut tx).await?;
     tx.commit().await?;
     Ok(Settings {
@@ -82,6 +87,7 @@ pub async fn settings(state: &AppState) -> AppResult<Settings> {
                 create: true,
                 read: true,
                 reconcile: true,
+                read_existing: provider != "github",
                 update: false,
             })
             .collect(),
@@ -90,6 +96,7 @@ pub async fn settings(state: &AppState) -> AppResult<Settings> {
 fn validate_connection(input: &SaveConnection) -> AppResult<()> {
     if input.id.is_nil()
         || !matches!(input.provider.as_str(), "notion" | "linear" | "github")
+        || (input.provider == "github" && input.allow_existing_reads == Some(true))
         || input.expected_revision < 0
         || input.name.trim().is_empty()
         || input.name.trim().chars().count() > 120
@@ -116,8 +123,7 @@ pub async fn save_connection(
     owner(state)?;
     validate_connection(&input)?;
     let mut tx = state.begin_request().await?;
-    sqlx::query("select pg_advisory_xact_lock(hashtextextended(app.current_workspace_id()::text||':work-tool:'||$1,0))")
-        .bind(input.id.to_string()).execute(&mut *tx).await?;
+    connection_lock(&mut tx, input.id, true).await?;
     let existing:Option<(i32,String)>=sqlx::query_as("select revision,provider from app.work_tool_connections where public_id=$1 and workspace_id=app.current_workspace_id() for update")
         .bind(input.id).fetch_optional(&mut *tx).await?;
     if existing.as_ref().map_or(0, |row| row.0) != input.expected_revision
@@ -141,11 +147,11 @@ pub async fn save_connection(
         })
         .transpose()?;
     if input.expected_revision == 0 {
-        sqlx::query("insert into app.work_tool_connections(public_id,workspace_id,provider,name,encrypted_credential,credential_actor_id) values($1,app.current_workspace_id(),$2,$3,$4,$5)")
-            .bind(input.id).bind(&input.provider).bind(input.name.trim()).bind(encrypted).bind(state.actor_id).execute(&mut *tx).await?;
+        sqlx::query("insert into app.work_tool_connections(public_id,workspace_id,provider,name,encrypted_credential,credential_actor_id,allow_existing_reads) values($1,app.current_workspace_id(),$2,$3,$4,$5,$6)")
+            .bind(input.id).bind(&input.provider).bind(input.name.trim()).bind(encrypted).bind(state.actor_id).bind(input.allow_existing_reads.unwrap_or(false)).execute(&mut *tx).await?;
     } else {
-        sqlx::query("update app.work_tool_connections set name=$2,encrypted_credential=coalesce($3,encrypted_credential),credential_actor_id=case when $3::bytea is null then credential_actor_id else $4 end,enabled=true,revision=revision+1,updated_at=now() where public_id=$1 and workspace_id=app.current_workspace_id()")
-            .bind(input.id).bind(input.name.trim()).bind(encrypted).bind(state.actor_id).execute(&mut *tx).await?;
+        sqlx::query("update app.work_tool_connections set name=$2,encrypted_credential=coalesce($3,encrypted_credential),credential_actor_id=case when $3::bytea is null then credential_actor_id else $4 end,enabled=true,allow_existing_reads=coalesce($5,allow_existing_reads),revision=revision+1,updated_at=now() where public_id=$1 and workspace_id=app.current_workspace_id()")
+            .bind(input.id).bind(input.name.trim()).bind(encrypted).bind(state.actor_id).bind(input.allow_existing_reads).execute(&mut *tx).await?;
     }
     let result = sqlx::query_as(&format!(
         "{CONNECTION_SELECT} where public_id=$1 and workspace_id=app.current_workspace_id()"
@@ -173,7 +179,8 @@ pub async fn disable_connection(
 ) -> AppResult<Connection> {
     owner(state)?;
     let mut tx = state.begin_request().await?;
-    let result:Option<Connection>=sqlx::query_as("update app.work_tool_connections set enabled=false,revision=revision+1,updated_at=now() where public_id=$1 and workspace_id=app.current_workspace_id() and revision=$2 returning public_id,provider,name,enabled,revision,created_at,updated_at")
+    connection_lock(&mut tx, id, true).await?;
+    let result:Option<Connection>=sqlx::query_as("update app.work_tool_connections set enabled=false,revision=revision+1,updated_at=now() where public_id=$1 and workspace_id=app.current_workspace_id() and revision=$2 returning public_id,provider,name,enabled,allow_existing_reads,null::timestamptz as read_retry_after,revision,created_at,updated_at")
         .bind(id).bind(input.expected_revision).fetch_optional(&mut *tx).await?;
     let result =
         result.ok_or_else(|| AppError::Conflict("Connection changed or is unavailable".into()))?;
@@ -189,12 +196,33 @@ pub async fn disable_connection(
     tx.commit().await?;
     Ok(result)
 }
-pub(crate) async fn credential(state: &AppState, id: Uuid) -> AppResult<Credential> {
+/// Shared readers and exclusive owner mutation use the same connection key.
+pub(crate) async fn connection_lock(
+    tx: &mut Transaction<'_, Postgres>,
+    id: Uuid,
+    exclusive: bool,
+) -> AppResult<()> {
+    let function = if exclusive {
+        "pg_advisory_xact_lock"
+    } else {
+        "pg_advisory_xact_lock_shared"
+    };
+    sqlx::query(&format!(
+        "select {function}(hashtextextended(app.current_workspace_id()::text||':work-tool:'||$1,0))"
+    ))
+    .bind(id.to_string())
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+pub(crate) async fn credential_in_tx(
+    state: &AppState,
+    tx: &mut Transaction<'_, Postgres>,
+    id: Uuid,
+) -> AppResult<Credential> {
     editor(state)?;
-    let mut tx = state.begin_request().await?;
     let row:Option<(String,i32,Uuid,Vec<u8>)>=sqlx::query_as("select provider,revision,credential_actor_id,encrypted_credential from app.work_tool_connections where public_id=$1 and workspace_id=app.current_workspace_id() and enabled and app.has_workspace_role(workspace_id,array['owner','editor']::text[])")
-        .bind(id).fetch_optional(&mut *tx).await?;
-    tx.commit().await?;
+        .bind(id).fetch_optional(&mut **tx).await?;
     let (provider, revision, actor, envelope) = row.ok_or(AppError::NotFound)?;
     let secret = cipher(state)?.decrypt(state.workspace_id, actor, id, &provider, &envelope)?;
     Ok(Credential {
@@ -202,6 +230,12 @@ pub(crate) async fn credential(state: &AppState, id: Uuid) -> AppResult<Credenti
         revision,
         secret,
     })
+}
+pub(crate) async fn credential(state: &AppState, id: Uuid) -> AppResult<Credential> {
+    let mut tx = state.begin_request().await?;
+    let credential = credential_in_tx(state, &mut tx, id).await?;
+    tx.commit().await?;
+    Ok(credential)
 }
 pub async fn test_connection(state: &AppState, id: Uuid) -> AppResult<ConnectionTest> {
     owner(state)?;

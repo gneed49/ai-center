@@ -61,7 +61,8 @@ pub async fn generate(
             "La conversation a changé pendant la préparation du contexte.".into(),
         ));
     }
-    let (context, source_ids, stamps) = if matches!(session.scope_kind.as_str(), "tech" | "dev") {
+    let (mut context, source_ids, stamps) = if matches!(session.scope_kind.as_str(), "tech" | "dev")
+    {
         let pack_id = session.context_pack_id.ok_or_else(|| {
             AppError::Invalid(
                 "Préparez un contexte transmis avant de demander un livrable technique.".into(),
@@ -88,6 +89,9 @@ pub async fn generate(
             snapshot.scopes,
         )
     };
+    let observation_authority =
+        crate::scope_context::authority::capture(&mut tx, &source_ids).await?;
+    context["observed_source_authority"] = json!(observation_authority);
     let generation_input = ArtifactGenerationInput {
         artifact_type: input.artifact_type.clone(),
         instructions: input.instructions.clone(),
@@ -148,6 +152,7 @@ pub async fn generate(
             &generated.metadata,
             Some(&output),
             &error,
+        &observation_authority,
         )
         .await?;
         return Err(error);
@@ -156,6 +161,7 @@ pub async fn generate(
     let mut tx = state.begin_request().await?;
     let current = crate::scope_context::verify_snapshot(&mut tx, &stamps).await?
         && crate::conversation_context::verify_latest(&mut tx, session.id, &conversation).await?;
+    crate::scope_context::authority::verify(&mut tx,&observation_authority).await?;
     let pack_current = if let Some(pack) = session.context_pack_id {
         crate::scope_context::pack_current(&mut tx, pack).await?
     } else {
@@ -203,7 +209,7 @@ pub async fn generate(
         structured_content: json!({
             "format":"agent-artifact-v1","artifact_type":input.artifact_type,"draft":generated.output,
             "generation":{"model_run_id":run.public_id,"input_hash":input_hash,"agent_scope":session.scope_kind,
-                "conversation":conversation.provenance(),"source_version_ids":source_ids,"scope_versions":stamps}
+                "conversation":conversation.provenance(),"source_version_ids":source_ids,"scope_versions":stamps,"observed_source_authority":observation_authority}
         }),
         sources,
     };
@@ -227,6 +233,7 @@ pub async fn generate(
             &generated.metadata,
             Some(&output),
             error,
+        &observation_authority,
         )
         .await?;
     }
@@ -238,7 +245,7 @@ async fn exact_sources(
     tx: &mut Transaction<'_, Postgres>,
     ids: &[Uuid],
 ) -> AppResult<Vec<SourceInput>> {
-    let rows:Vec<(String,Uuid)>=sqlx::query_as("select 'knowledge'::text,public_id from app.knowledge_entry_versions where public_id=any($1) and workspace_id=app.current_workspace_id() union all select 'artifact_version',public_id from app.artifact_document_versions where public_id=any($1) and workspace_id=app.current_workspace_id()")
+    let rows:Vec<(String,Uuid)>=sqlx::query_as("select 'knowledge'::text,public_id from app.knowledge_entry_versions where public_id=any($1) and workspace_id=app.current_workspace_id() union all select 'artifact_version',public_id from app.artifact_document_versions where public_id=any($1) and workspace_id=app.current_workspace_id() union all select 'tool_source_observation',public_id from app.tool_source_observations where public_id=any($1) and workspace_id=app.current_workspace_id() union all select 'publication_observation',public_id from app.publication_observations where public_id=any($1) and workspace_id=app.current_workspace_id()")
         .bind(ids).fetch_all(&mut **tx).await?;
     if rows.len() != ids.len() {
         return Err(AppError::NotFound);

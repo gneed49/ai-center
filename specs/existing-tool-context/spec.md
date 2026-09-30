@@ -1,8 +1,8 @@
 # Spécification — Contexte issu des outils existants
 
-> Statut : conception autorisée ; aucune implémentation dans ce lot documentaire
+> Statut : implémentation locale en cours de qualification
 > Responsable : coordination Company Context V1
-> Dernière mise à jour : 2026-09-23
+> Dernière mise à jour : 2026-09-30
 > Séquence : après le lot [Tickets distincts](../ticket-publication/spec.md)
 
 ## Intention

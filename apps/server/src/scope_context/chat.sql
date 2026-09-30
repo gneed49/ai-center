@@ -12,6 +12,9 @@ with recursive origin as (
  select p.* from app.projects p cross join origin o
  where p.workspace_id=app.current_workspace_id() and p.status='active'
    and (o.scope_kind='company' or p.scope_kind='company' or p.id in(select id from linked))
+), observed as (/* OBSERVATION_ROWS */), external_objects as (
+ select distinct on(o.project_id,o.provider,o.external_id) o.* from observed o join scopes p on p.id=o.project_id
+ order by o.project_id,o.provider,o.external_id,o.observed_at desc,o.source_kind,o.source_id desc
 ), candidates as (
  select v.id as source_id,p.id as project_id,p.public_id as project_public_id,p.graph_version,p.scope_kind,
    'knowledge_entry_version'::text as source_kind,
@@ -28,17 +31,27 @@ with recursive origin as (
  select v.id,p.id,p.public_id,p.graph_version,p.scope_kind,'artifact_document_version',false,
    length(v.body_markdown||E'\n'||v.structured_content::text)>8000,
    jsonb_build_object('knowledge_public_id',d.public_id,'version_public_id',v.public_id,'version_number',v.version,
-     'entry_type','artifact','title',v.title,'statement',left(v.body_markdown||E'\n'||v.structured_content::text,8000),
+     'entry_type','artifact','source_kind','artifact_document_version','title',v.title,'statement',left(v.body_markdown||E'\n'||v.structured_content::text,8000),
      'rationale','Validated artifact; potentially partial excerpt; hash='||v.content_hash,
      'node_key',case when p.id=$1 then 'artifact' else p.scope_kind||'/artifact' end),
    ts_rank(to_tsvector('simple',left(v.title||' '||v.body_markdown||' '||v.structured_content::text,40000)),to_tsquery('simple',$2)),v.created_at
  from app.artifact_document_versions v join app.artifact_documents d on d.id=v.document_id join scopes p on p.id=d.project_id
  where v.status='validated' and not exists(select 1 from app.artifact_document_versions newer where newer.document_id=d.id and newer.status='validated' and newer.version>v.version)
+ union all
+ select o.source_id,o.project_id,o.project_public_id,o.graph_version,o.scope_kind,o.source_kind,false,
+   octet_length(o.body_markdown)>8192,
+   jsonb_build_object('knowledge_public_id',o.object_public_id,'version_public_id',o.public_id,'version_number',o.version,
+     'entry_type','external_observation','source_kind',o.source_kind,'title',o.title,'statement',left(o.body_markdown,8192),
+     'rationale','Observed external data; coverage is explicit','node_key',o.scope_kind||'/external'),
+   ts_rank(to_tsvector('simple',left(o.title||' '||o.body_markdown,40000)),to_tsquery('simple',$2)),o.observed_at
+ from external_objects o
 ), ranked as (
  select *,count(*) over() as total_sources,count(*) filter(where mandatory) over() as mandatory_count,
-   row_number() over(partition by source_kind order by mandatory desc,relevance desc,(project_id=$1) desc,created_at desc,source_id desc) as ordinal
+   count(*) filter(where source_kind in('tool_source_observation','publication_observation')) over() as external_total,
+   (select count(*) from observed o join scopes s on s.id=o.project_id)-(select count(*) from external_objects) as external_duplicates,
+   row_number() over(partition by case when source_kind in('tool_source_observation','publication_observation') then 'observed_external' else source_kind end order by mandatory desc,relevance desc,(project_id=$1) desc,created_at desc,source_id desc) as ordinal
  from candidates
 )
-select source_id,project_id,project_public_id,graph_version,scope_kind,source_kind,mandatory,excerpt,candidate,total_sources,mandatory_count
- from ranked where (source_kind='knowledge_entry_version' and ordinal<=161) or (source_kind='artifact_document_version' and ordinal<=21)
+select source_id,project_id,project_public_id,graph_version,scope_kind,source_kind,mandatory,excerpt,candidate,total_sources,mandatory_count,external_total,external_duplicates
+ from ranked where (source_kind='knowledge_entry_version' and ordinal<=161) or (source_kind='artifact_document_version' and ordinal<=21) or (source_kind in('tool_source_observation','publication_observation') and ordinal<=21)
  order by mandatory desc,relevance desc,(project_id=$1) desc,created_at desc,source_kind,source_id desc

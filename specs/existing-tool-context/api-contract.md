@@ -1,10 +1,10 @@
 # Contrat API et lecteur — T17 Sources des outils existants
 
-> 2026-09-24 — contrat de conception proposé pour figer les coutures backend,
-> schéma, pipeline et UI avant implémentation. Aucun code T17 n'est livré par
-> ce document. [Spécification](spec.md), [plan](plan.md), [revue du design](design-review.md).
-> T16 reste en recette. Les choix ci-dessous précisent le plan ; toute divergence
-> doit être arbitrée dans ce contrat avant d'être codée dans un consommateur.
+> 2026-09-30 — contrat implémenté localement, qualification intégrée en cours.
+> [Spécification](spec.md), [plan](plan.md), [revue du design](design-review.md),
+> [preuves](validation-2026-09-30.md). T16 est livré dans `f0f771b`.
+> Les choix ci-dessous définissent les interfaces backend, schéma, pipeline et UI ;
+> toute divergence doit être arbitrée dans ce contrat avant modification.
 
 ## 1. Conventions et identité
 
@@ -374,7 +374,7 @@ pub(crate) enum SourceLocator {
 }
 pub(crate) enum LinearIssueKey { Id(Uuid), Identifier(String) }
 // Parsing local pur, erreurs nettoyées ; aucune résolution HTTP de l'URL.
-pub(crate) fn parse_locator(provider: &str, source: &str) -> AppResult<SourceLocator>;
+pub fn parse_locator(provider: ToolProvider, source: &str) -> Result<SourceLocator, LocatorError>;
 
 pub(crate) struct ExistingToolSnapshot {
     pub external_id: Uuid,

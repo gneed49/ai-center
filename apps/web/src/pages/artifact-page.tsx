@@ -12,6 +12,7 @@ import type {
 } from "@/api/artifact-types";
 import { ArtifactEditor } from "@/components/artifacts/artifact-editor";
 import { TypedDraftView } from "@/components/artifacts/typed-draft-view";
+import { SourceCitation } from "@/components/tool-sources/source-citation";
 import { ArtifactExport } from "@/components/artifacts/artifact-export";
 import { ArtifactPublications } from "@/components/work-tools/artifact-publications";
 import { VersionComparison } from "@/components/artifacts/version-comparison";
@@ -409,32 +410,49 @@ function ArtifactView({ artifactId }: { artifactId: string }) {
                     key={`${source.kind}:${source.public_id}`}
                     className="break-words text-sm"
                   >
-                    <p className="font-medium">{source.title || source.kind}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {source.version ? `Version ${source.version} · ` : ""}
-                      {source.status_at_capture ?? "Source rattachée"}
-                    </p>
-                    <details className="mt-2 text-xs text-muted-foreground">
-                      <summary>Détails techniques de la source</summary>
-                      <p className="mt-1 break-all">{source.public_id}</p>
-                    </details>
-                    {source.kind === "artifact_version" &&
-                    source.artifact_id ? (
-                      <Link
-                        to={`/artifacts/${source.artifact_id}?version=${source.public_id}`}
-                        className="mt-2 block text-sm text-primary"
-                      >
-                        Ouvrir cette version source
-                      </Link>
-                    ) : null}
-                    {source.kind === "session" ? (
-                      <Link
-                        to={`/projects/${source.project_id}/sessions/${source.public_id}`}
-                        className="mt-2 block text-sm text-primary"
-                      >
-                        Ouvrir la conversation
-                      </Link>
-                    ) : null}
+                    {source.kind === "tool_source_observation" ||
+                    source.kind === "publication_observation" ? (
+                      <SourceCitation
+                        kind={source.kind}
+                        publicId={source.public_id}
+                        title={source.title}
+                        observation={{
+                          ...source,
+                          version: source.version ?? undefined,
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <p className="font-medium">
+                          {source.title || source.kind}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {source.version ? `Version ${source.version} · ` : ""}
+                          {source.status_at_capture ?? "Source rattachée"}
+                        </p>
+                        <details className="mt-2 text-xs text-muted-foreground">
+                          <summary>Détails techniques de la source</summary>
+                          <p className="mt-1 break-all">{source.public_id}</p>
+                        </details>
+                        {source.kind === "artifact_version" &&
+                        source.artifact_id ? (
+                          <Link
+                            to={`/artifacts/${source.artifact_id}?version=${source.public_id}`}
+                            className="mt-2 block text-sm text-primary"
+                          >
+                            Ouvrir cette version source
+                          </Link>
+                        ) : null}
+                        {source.kind === "session" ? (
+                          <Link
+                            to={`/projects/${source.project_id}/sessions/${source.public_id}`}
+                            className="mt-2 block text-sm text-primary"
+                          >
+                            Ouvrir la conversation
+                          </Link>
+                        ) : null}
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>

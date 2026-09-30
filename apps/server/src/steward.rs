@@ -43,13 +43,14 @@ const DEFAULT_STEWARD_SCAN_WORKSPACE_LIMIT: u32 = 16;
 const MIN_STEWARD_SCAN_INTERVAL: Duration = Duration::from_secs(1);
 const MAX_STEWARD_SCAN_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const MAX_STEWARD_SCAN_WORKSPACE_LIMIT: u32 = 128;
-const STEWARD_EVENT_TYPES: [&str; 8] = [
+const STEWARD_EVENT_TYPES: [&str; 9] = [
     "knowledge.committed",
     "knowledge.revised",
     "artifact.validated",
     "graph.relationship_confirmed",
     "external_reference.observed",
     "publication.observed",
+    "tool_source.observed",
     "github_code.observed",
     "steward.continue",
 ];
@@ -376,17 +377,12 @@ pub async fn analyze_project(
             Ok(assessments) => assessments,
             Err(reason) => {
                 let error = AppError::Agent(format!("invalid Steward structured output: {reason}"));
-                record_invalid_run(
-                    state,
-                    snapshot.model_run_id,
-                    &generated,
-                    &raw_output,
-                    &error,
-                )
-                .await?;
+                let recorded =
+                    record_invalid_run(state, &snapshot, &generated, &raw_output, &error).await;
                 if let Some(company) = &snapshot.company {
                     let _ = progress::release(state, &company.progress, error.public_code()).await;
                 }
+                recorded?;
                 return Err(error);
             }
         };
@@ -941,6 +937,20 @@ async fn persist_completed_run(
     .await?;
     let current_graph_version = current_graph_version.ok_or(AppError::NotFound)?;
 
+    if let Some(company) = &snapshot.company
+        && let Err(error) = company::verify_authorities(&mut tx, company).await
+    {
+        complete_cancelled_run(
+            &mut tx,
+            snapshot.model_run_id,
+            &generated.metadata,
+            &Value::Null,
+        )
+        .await?;
+        tx.commit().await?;
+        return Err(error);
+    }
+
     if current_graph_version != snapshot.graph_version || !scopes_current {
         complete_cancelled_run(
             &mut tx,
@@ -1234,7 +1244,7 @@ async fn complete_cancelled_run(
     .bind(&metadata.provider)
     .bind(model)
     .bind(&metadata.provider_response_id)
-    .bind(output)
+    .bind((!output.is_null()).then_some(output))
     .bind(json!({
         "input_tokens": metadata.input_tokens,
         "output_tokens": metadata.output_tokens,
@@ -1293,12 +1303,26 @@ async fn record_failed_run(state: &AppState, model_run_id: i64, error: &AppError
 
 async fn record_invalid_run(
     state: &AppState,
-    model_run_id: i64,
+    snapshot: &ProjectSnapshot,
     generated: &EngineOutput<StewardOutput>,
     raw_output: &Value,
     error: &AppError,
 ) -> AppResult<()> {
     let mut tx = state.begin_request().await?;
+    let model_run_id = snapshot.model_run_id;
+    if let Some(company) = &snapshot.company {
+        let scopes_current =
+            crate::scope_context::verify_snapshot(&mut tx, &company.scopes).await?;
+        let authority = company::verify_authorities(&mut tx, company).await;
+        if !scopes_current || authority.is_err() {
+            complete_cancelled_run(&mut tx, model_run_id, &generated.metadata, &Value::Null)
+                .await?;
+            tx.commit().await?;
+            return Err(authority.err().unwrap_or_else(|| {
+                AppError::Conflict("Le contexte a changé pendant l’analyse.".into())
+            }));
+        }
+    }
     let input_tokens = generated
         .metadata
         .input_tokens

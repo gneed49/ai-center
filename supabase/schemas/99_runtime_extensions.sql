@@ -52,3 +52,14 @@ grant execute on function app.cancel_model_run_after_access_loss(bigint) to ai_c
 grant select,insert,update on app.steward_scan_progress to ai_center_runtime;
 grant select,insert on app.steward_scan_sources to ai_center_runtime;
 grant usage on sequence app.steward_scan_progress_id_seq,app.steward_scan_sources_id_seq to ai_center_runtime;
+
+-- Existing-tool context, same company roles and immutable observations.
+grant update(allow_existing_reads) on app.work_tool_connections to ai_center_runtime;
+grant select,insert on app.tool_source_references,app.tool_source_observations to ai_center_runtime;
+grant update(canonical_url,connection_id,connection_revision,updated_at,status,revision,current_observation_id,last_attempt_at,last_checked_at,last_check_status,last_check_error_code)
+ on app.tool_source_references to ai_center_runtime;
+grant usage on sequence app.tool_source_references_id_seq,app.tool_source_observations_id_seq to ai_center_runtime;
+grant select on app.publication_source_observations to ai_center_runtime;
+grant execute on function app.context_utf8_prefix(text,integer),app.tool_source_observation_current(bigint),app.publication_observation_current(bigint) to ai_center_runtime;
+
+grant execute on function app.observed_remote_time(text) to ai_center_runtime;

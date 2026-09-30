@@ -66,6 +66,15 @@ export function WorkToolConnectionCard({
           ? "Une clé est enregistrée. Le test d’accès contacte l’outil à votre demande ; il ne vérifie pas les droits sur chaque destination."
           : "Cette connexion ne peut plus servir à une nouvelle publication."}
       </p>
+      {connection.provider !== "github" ? (
+        <p className="text-sm text-muted-foreground">
+          Lecture de sources existantes :{" "}
+          {connection.enabled && connection.allow_existing_reads
+            ? "autorisée à la demande"
+            : "non autorisée"}
+          .
+        </p>
+      ) : null}
       {owner ? (
         <div className="flex flex-wrap gap-2">
           <Button

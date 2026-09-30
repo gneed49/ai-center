@@ -3,7 +3,7 @@ with refs as (
  union
  select s.source_kind,s.source_public_id,s.source_project_id from app.steward_scope_sources s where s.project_id=$1
  union
- select case s.source_kind when 'knowledge' then 'knowledge_entry_version' else s.source_kind end,s.source_public_id,s.source_project_id
+ select case s.source_kind when 'knowledge' then 'knowledge_entry_version' when 'artifact_version' then 'artifact_document_version' else s.source_kind end,s.source_public_id,s.source_project_id
  from app.artifact_version_sources s join app.artifact_document_versions v on v.id=s.version_id where v.project_id=$1 and s.source_kind<>'session'
  union
  select 'knowledge_entry_version',v.public_id,v.project_id from app.model_runs m join app.knowledge_entry_versions v on v.public_id=any(m.source_public_ids)
@@ -11,6 +11,12 @@ with refs as (
  union
  select 'artifact_document_version',v.public_id,v.project_id from app.model_runs m join app.artifact_document_versions v on v.public_id=any(m.source_public_ids)
  where m.project_id=$1 and v.workspace_id=app.current_workspace_id()
+ union
+ select 'tool_source_observation',o.public_id,o.project_id from app.model_runs m join app.tool_source_observations o on o.public_id=any(m.source_public_ids)
+ where m.project_id=$1 and o.workspace_id=app.current_workspace_id()
+ union
+ select 'publication_observation',o.public_id,j.project_id from app.model_runs m join app.publication_observations o on o.public_id=any(m.source_public_ids)
+ join app.publication_jobs j on j.id=o.publication_job_id where m.project_id=$1 and o.workspace_id=app.current_workspace_id()
 ), records as (
  select 'knowledge_entry_version'::text kind,v.public_id,v.project_id,jsonb_build_object('version_number',v.version_number,'entry_type',v.entry_type,'title',v.title,'statement',v.statement,'rationale',v.rationale,'created_at',v.created_at) record
  from app.knowledge_entry_versions v where v.workspace_id=app.current_workspace_id()
@@ -27,6 +33,11 @@ with refs as (
  from app.publication_observations o join app.publication_jobs j on j.id=o.publication_job_id
  join app.artifact_document_versions v on v.id=j.artifact_version_id join app.artifact_documents d on d.id=v.document_id
  where o.workspace_id=app.current_workspace_id()
+ union all select 'tool_source_observation',o.public_id,o.project_id,
+ jsonb_build_object('reference_id',r.public_id,'version',o.version,'provider',o.provider,'object_kind',o.object_kind,'external_id',o.external_id,'canonical_url',o.canonical_url,
+ 'observed_at',o.observed_at,'remote_updated_at',o.remote_updated_at,'title',o.title,'body_markdown',o.body_markdown,'availability',o.availability,'coverage',o.coverage,
+ 'omission_reasons',o.omission_reasons,'projection_version',o.projection_version,'content_hash',o.content_hash,'snapshot_hash',o.snapshot_hash,'metadata',o.metadata,'trust','observed_external')
+ from app.tool_source_observations o join app.tool_source_references r on r.id=o.reference_id where o.workspace_id=app.current_workspace_id()
  union all select 'github_code_file_observation',f.public_id,f.project_id,jsonb_build_object('repository',c.repository,'commit_sha',c.commit_sha,'commit_verified',c.commit_verified,'path',f.path,'status',f.status,'reason_code',f.reason_code,'content_hash',f.content_hash,'blob_sha',f.blob_sha,'content_text',f.content_text,'line_count',f.line_count,'observed_at',f.observed_at)
  from app.github_code_file_observations f join app.github_code_corpora c on c.id=f.corpus_id where f.workspace_id=app.current_workspace_id()
 ), exported as (

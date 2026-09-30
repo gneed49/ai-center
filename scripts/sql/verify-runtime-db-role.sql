@@ -14,6 +14,7 @@ declare
     'github_code_corpora', 'github_code_file_observations',
     'workspace_automation_controls', 'ai_call_reservations',
     'work_tool_connections', 'publication_jobs', 'publication_observations',
+    'tool_source_references', 'tool_source_observations',
     'workspace_invitations', 'steward_scope_sources',
     'context_pack_scope_versions', 'context_pack_scope_sources',
     'artifact_documents', 'artifact_document_versions', 'artifact_version_sources', 'artifact_destination_settings',
@@ -35,6 +36,7 @@ declare
     'github_code_corpora', 'github_code_file_observations',
     'workspace_automation_controls', 'ai_call_reservations',
     'work_tool_connections', 'publication_jobs', 'publication_observations',
+    'tool_source_references', 'tool_source_observations',
     'workspace_invitations', 'steward_scope_sources',
     'context_pack_scope_versions', 'context_pack_scope_sources',
     'artifact_documents', 'artifact_document_versions', 'artifact_version_sources', 'artifact_destination_settings',
@@ -59,6 +61,10 @@ declare
     'knowledge_entries', 'domain_events', 'tasks', 'executions'
   ];
   allowed_function_oids constant oid[] := array[
+    'app.tool_source_observation_current(bigint)'::regprocedure::oid,
+    'app.publication_observation_current(bigint)'::regprocedure::oid,
+    'app.context_utf8_prefix(text,integer)'::regprocedure::oid,
+    'app.observed_remote_time(text)'::regprocedure::oid,
     'app.cancel_model_run_after_access_loss(bigint)'::regprocedure::oid,
     'app.finish_ai_call_reservation(uuid,text)'::regprocedure::oid,
     'app.claim_publication_job()'::regprocedure::oid,
@@ -81,6 +87,15 @@ declare
     'app.list_due_steward_workspaces(integer)'::regprocedure::oid
   ];
 begin
+  if not exists(select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='app' and c.relname='publication_source_observations' and c.relkind='v' and 'security_invoker=true'=any(c.reloptions))
+    or not has_table_privilege('ai_center_runtime','app.publication_source_observations','SELECT') then
+    raise exception 'Publication source projection must use caller RLS and runtime SELECT';
+  end if;
+  if exists(select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='app' and c.relname in('tool_source_references','tool_source_observations') and (not c.relrowsecurity or not c.relforcerowsecurity)) then
+    raise exception 'Tool sources require forced row-level security';
+  end if;
   select role_row.*
   into runtime_role
   from pg_catalog.pg_roles role_row

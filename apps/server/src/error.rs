@@ -149,6 +149,14 @@ pub enum AppError {
         "Le traitement a été interrompu après une attente trop longue. Vous pouvez reprendre cette opération."
     )]
     AutomationInterrupted,
+    #[error("{message}")]
+    ToolSource {
+        code: &'static str,
+        message: &'static str,
+        status: StatusCode,
+        retry_after: Option<chrono::DateTime<chrono::Utc>>,
+        retryable: bool,
+    },
     #[error("agent provider unavailable: {0}")]
     Agent(String),
     #[error(transparent)]
@@ -170,6 +178,7 @@ struct ErrorBody {
 }
 
 impl IntoResponse for AppError {
+    #[allow(clippy::too_many_lines)]
     fn into_response(self) -> axum::response::Response {
         let retry_after = match &self {
             Self::ConnectorRateLimited {
@@ -181,6 +190,24 @@ impl IntoResponse for AppError {
             _ => None,
         };
         let (status, code, message) = match self {
+            Self::ToolSource {
+                code,
+                message,
+                status,
+                retry_after,
+                retryable,
+            } => {
+                let mut response = (status, axum::Json(serde_json::json!({"code":code,"message":message,"retryable":retryable,"retry_after":retry_after}))).into_response();
+                if let Some(date) = retry_after {
+                    let seconds = (date - chrono::Utc::now()).num_seconds().max(0);
+                    if let Ok(value) = seconds.to_string().parse() {
+                        response
+                            .headers_mut()
+                            .insert(axum::http::header::RETRY_AFTER, value);
+                    }
+                }
+                return response;
+            }
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", self.to_string()),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),
             Self::CompanyCreationNotAllowed => (
@@ -276,6 +303,7 @@ impl AppError {
     #[must_use]
     pub fn status_code(&self) -> StatusCode {
         match self {
+            Self::ToolSource { status, .. } => *status,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::Forbidden | Self::CompanyCreationNotAllowed => StatusCode::FORBIDDEN,
             Self::NotFound => StatusCode::NOT_FOUND,
@@ -294,6 +322,7 @@ impl AppError {
     #[must_use]
     pub fn public_code(&self) -> &'static str {
         match self {
+            Self::ToolSource { code, .. } => code,
             Self::Unauthorized => "unauthorized",
             Self::Forbidden => "forbidden",
             Self::CompanyCreationNotAllowed => "company_creation_not_allowed",

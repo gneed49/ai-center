@@ -81,7 +81,7 @@ function ScopedWorkTools() {
       <PageHeader
         title="Outils de l’équipe"
         eyebrow={company.data.workspace.name}
-        description="Reliez les destinations où votre équipe veut publier ses livrables validés."
+        description="Autorisez les outils où l’équipe lit ses sources et publie ses livrables validés."
         actions={
           <Button asChild variant="outline">
             <Link to="/settings/ai">Réglages IA personnels</Link>

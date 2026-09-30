@@ -22,6 +22,40 @@ objects as (
  from app.external_reference_observations o join app.external_references r on r.id=o.external_reference_id join scopes p on p.id=o.project_id
  where not exists(select 1 from app.external_reference_observations newer where newer.external_reference_id=r.id and newer.id>o.id)
  union all
+ select o.id,p.id,p.public_id,'publication_observation',o.public_id,o.publication_public_id,
+   case when p.id=$1 then 'focus/' else p.public_id::text||'/' end||o.provider||'-document','decision',o.title,
+   left(o.body_markdown,6000),o.coverage<>'complete' or length(o.body_markdown)>6000 or length(btrim(o.body_markdown))=0,
+   case when p.id=$1 then 0 else 2 end,o.observed_at,
+   jsonb_build_object('trust','observed_external','provider',o.provider,'external_id',o.external_id,'coverage',o.coverage,'omission_reasons',o.omission_reasons,
+    'connection_public_id',o.authority_connection_public_id,'connection_revision',o.authority_connection_revision,'version',o.version,'observed_at',o.observed_at,
+    'source_url',o.canonical_url,'content_hash',o.content_hash,'snapshot_hash',o.snapshot_hash)
+ from app.publication_source_observations o join scopes p on p.id=o.project_id
+ join app.work_tool_connections connection on connection.id=o.authority_connection_id and connection.workspace_id=o.workspace_id and connection.provider=o.provider
+ where o.id=o.canonical_observation_id and o.is_current and o.availability='available' and o.external_id is not null
+  and connection.enabled and connection.revision=o.authority_connection_revision
+ union all
+ select o.id,p.id,p.public_id,'tool_source_observation',o.public_id,r.public_id,
+   case when p.id=$1 then 'focus/' else p.public_id::text||'/' end||o.provider||'-document','decision',o.title,
+   left(o.body_markdown,6000),o.coverage<>'complete' or length(o.body_markdown)>6000 or length(btrim(o.body_markdown))=0,
+   case when p.id=$1 then 0 else 2 end,o.observed_at,
+   jsonb_build_object('trust','observed_external','provider',o.provider,'external_id',o.external_id,'coverage',o.coverage,'omission_reasons',o.omission_reasons,
+    'connection_public_id',c.public_id,'connection_revision',r.connection_revision,'version',o.version,'observed_at',o.observed_at,
+    'source_url',o.canonical_url,'content_hash',o.content_hash,'snapshot_hash',o.snapshot_hash,
+    'metadata',case when o.provider='linear' and jsonb_typeof(o.metadata->'identifier')='string'
+      and o.metadata->>'identifier' ~ '^[A-Z][A-Z0-9]{0,31}-[1-9][0-9]{0,17}$'
+      and (o.metadata->'state'='null'::jsonb or (
+       jsonb_typeof(o.metadata#>'{state,id}')='string'
+       and o.metadata#>>'{state,id}' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       and o.metadata#>>'{state,id}'<>'00000000-0000-0000-0000-000000000000'
+       and jsonb_typeof(o.metadata#>'{state,name}')='string' and octet_length(o.metadata#>>'{state,name}')<=1024
+       and jsonb_typeof(o.metadata#>'{state,type}')='string' and octet_length(o.metadata#>>'{state,type}')<=1024))
+     then jsonb_build_object('identifier',o.metadata->'identifier','state',case when o.metadata->'state'='null'::jsonb then 'null'::jsonb
+       else jsonb_build_object('id',o.metadata#>'{state,id}','name',o.metadata#>'{state,name}','type',o.metadata#>'{state,type}') end)
+     else '{}'::jsonb end)
+ from app.tool_source_observations o join app.tool_source_references r on r.id=o.reference_id
+ join app.work_tool_connections c on c.id=r.connection_id join scopes p on p.id=o.project_id
+ where app.tool_source_observation_current(o.id)
+ union all
  select o.id,p.id,p.public_id,'publication_observation',o.public_id,j.public_id,
    case when p.id=$1 then 'focus/' else p.public_id::text||'/' end||j.provider||'-document','decision',coalesce(o.snapshot->>'title',j.title),
    left(coalesce(o.snapshot->>'body_markdown','Source indisponible ou non relue'),6000),
@@ -29,7 +63,7 @@ objects as (
      or length(btrim(coalesce(o.snapshot->>'body_markdown','')))=0,
    case when p.id=$1 then 0 else 2 end,o.observed_at,'{}'::jsonb
  from app.publication_observations o join app.publication_jobs j on j.id=o.publication_job_id join scopes p on p.id=j.project_id
- where not exists(select 1 from app.publication_observations newer where newer.publication_job_id=j.id and newer.id>o.id)
+ where j.provider='github' and not exists(select 1 from app.publication_observations newer where newer.publication_job_id=j.id and newer.id>o.id)
  union all
  select f.id,p.id,p.public_id,'github_code_file_observation',f.public_id,f.public_id,
    case when p.id=$1 then 'focus/' else p.public_id::text||'/' end||'github-code','technical_rule',
@@ -48,6 +82,9 @@ objects as (
  where not exists(select 1 from app.github_code_file_observations newer
    join app.github_code_corpora nc on nc.id=newer.corpus_id where newer.project_id=f.project_id
      and nc.repository=c.repository and newer.path=f.path and newer.id>f.id)
+), deduplicated as (
+ select o.*,row_number() over(partition by source_project_id,coalesce(provenance->>'provider',source_kind),
+  coalesce(provenance->>'external_id',source_public_id::text) order by observed_at desc,source_kind,source_public_id) as identity_rank from objects o
 )
 select o.source_id,o.source_project_id,o.source_project_public_id,o.source_kind,o.source_public_id,o.parent_public_id,o.node_key,o.entry_type,o.title,o.statement,o.insufficient,o.provenance,p.graph_version,p.scope_kind,o.observed_at
- from objects o join scopes p on p.id=o.source_project_id
+ from deduplicated o join scopes p on p.id=o.source_project_id where o.identity_rank=1

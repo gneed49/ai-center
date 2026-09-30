@@ -618,7 +618,7 @@ async fn scoped_sources_are_versioned_deduplicated_and_invalidate_only_dependent
     link_projects(&owner, a, b).await?;
     link_projects(&owner, b, c).await?;
     let pack = compile_for(&owner, a, product, "tech").await?;
-    assert_eq!(pack.compiler_version, "company-scoped-context-v2");
+    assert_eq!(pack.compiler_version, "company-observed-context-v3");
     let included: Vec<Uuid> = pack.content["knowledge"]
         .as_array()
         .context("knowledge")?
@@ -1371,3 +1371,12 @@ mod model_run_access;
 
 #[path = "company_context/ticket_provenance.rs"]
 mod ticket_provenance;
+
+#[path = "company_context/tool_sources.rs"]
+mod tool_sources;
+
+#[path = "company_context/tool_source_pipeline.rs"]
+mod tool_source_pipeline;
+
+#[path = "company_context/handoff_lock_order.rs"]
+mod handoff_lock_order;

@@ -21,6 +21,8 @@ import { ApiError, api, createIdempotencyKey } from "@/api/client";
 import type { ProposalView } from "@/api/types";
 import { MessageRecovery } from "@/components/sessions/message-recovery";
 import { ContextPackSummaryCard } from "@/components/app/context-pack-summary";
+import { SourceCitation } from "@/components/tool-sources/source-citation";
+import type { SourceProvenance } from "@/api/types";
 import { ErrorState, LoadingState, NotFoundState } from "@/components/app/page";
 import { StatusPill } from "@/components/app/status-pill";
 import { Button } from "@/components/ui/button";
@@ -323,6 +325,7 @@ export function SessionPage() {
                     content={message.content}
                     date={message.created_at}
                     sources={message.metadata.sources}
+                    sourceProvenance={message.metadata.source_provenance}
                     authorName={message.author_name}
                     isOwn={message.is_own}
                   />
@@ -560,6 +563,7 @@ function Message({
   content,
   date,
   sources,
+  sourceProvenance,
   authorName,
   isOwn,
 }: {
@@ -569,6 +573,7 @@ function Message({
   content: string;
   date: string;
   sources?: string[];
+  sourceProvenance?: SourceProvenance[];
 }) {
   const user = role === "user";
   return (
@@ -610,6 +615,33 @@ function Message({
           {formatDate(date, true)}
           {sources?.length ? <span>· {sources.length} sources</span> : null}
         </div>
+        {sourceProvenance?.some(
+          (p) =>
+            sources?.includes(p.source_version_public_id) &&
+            (p.source_kind === "tool_source_observation" ||
+              p.source_kind === "publication_observation"),
+        ) ? (
+          <details className="mt-3 text-left text-sm">
+            <summary>Sources observées citées</summary>
+            <div className="mt-3 space-y-3">
+              {sourceProvenance
+                .filter(
+                  (p) =>
+                    sources?.includes(p.source_version_public_id) &&
+                    (p.source_kind === "tool_source_observation" ||
+                      p.source_kind === "publication_observation"),
+                )
+                .map((p) => (
+                  <SourceCitation
+                    key={`${p.source_kind}:${p.source_version_public_id}`}
+                    kind={p.source_kind}
+                    publicId={p.source_version_public_id}
+                    observation={p.observation}
+                  />
+                ))}
+            </div>
+          </details>
+        ) : null}
       </div>
     </article>
   );

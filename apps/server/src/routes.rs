@@ -3,6 +3,7 @@ mod automation;
 mod company;
 mod providers;
 mod team;
+mod tool_sources;
 mod work_tools;
 
 use std::sync::Arc;
@@ -48,6 +49,8 @@ struct ApiState {
     service: Arc<service::AppState>,
     auth: Arc<AuthRuntime>,
     github: Option<Arc<GitHubRuntime>>,
+    #[cfg(debug_assertions)]
+    source_reader: Option<Arc<crate::work_tools::sources::reader::ExistingToolReader>>,
 }
 
 pub fn router(
@@ -60,7 +63,45 @@ pub fn router(
         service: state,
         auth,
         github,
+        #[cfg(debug_assertions)]
+        source_reader: None,
     };
+    assemble_router(state, origins)
+}
+
+/// Guarded browser fixtures use the production routes with a loopback-only
+/// source provider. This seam does not exist in production builds and cannot be
+/// enabled by an HTTP request, environment variable or stored configuration.
+///
+/// # Errors
+/// Returns an error unless the provider is an exact HTTP loopback origin with
+/// an explicit port, without credentials, a path, query parameters or fragment.
+#[cfg(debug_assertions)]
+pub fn router_with_loopback_source_reader(
+    state: Arc<service::AppState>,
+    auth: Arc<AuthRuntime>,
+    origins: Vec<HeaderValue>,
+    loopback: &str,
+) -> AppResult<Router> {
+    use crate::work_tools::sources::reader::ExistingToolReader;
+    use std::time::Duration;
+    let reader =
+        ExistingToolReader::loopback(loopback, Duration::from_secs(5), Duration::from_secs(10))
+            .map_err(|_| {
+                AppError::Invalid("The fixture requires an exact loopback provider origin".into())
+            })?;
+    Ok(assemble_router(
+        ApiState {
+            service: state,
+            auth,
+            github: None,
+            source_reader: Some(Arc::new(reader)),
+        },
+        origins,
+    ))
+}
+
+fn assemble_router(state: ApiState, origins: Vec<HeaderValue>) -> Router {
     let request_id_header = header::HeaderName::from_static("x-request-id");
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins))
@@ -80,6 +121,7 @@ pub fn router(
         .merge(automation::router())
         .merge(team::router())
         .merge(work_tools::router())
+        .merge(tool_sources::router())
         .route(
             "/api/workspaces",
             get(list_workspaces).post(company::create_workspace),
@@ -384,6 +426,15 @@ fn durable_error_body(error: &AppError) -> Value {
     {
         body["retry_after_seconds"] = json!(retry_after_seconds);
     }
+    if let AppError::ToolSource {
+        retry_after,
+        retryable,
+        ..
+    } = error
+    {
+        body["retry_after"] = json!(retry_after);
+        body["retryable"] = json!(retryable);
+    }
     body
 }
 
@@ -397,8 +448,23 @@ fn stored_response(response: idempotency::StoredResponse) -> AppResult<Response>
     .then(|| {
         response
             .body
-            .get("retry_after_seconds")
-            .and_then(Value::as_u64)
+            .get("retry_after")
+            .and_then(Value::as_str)
+            .and_then(|date| chrono::DateTime::parse_from_rfc3339(date).ok())
+            .and_then(|date| {
+                u64::try_from(
+                    (date.with_timezone(&chrono::Utc) - chrono::Utc::now())
+                        .num_seconds()
+                        .max(0),
+                )
+                .ok()
+            })
+            .or_else(|| {
+                response
+                    .body
+                    .get("retry_after_seconds")
+                    .and_then(Value::as_u64)
+            })
     })
     .flatten();
     let mut result = (status, Json(response.body)).into_response();
@@ -418,12 +484,16 @@ fn failure_disposition(error: &AppError) -> FailureDisposition {
             FailureDisposition::Retryable
         }
         // Connector classification remains connector-owned.
-        AppError::Connector(_)
+        AppError::ToolSource {
+            retryable: true, ..
+        }
+        | AppError::Connector(_)
         | AppError::ConnectorRateLimited { .. }
         | AppError::Capacity { .. }
         | AppError::AutomationPaused
         | AppError::AutomationInterrupted => FailureDisposition::Retryable,
-        AppError::Unauthorized
+        AppError::ToolSource { .. }
+        | AppError::Unauthorized
         | AppError::Forbidden
         | AppError::CompanyCreationNotAllowed
         | AppError::NotFound

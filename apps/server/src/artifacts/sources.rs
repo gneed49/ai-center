@@ -18,6 +18,21 @@ pub(super) async fn resolve(
 ) -> AppResult<Vec<ResolvedSource>> {
     let mut result = Vec::with_capacity(inputs.len());
     for input in inputs {
+        if matches!(
+            input.kind.as_str(),
+            "tool_source_observation" | "publication_observation"
+        ) {
+            let (id, project_id, snapshot) =
+                crate::scope_context::observations::snapshot(tx, &input.kind, input.public_id)
+                    .await?;
+            result.push(ResolvedSource {
+                id,
+                project_id,
+                kind: input.kind.clone(),
+                snapshot,
+            });
+            continue;
+        }
         let sql = match input.kind.as_str() {
             "knowledge" => {
                 "select s.id,s.project_id,jsonb_build_object('public_id',s.public_id,'project_id',p.public_id,'title',s.title,'version',s.version_number,'status_at_capture',s.status) as snapshot from app.knowledge_entry_versions s join app.projects p on p.id=s.project_id where s.public_id=$1 and s.workspace_id=app.current_workspace_id()"
@@ -72,15 +87,17 @@ pub(super) async fn store(
             .parse::<uuid::Uuid>()
             .map_err(|error| AppError::Internal(error.to_string()))?;
         sqlx::query("insert into app.artifact_version_sources(workspace_id,version_id,source_project_id,source_kind,
-            knowledge_version_id,context_pack_id,deliverable_id,session_id,source_artifact_version_id,source_public_id,snapshot)
-            values(app.current_workspace_id(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)")
+            knowledge_version_id,context_pack_id,deliverable_id,session_id,source_artifact_version_id,source_public_id,snapshot,tool_source_observation_id,publication_observation_id)
+            values(app.current_workspace_id(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)")
             .bind(version).bind(source.project_id).bind(&source.kind)
             .bind((source.kind=="knowledge").then_some(source.id))
             .bind((source.kind=="context_pack").then_some(source.id))
             .bind((source.kind=="deliverable").then_some(source.id))
             .bind((source.kind=="session").then_some(source.id))
             .bind((source.kind=="artifact_version").then_some(source.id))
-            .bind(source_public_id).bind(source.snapshot).execute(&mut **tx).await?;
+            .bind(source_public_id).bind(source.snapshot)
+            .bind((source.kind=="tool_source_observation").then_some(source.id))
+            .bind((source.kind=="publication_observation").then_some(source.id)).execute(&mut **tx).await?;
     }
     Ok(())
 }
@@ -91,7 +108,7 @@ pub(super) async fn from_version(
     tx: &mut Transaction<'_, Postgres>,
     version: uuid::Uuid,
 ) -> AppResult<Vec<ResolvedSource>> {
-    Ok(sqlx::query_as("select coalesce(s.knowledge_version_id,s.context_pack_id,s.deliverable_id,s.session_id,s.source_artifact_version_id) as id,
+    Ok(sqlx::query_as("select coalesce(s.knowledge_version_id,s.context_pack_id,s.deliverable_id,s.session_id,s.source_artifact_version_id,s.tool_source_observation_id,s.publication_observation_id) as id,
         s.source_project_id as project_id,s.source_kind as kind,s.snapshot
         from app.artifact_version_sources s join app.artifact_document_versions v on v.id=s.version_id
         where v.public_id=$1 and s.workspace_id=app.current_workspace_id() order by s.source_kind,s.source_public_id")

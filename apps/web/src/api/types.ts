@@ -1,4 +1,11 @@
+import type { SourceObservation } from "./tool-source-types";
 export type UUID = string;
+export interface SourceProvenance {
+  source_kind: string;
+  source_project_public_id: UUID;
+  source_version_public_id: UUID;
+  observation?: Omit<SourceObservation, "excerpt"> & { excerpt?: string };
+}
 
 export interface WorkspaceSummary {
   public_id: UUID;
@@ -135,7 +142,7 @@ export interface MessageView {
   role: "user" | "assistant" | "system";
   content: string;
   agent_scope: string | null;
-  metadata: { sources?: UUID[] };
+  metadata: { sources?: UUID[]; source_provenance?: SourceProvenance[] };
   created_at: string;
 }
 
@@ -196,6 +203,9 @@ export interface ContextPackProvenance {
 }
 
 export interface ContextPackKnowledge {
+  source_kind?: string;
+  observation?: Omit<SourceObservation, "excerpt"> & { excerpt?: string };
+  excerpt_truncated?: boolean;
   knowledge_public_id: UUID;
   version_public_id: UUID;
   version_number: number;

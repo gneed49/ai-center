@@ -549,6 +549,21 @@ pub fn markdown(artifact: Uuid, value: &ArtifactVersion) -> String {
             source["project_id"].as_str().unwrap_or(""),
             source["version"]
         );
+        if matches!(
+            source["kind"].as_str(),
+            Some("tool_source_observation" | "publication_observation")
+        ) {
+            let _ = writeln!(
+                output,
+                "  Observation externe relevée le {} · couverture {} · omissions {} · {}",
+                source["observed_at"]
+                    .as_str()
+                    .unwrap_or("date indisponible"),
+                source["coverage"].as_str().unwrap_or("inconnue"),
+                source["omission_reasons"],
+                source["canonical_url"].as_str().unwrap_or("")
+            );
+        }
     }
     output
 }

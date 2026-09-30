@@ -9,6 +9,7 @@ import {
 
 import type { ContextPackSelectionItem, ContextPackSummary } from "@/api/types";
 import { StatusPill } from "@/components/app/status-pill";
+import { SourceCitation } from "@/components/tool-sources/source-citation";
 import { isContextPackCurrent } from "@/lib/context-pack";
 import { formatDate, humanize, shortId } from "@/lib/format";
 
@@ -213,6 +214,30 @@ function SelectionList({
               <p className="mt-1 text-xs leading-5 text-slate-600">
                 {item.explanation}
               </p>
+              {includedKnowledge.get(item.candidate_public_id)?.observation ? (
+                <div className="mt-3">
+                  <SourceCitation
+                    kind={
+                      includedKnowledge.get(item.candidate_public_id)!
+                        .source_kind ?? ""
+                    }
+                    publicId={item.candidate_public_id}
+                    title={
+                      includedKnowledge.get(item.candidate_public_id)!.title
+                    }
+                    observation={
+                      includedKnowledge.get(item.candidate_public_id)!
+                        .observation
+                    }
+                  />
+                  {includedKnowledge.get(item.candidate_public_id)!
+                    .excerpt_truncated ? (
+                    <p className="mt-2 text-xs text-amber-900">
+                      L’agent n’a reçu qu’un extrait de cette lecture.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               <p className="mt-2 font-mono text-[10px] text-slate-500">
                 {humanize(item.reason_code)} ·{" "}
                 {shortId(item.candidate_public_id)}

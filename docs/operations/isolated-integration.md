@@ -16,8 +16,9 @@ client mobile n’est nécessaire.
 ## Cycle de vie
 
 `run` prépare `.run/integration-stack/`, démarre Supabase, vérifie son identité,
-exécute dans l’ordre les contrôles `integration`, `backup-restore`, `auth-smoke`
-et `real-e2e`, puis arrête cette seule stack avec suppression de ses volumes.
+exécute dans l'ordre `ticket-browser`, `source-browser`, `integration`,
+`tls-smoke`, `backup-restore`, `auth-smoke`, `auth-browser`, `real-e2e`, puis
+arrête cette seule stack avec suppression de ses volumes.
 Le nettoyage s’exécute également après échec ou interruption. Les journaux de
 démarrage et de nettoyage restent dans le répertoire privé ignoré par Git ;
 ils ne sont pas publiés comme artefacts de CI.
@@ -44,14 +45,26 @@ les owners acceptés et les effets des migrations jusqu'aux connexions personnel
 Chaque erreur SQL arrête la chaîne et déclenche le nettoyage de cette seule base.
 
 Pour exécuter seulement une partie du contrôle, lister les phases nécessaires.
-Les phases qui utilisent les données applicatives nécessitent `integration`
-avant elles sur une stack neuve :
+Le démarrage applique les migrations et prépare le rôle runtime même pour une
+phase isolée. `integration` refait ensuite sa propre preuve de mise à niveau,
+son reset gardé et les contrôles de privilèges :
 
 ```bash
 ./scripts/integration-stack.sh run integration
 ./scripts/integration-stack.sh run integration backup-restore
 ./scripts/integration-stack.sh run integration auth-smoke real-e2e
+./scripts/integration-stack.sh run source-browser
 ```
+
+`source-browser` utilise les vraies routes Axum, les transactions, reçus et RLS
+dans Chromium. Le seul fournisseur injecté est un serveur HTTP loopback fictif,
+via un constructeur absent des compilations de production. Le scénario vérifie
+Linear avec réponse perdue, Notion puis nouvelle lecture partielle, historique,
+compteurs d'appels, mobile et accessibilité. Auth est local dans ce harnais :
+`auth-smoke` et `auth-browser` qualifient séparément les sessions Supabase locales.
+Les diagnostics synthétiques de cette phase sont sous
+`/tmp/ai-center-source-real-playwright-results` ; les journaux de démarrage et
+les identifiants éphémères de la stack n'entrent pas dans ces artefacts.
 
 `prepare` ne démarre aucun conteneur et ne touche aucune base. Il permet
 d’inspecter la configuration générée. `stop` fournit un nettoyage explicite

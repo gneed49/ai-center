@@ -32,6 +32,7 @@ const rootLinks = [
   { to: "/agents", label: "Agents", icon: Bot },
   { to: "/projects", label: "Projets", icon: FolderKanban },
   { to: "/knowledge", label: "Connaissances", icon: BookOpen },
+  { to: "/sources", label: "Sources", icon: Link2 },
   { to: "/artifacts", label: "Livrables", icon: FileText },
   { to: "/insights", label: "À vérifier", icon: AlertTriangle },
   { to: "/company", label: "Équipe", icon: Users },
@@ -92,6 +93,11 @@ export function AppShell() {
             to: `/projects/${projectId}/artifacts`,
             label: "Livrables du projet",
             icon: FileText,
+          },
+          {
+            to: `/projects/${projectId}/sources`,
+            label: "Sources du projet",
+            icon: Link2,
           },
           {
             to: `/projects/${projectId}/deliverables`,

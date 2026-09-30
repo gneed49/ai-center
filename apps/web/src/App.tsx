@@ -20,6 +20,21 @@ const CenterPage = lazy(() =>
     default: module.CenterPage,
   })),
 );
+const ToolSourcesPage = lazy(() =>
+  import("@/pages/tool-sources-page").then((m) => ({
+    default: m.ToolSourcesPage,
+  })),
+);
+const ToolSourcePage = lazy(() =>
+  import("@/pages/tool-source-page").then((m) => ({
+    default: m.ToolSourcePage,
+  })),
+);
+const SourceObservationPage = lazy(() =>
+  import("@/pages/source-observation-page").then((m) => ({
+    default: m.SourceObservationPage,
+  })),
+);
 const CompanyPage = lazy(() =>
   import("@/pages/company-page").then((module) => ({
     default: module.CompanyPage,
@@ -154,6 +169,20 @@ export default function App() {
         <Route path="company" element={<CompanyPage />} />
         <Route path="graph" element={<GraphPage />} />
         <Route path="knowledge" element={<KnowledgeLibraryPage />} />
+        <Route path="sources" element={<ToolSourcesPage />} />
+        <Route
+          path="projects/:projectId/sources"
+          element={<ToolSourcesPage />}
+        />
+        <Route path="sources/:referenceId" element={<ToolSourcePage />} />
+        <Route
+          path="source-observations/:observationId"
+          element={<SourceObservationPage kind="tool_source_observation" />}
+        />
+        <Route
+          path="publication-observations/:observationId"
+          element={<SourceObservationPage kind="publication_observation" />}
+        />
         <Route
           path="projects/:projectId/sources/:kind/:sourceId"
           element={<GraphSourcePage />}

@@ -119,6 +119,7 @@ fn connection(id: Uuid) -> SaveConnection {
         provider: "github".into(),
         name: "[FICTIF] GitHub".into(),
         expected_revision: 0,
+        allow_existing_reads: None,
         api_key: Some(SecretString::from("synthetic-credential-no-real-account")),
     }
 }
@@ -705,3 +706,9 @@ mod ticket_publications;
 
 #[path = "work_tools/browser.rs"]
 mod browser;
+
+#[path = "work_tools/sources.rs"]
+mod sources;
+
+#[path = "work_tools/sources_browser.rs"]
+mod sources_browser;

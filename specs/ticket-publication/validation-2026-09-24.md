@@ -117,5 +117,10 @@ après deux frames de rendu (0/15 dans chaque série).
 
 Le test attend désormais ces deux frames avant le même contrôle strict de largeur,
 sans marge, délai arbitraire ni répétition de l’assertion. Le journal
-`.run/ticket-viewport-diagnosis.md` conserve les mesures. La CI du correctif doit
-confirmer le parcours ; son premier échec n’est pas effacé du registre des preuves.
+`.run/ticket-viewport-diagnosis.md` conserve les mesures. Le correctif `f0f771b` est poussé : les huit contrôles distincts réussissent sur
+push et sur PR (16 résultats SUCCESS vérifiés). Les parcours PostgreSQL et mobile
+sont confirmés dans les [contrôles PR](https://github.com/gneed49/ai-center/actions/runs/35939968878)
+et les [contrôles push](https://github.com/gneed49/ai-center/actions/runs/35939965478).
+Les images ont également été construites dans le [workflow OCI de la PR](https://github.com/gneed49/ai-center/actions/runs/35939968877).
+Le premier échec reste consigné ci-dessus ; aucune de ces preuves ne constitue
+un déploiement ou un essai sur un compte fournisseur réel.

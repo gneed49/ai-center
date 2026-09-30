@@ -35,7 +35,15 @@ pub(super) fn content(input: &CreateArtifact) -> AppResult<()> {
         let source_ids = input
             .sources
             .iter()
-            .filter(|source| matches!(source.kind.as_str(), "knowledge" | "artifact_version"))
+            .filter(|source| {
+                matches!(
+                    source.kind.as_str(),
+                    "knowledge"
+                        | "artifact_version"
+                        | "tool_source_observation"
+                        | "publication_observation"
+                )
+            })
             .map(|source| source.public_id)
             .collect::<Vec<_>>();
         super::generation_contract::validate(&input.artifact_type, &draft, &source_ids)?;
@@ -52,7 +60,13 @@ pub(super) fn content(input: &CreateArtifact) -> AppResult<()> {
     for source in &input.sources {
         if !matches!(
             source.kind.as_str(),
-            "knowledge" | "context_pack" | "deliverable" | "session" | "artifact_version"
+            "knowledge"
+                | "context_pack"
+                | "deliverable"
+                | "session"
+                | "artifact_version"
+                | "tool_source_observation"
+                | "publication_observation"
         ) || source.public_id.is_nil()
             || !ids.insert((&source.kind, source.public_id))
         {

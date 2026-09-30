@@ -186,6 +186,50 @@ pub(super) async fn load(
     )))
 }
 
+/// Authority is captured with the observed evidence, never reconstructed from a
+/// newer connection after the model has consumed its snapshot.
+pub(super) async fn verify_authorities(
+    tx: &mut Transaction<'_, Postgres>,
+    snapshot: &Snapshot,
+) -> AppResult<()> {
+    let mut authorities = Vec::new();
+    for source in snapshot.sources.values() {
+        if source.source_kind != "tool_source_observation"
+            && !(source.source_kind == "publication_observation"
+                && source.provenance.get("trust").and_then(Value::as_str)
+                    == Some("observed_external"))
+        {
+            continue;
+        }
+        let connection_public_id = source
+            .provenance
+            .get("connection_public_id")
+            .and_then(Value::as_str)
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .ok_or_else(|| {
+                crate::error::AppError::Conflict(
+                    "L’autorité de lecture de la source est absente.".into(),
+                )
+            })?;
+        let connection_revision = source
+            .provenance
+            .get("connection_revision")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| {
+                crate::error::AppError::Conflict(
+                    "La révision de lecture de la source est absente.".into(),
+                )
+            })?;
+        authorities.push(crate::scope_context::authority::ObservationAuthority {
+            source_kind: source.source_kind.clone(),
+            source_public_id: source.source_public_id,
+            connection_public_id,
+            connection_revision,
+        });
+    }
+    crate::scope_context::authority::verify(tx, &authorities).await
+}
+
 fn related_terms(statement: &str) -> String {
     super::subject_terms(statement)
         .into_iter()
@@ -245,12 +289,13 @@ pub(super) async fn persist_source(
     let external =
         (source.source_kind == "external_reference_observation").then_some(source.source_id);
     let publication = (source.source_kind == "publication_observation").then_some(source.source_id);
+    let tool = (source.source_kind == "tool_source_observation").then_some(source.source_id);
     let code = (source.source_kind == "github_code_file_observation").then_some(source.source_id);
     sqlx::query("insert into app.steward_scope_sources(workspace_id,project_id,assessment_id,source_project_id,source_role,source_kind,source_public_id,
-        knowledge_version_id,artifact_version_id,external_observation_id,publication_observation_id,github_code_file_observation_id,source_snapshot)
-        values(app.current_workspace_id(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) on conflict(assessment_id,source_role) do nothing")
+        knowledge_version_id,artifact_version_id,external_observation_id,publication_observation_id,github_code_file_observation_id,tool_source_observation_id,source_snapshot)
+        values(app.current_workspace_id(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict(assessment_id,source_role) do nothing")
         .bind(project).bind(assessment).bind(source.source_project_id).bind(role).bind(&source.source_kind).bind(source.source_public_id)
-        .bind(knowledge).bind(artifact).bind(external).bind(publication).bind(code).bind(source.snapshot()).execute(&mut **tx).await?;
+        .bind(knowledge).bind(artifact).bind(external).bind(publication).bind(code).bind(tool).bind(source.snapshot()).execute(&mut **tx).await?;
     Ok(())
 }
 

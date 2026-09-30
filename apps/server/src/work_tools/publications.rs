@@ -1,7 +1,6 @@
 use super::{
     audit,
     client::ToolClient,
-    credential,
     models::{
         JobInput, ListPublications, Publication, PublicationDetail, Publications, PublishArtifact,
         ReconcilePublication,
@@ -190,6 +189,9 @@ pub(crate) async fn observe(
     editor(state)?;
     let mut tx = state.begin_request().await?;
     let before = job(&mut tx, id).await?;
+    crate::company::data::require_active(&mut tx, before.project_id).await?;
+    super::connection_lock(&mut tx, before.connection_public_id, false).await?;
+    let credential = super::credential_in_tx(state, &mut tx, before.connection_public_id).await?;
     tx.commit().await?;
     let reconciling = reconcile_id.is_some();
     if (reconciling && before.status != "needs_review")
@@ -212,7 +214,6 @@ pub(crate) async fn observe(
                 "Use the object UUID for Notion/Linear, or the issue number for GitHub".into(),
             )
         })?;
-    let credential = credential(state, before.connection_public_id).await?;
     super::reliability::admit_read(state, id).await?;
     let remote = client
         .read(
@@ -223,6 +224,11 @@ pub(crate) async fn observe(
         )
         .await;
     let mut tx = state.begin_request().await?;
+    crate::company::data::require_active(&mut tx, before.project_id).await?;
+    super::connection_lock(&mut tx, before.connection_public_id, false).await?;
+    let authority:Option<i64>=sqlx::query_scalar("select id from app.work_tool_connections where public_id=$1 and workspace_id=app.current_workspace_id() and enabled and revision=$2 and provider=$3 and app.has_workspace_role(workspace_id,array['owner','editor'])")
+        .bind(before.connection_public_id).bind(credential.revision).bind(&before.provider).fetch_optional(&mut *tx).await?;
+    let authority=authority.ok_or_else(||AppError::Conflict("La connexion a changé pendant la vérification. Aucun contenu distant n’a été conservé.".into()))?;
     sqlx::query("select id from app.publication_jobs where public_id=$1 and workspace_id=app.current_workspace_id() for update")
         .bind(id).fetch_optional(&mut *tx).await?.ok_or(AppError::NotFound)?;
     let current = job(&mut tx, id).await?;
@@ -273,14 +279,14 @@ pub(crate) async fn observe(
         }
     };
     let (remote_id, url) = if let Some((kind, receipt)) = observation {
-        sqlx::query("insert into app.publication_observations(workspace_id,publication_job_id,observation_kind,external_id,external_url,remote_updated_at,snapshot) values(app.current_workspace_id(),$1,$2,$3,$4,$5,$6)")
-            .bind(before.id).bind(kind).bind(&receipt.external_id).bind(&receipt.external_url).bind(&receipt.remote_updated_at).bind(json!(receipt)).execute(&mut *tx).await?;
+        sqlx::query("insert into app.publication_observations(workspace_id,publication_job_id,observation_kind,external_id,external_url,remote_updated_at,snapshot,connection_id,connection_revision) values(app.current_workspace_id(),$1,$2,$3,$4,$5,$6,$7,$8)")
+            .bind(before.id).bind(kind).bind(&receipt.external_id).bind(&receipt.external_url).bind(&receipt.remote_updated_at).bind(json!(receipt)).bind(authority).bind(credential.revision).execute(&mut *tx).await?;
         (receipt.external_id, receipt.external_url)
     } else {
         let remote_id = before.external_id.ok_or(AppError::NotFound)?;
         let url = before.external_url.ok_or(AppError::NotFound)?;
-        sqlx::query("insert into app.publication_observations(workspace_id,publication_job_id,observation_kind,external_id,external_url,snapshot) values(app.current_workspace_id(),$1,'unavailable',$2,$3,$4)")
-            .bind(before.id).bind(&remote_id).bind(&url).bind(json!({"complete":false,"error_code":error})).execute(&mut *tx).await?;
+        sqlx::query("insert into app.publication_observations(workspace_id,publication_job_id,observation_kind,external_id,external_url,snapshot,connection_id,connection_revision) values(app.current_workspace_id(),$1,'unavailable',$2,$3,$4,$5,$6)")
+            .bind(before.id).bind(&remote_id).bind(&url).bind(json!({"complete":false,"error_code":error})).bind(authority).bind(credential.revision).execute(&mut *tx).await?;
         (remote_id, url)
     };
     sqlx::query("update app.publication_jobs set status=$2,error_code=$3,external_id=$4,external_url=$5,updated_at=now() where id=$1")

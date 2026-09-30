@@ -353,7 +353,8 @@ pub async fn renew(
     lease: &IdempotencyLease,
 ) -> AppResult<bool> {
     assert_transaction_scope(tx, lease.workspace_id, lease.actor_id).await?;
-    let ticket_command = is_ticket_publication_operation(&lease.operation_key);
+    let ticket_command = is_guarded_source_operation(&lease.operation_key)
+        || is_ticket_publication_operation(&lease.operation_key);
     lock_ticket_command(tx, lease, ticket_command).await?;
     let renewed: Option<bool> = sqlx::query_scalar(
         "update app.idempotency_records
@@ -569,7 +570,8 @@ async fn finalize(
     response: StoredResponse,
 ) -> AppResult<StoredResponse> {
     assert_transaction_scope(tx, lease.workspace_id, lease.actor_id).await?;
-    let ticket_command = is_ticket_publication_operation(&lease.operation_key);
+    let ticket_command = is_guarded_source_operation(&lease.operation_key)
+        || is_ticket_publication_operation(&lease.operation_key);
     lock_ticket_command(tx, lease, ticket_command).await?;
     let status = if response.failed {
         "failed"
@@ -672,6 +674,21 @@ async fn lock_ticket_command(
             .await?;
     }
     Ok(())
+}
+
+fn is_guarded_source_operation(operation: &str) -> bool {
+    [
+        "tool_source.attach:",
+        "tool_source.refresh:",
+        "tool_source.detach:",
+        "tool_source.rebind:",
+    ]
+    .iter()
+    .any(|prefix| {
+        operation
+            .strip_prefix(*prefix)
+            .is_some_and(|id| Uuid::parse_str(id).is_ok_and(|uuid| uuid.to_string() == id))
+    })
 }
 
 fn is_ticket_publication_operation(operation: &str) -> bool {
@@ -826,7 +843,8 @@ fn classify_existing(record: &IdempotencyRecord, request: BeginRequest<'_>) -> E
         && (matches!(
             request.operation_key,
             "artifact.generate" | "artifact.convert"
-        ) || is_ticket_publication_operation(request.operation_key))
+        ) || is_ticket_publication_operation(request.operation_key)
+            || is_guarded_source_operation(request.operation_key))
     {
         return ExistingDecision::ExpiredConflict;
     }

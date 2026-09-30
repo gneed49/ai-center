@@ -271,6 +271,7 @@ async fn verify_company_schema(pool: &PgPool) -> Result<()> {
              'app.projects','app.workspace_invitations','app.artifact_documents',
              'app.artifact_document_versions','app.context_pack_scope_sources',
              'app.work_tool_connections','app.publication_jobs','app.publication_observations',
+             'app.tool_source_references','app.tool_source_observations','app.publication_source_observations',
              'app.steward_scope_sources','app.steward_scan_progress','app.steward_scan_sources','app.workspace_automation_controls','app.ai_call_reservations'
              ,'app.github_code_corpora','app.github_code_file_observations'
            ]) required(name) where to_regclass(name) is null
@@ -280,12 +281,19 @@ async fn verify_company_schema(pool: &PgPool) -> Result<()> {
              'app.accept_workspace_invitation(uuid,text,text)',
              'app.context_pack_scopes_current(bigint)',
              'app.claim_publication_job()',
-             'app.steward_scope_source_status(bigint)'
+             'app.steward_scope_source_status(bigint)',
+             'app.tool_source_observation_current(bigint)',
+             'app.publication_observation_current(bigint)'
            ]) required(name) where to_regprocedure(name) is null
          ) and not exists (
            select 1 from (values ('messages','author_actor_id'),('messages','command_public_id'),
              ('messages','submitted_content'),('domain_events','deferred_count'),
-             ('publication_jobs','source_ticket_index')) required(table_name,column_name)
+             ('publication_jobs','source_ticket_index'),
+             ('tool_source_references','connection_revision'),
+             ('tool_source_observations','snapshot_hash'),
+             ('work_tool_connections','allow_existing_reads'),
+             ('publication_observations','connection_revision'),
+             ('artifact_version_sources','tool_source_observation_id')) required(table_name,column_name)
            where not exists (select 1 from information_schema.columns c where c.table_schema='app'
              and c.table_name=required.table_name and c.column_name=required.column_name)
          )",

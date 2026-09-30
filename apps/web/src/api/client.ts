@@ -29,11 +29,21 @@ const API_URL = resolveApiUrl({
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
+  readonly retryable?: boolean;
+  readonly retry_after?: string | null;
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(
+    message: string,
+    status: number,
+    code?: string,
+    retryable?: boolean,
+    retryAfter?: string | null,
+  ) {
     super(message);
     this.status = status;
     this.code = code;
+    this.retryable = retryable;
+    this.retry_after = retryAfter;
   }
 }
 
@@ -72,12 +82,18 @@ async function requestPayload<T>(
     const body = (await response.json().catch(() => null)) as {
       message?: string;
       code?: string;
+      retryable?: boolean;
+      retry_after?: string | null;
     } | null;
     context.assertCurrent();
     throw new ApiError(
       body?.message ?? `Erreur HTTP ${response.status}`,
       response.status,
       body?.code,
+      typeof body?.retryable === "boolean" ? body.retryable : undefined,
+      body?.retry_after === null || typeof body?.retry_after === "string"
+        ? body.retry_after
+        : undefined,
     );
   }
   if (response.status === 204) return undefined as T;

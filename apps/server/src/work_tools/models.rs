@@ -10,6 +10,10 @@ pub struct Connection {
     pub provider: String,
     pub name: String,
     pub enabled: bool,
+    #[serde(default)]
+    pub allow_existing_reads: bool,
+    #[serde(default)]
+    pub read_retry_after: Option<DateTime<Utc>>,
     pub revision: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -21,6 +25,7 @@ pub struct Capability {
     pub create: bool,
     pub read: bool,
     pub reconcile: bool,
+    pub read_existing: bool,
     pub update: bool,
 }
 #[derive(Serialize)]
@@ -38,6 +43,8 @@ pub struct SaveConnection {
     pub provider: String,
     pub name: String,
     pub expected_revision: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_existing_reads: Option<bool>,
     #[serde(default, deserialize_with = "secret_input", skip_serializing)]
     pub api_key: Option<SecretString>,
 }

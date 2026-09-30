@@ -31,9 +31,9 @@ use crate::{
     },
 };
 
-const EXTRACT_KNOWLEDGE_PROMPT_VERSION: &str = "company-agent-turn-conversation-v2";
+const EXTRACT_KNOWLEDGE_PROMPT_VERSION: &str = "company-agent-turn-observed-v3";
 const EXTRACT_KNOWLEDGE_SCHEMA_VERSION: &str = "alpha-agent-turn-v1";
-const CONTEXT_SELECTION_PROMPT_VERSION: &str = "alpha-context-selection-v1";
+const CONTEXT_SELECTION_PROMPT_VERSION: &str = "observed-context-selection-v2";
 const CONTEXT_SELECTION_SCHEMA_VERSION: &str = "alpha-context-selection-v1";
 const TECHNICAL_PLAN_PROMPT_VERSION: &str = "alpha-technical-plan-v1";
 const TECHNICAL_PLAN_SCHEMA_VERSION: &str = "alpha-technical-plan-v1";
@@ -695,7 +695,7 @@ async fn send_message_command(
             .bind(session.project_id)
             .fetch_one(&mut *initial_tx)
             .await?;
-    let (knowledge_context, source_public_ids, scope_stamps) = if session.scope_kind == "tech" {
+    let (mut knowledge_context, source_public_ids, scope_stamps) = if session.scope_kind == "tech" {
         let pack_id = session.context_pack_id.ok_or_else(|| {
             AppError::Invalid("a Tech session requires an immutable ContextPack".into())
         })?;
@@ -721,6 +721,9 @@ async fn send_message_command(
         let content = snapshot.context(&session.scope_kind, &session.node_key);
         (content, snapshot.source_ids(), snapshot.scopes)
     };
+    let observation_authority =
+        crate::scope_context::authority::capture(&mut initial_tx, &source_public_ids).await?;
+    knowledge_context["observed_source_authority"] = json!(observation_authority);
     let conversation_provenance = conversation.provenance();
     let context_provenance = knowledge_context
         .get("source_provenance")
@@ -802,7 +805,8 @@ async fn send_message_command(
                 &engine_result.metadata,
                 None,
                 &error,
-            )
+            &observation_authority,
+        )
             .await?;
             return Err(error);
         }
@@ -814,6 +818,7 @@ async fn send_message_command(
             &engine_result.metadata,
             Some(&turn_output),
             &error,
+        &observation_authority,
         )
         .await?;
         return Err(error);
@@ -821,6 +826,12 @@ async fn send_message_command(
 
     let mut tx = state.begin_request().await?;
     let scopes_unchanged = crate::scope_context::verify_snapshot(&mut tx, &scope_stamps).await?;
+
+    if let Err(error) = crate::scope_context::authority::verify(&mut tx,&observation_authority).await {
+        tx.rollback().await?;
+        record_failed_model_run(state, model_run.id, &error).await?;
+        return Err(error);
+    }
     let finalization_conflict = if !scopes_unchanged {
         Some(AppError::Conflict(
             "A source scope changed while the provider response was in flight".into(),
@@ -1652,6 +1663,9 @@ async fn compile_context_pack_command(
     }
     let source_snapshot = crate::scope_context::load(&mut read_tx, project.id).await?;
     let candidates = source_snapshot.candidates();
+    let observation_authority =
+        crate::scope_context::authority::capture(&mut read_tx, &source_snapshot.source_ids())
+            .await?;
     let contract: Value = sqlx::query_scalar(
         "select jsonb_build_object(
            'contract_key', contract_key, 'name', name, 'required_sections', required_sections,
@@ -1668,7 +1682,9 @@ async fn compile_context_pack_command(
         candidates: serde_json::to_value(&candidates)
             .map_err(|error| AppError::Internal(error.to_string()))?,
     };
-    let input_hash = sha256_json(&selector_input)?;
+    let input_hash = sha256_json(
+        &json!({"selection":selector_input,"observed_source_authority":observation_authority}),
+    )?;
     let candidate_source_ids = candidates
         .iter()
         .map(|candidate| candidate.version_public_id)
@@ -1714,6 +1730,7 @@ async fn compile_context_pack_command(
                 &selection.metadata,
                 None,
                 &error,
+                &observation_authority,
             )
             .await?;
             return Err(error);
@@ -1741,16 +1758,36 @@ async fn compile_context_pack_command(
                 &selection.metadata,
                 Some(&selection_output),
                 &error,
+                &observation_authority,
             )
             .await?;
             return Err(error);
         }
     };
 
-    compiled.compiler_version = "company-scoped-context-v2".into();
+    compiled.compiler_version = "company-observed-context-v3".into();
     compiled.content["source_scopes"] = source_snapshot.extra_content()["source_scopes"].clone();
-    compiled.content["source_provenance"] =
-        source_snapshot.extra_content()["source_provenance"].clone();
+    let included_ids: std::collections::HashSet<_> = compiled
+        .selection_items
+        .iter()
+        .filter(|item| item.included)
+        .map(|item| item.version_public_id)
+        .collect();
+    compiled.content["source_provenance"] = json!(
+        source_snapshot
+            .sources
+            .iter()
+            .filter(|source| included_ids.contains(&source.candidate.version_public_id))
+            .map(crate::scope_context::SourceCandidate::provenance)
+            .collect::<Vec<_>>()
+    );
+    compiled.content["observed_source_authority"] = json!(
+        observation_authority
+            .iter()
+            .filter(|stamp| included_ids.contains(&stamp.source_public_id))
+            .collect::<Vec<_>>()
+    );
+    compiled.content["retrieval"] = source_snapshot.retrieval.clone();
     compiled.content["target_node_key"] = json!(target_node_key);
     compiled.content["coverage_requirement_version_ids"] = json!(
         source_snapshot
@@ -1774,6 +1811,7 @@ async fn compile_context_pack_command(
             &selection.metadata,
             Some(&selection_output),
             &error,
+            &observation_authority,
         )
         .await?;
         return Err(error);
@@ -1782,6 +1820,13 @@ async fn compile_context_pack_command(
     let mut tx = state.begin_request().await?;
     let scopes_unchanged =
         crate::scope_context::verify_snapshot(&mut tx, &source_snapshot.scopes).await?;
+    if let Err(error) =
+        crate::scope_context::authority::verify(&mut tx, &observation_authority).await
+    {
+        tx.rollback().await?;
+        record_failed_model_run(state, model_run.id, &error).await?;
+        return Err(error);
+    }
     let current_graph_version: i64 =
         sqlx::query_scalar("select graph_version from app.projects where id = $1 for update")
             .bind(project.id)
@@ -2038,13 +2083,37 @@ async fn create_handoff_command(
 ) -> AppResult<HandoffView> {
     let mut tx = state.begin_request().await?;
     let project = project_by_public(&mut tx, state.workspace_id, project_public_id).await?;
-    crate::company::data::require_active(&mut tx, project.id).await?;
     let source = session_by_public(&mut tx, state.workspace_id, input.source_session_id).await?;
     if source.project_id != project.id || !matches!(source.node_key.as_str(), "product" | "tech") {
         return Err(AppError::Invalid(
             "handoff source must be a Product or Tech lead session from this project".into(),
         ));
     }
+    let candidate_pack_id: i64 =
+        sqlx::query_scalar("select id from app.context_packs where public_id=$1 and project_id=$2")
+            .bind(input.context_pack_id)
+            .bind(project.id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(AppError::NotFound)?;
+    let scope_stamps = crate::scope_context::pack_stamps(&mut tx, candidate_pack_id).await?;
+    // Only lock current projects here: historical pack stamps need not equal the
+    // current graph when unrelated sources changed. The exact predicate follows.
+    let scope_ids: Vec<_> = scope_stamps
+        .iter()
+        .map(|stamp| stamp.project_id)
+        .chain(std::iter::once(project.id))
+        .collect();
+    sqlx::query("select id from app.projects where id=any($1) order by id for update")
+        .bind(scope_ids)
+        .fetch_all(&mut *tx)
+        .await?;
+    // Recheck lifecycle only after the complete ordered scope lock set. Taking
+    // this project's lock earlier can deadlock with company-context finalizers.
+    crate::company::data::require_active(&mut tx, project.id).await?;
+    let source_ids = crate::scope_context::pack_source_ids(&mut tx, candidate_pack_id).await?;
+    let authority = crate::scope_context::authority::capture(&mut tx, &source_ids).await?;
+    crate::scope_context::authority::verify(&mut tx, &authority).await?;
     let (pack_id, pack_status): (i64, String) = sqlx::query_as(
         "select pack.id, pack.status
          from app.context_packs pack
@@ -2279,11 +2348,14 @@ async fn generate_technical_plan_command(
     let scope_stamps = crate::scope_context::pack_stamps(&mut read_tx, pack_id).await?;
     let mut pack_source_public_ids = pack_source_ids.iter().copied().collect::<Vec<_>>();
     pack_source_public_ids.sort_unstable();
+    let observation_authority =
+        crate::scope_context::authority::capture(&mut read_tx, &pack_source_public_ids).await?;
     let plan_input = TechnicalPlanInput {
         objective: project.objective.clone(),
         context_pack: context_pack.content.clone(),
     };
-    let input_hash = sha256_json(&plan_input)?;
+    let input_hash =
+        sha256_json(&json!({"plan":plan_input,"observed_source_authority":observation_authority}))?;
     let model_run = start_model_run(
         &mut read_tx,
         engine.provider_name(),
@@ -2327,6 +2399,7 @@ async fn generate_technical_plan_command(
                 &generated.metadata,
                 None,
                 &error,
+                &observation_authority,
             )
             .await?;
             return Err(error);
@@ -2345,6 +2418,7 @@ async fn generate_technical_plan_command(
             &generated.metadata,
             Some(&generated_output),
             &error,
+            &observation_authority,
         )
         .await?;
         return Err(error);
@@ -2353,9 +2427,20 @@ async fn generate_technical_plan_command(
         context_pack: context_pack.content.clone(),
         technical_plan: generated.output.clone(),
     };
-    let coverage_input_hash = sha256_json(&coverage_input)?;
+    let coverage_input_hash = sha256_json(
+        &json!({"coverage":coverage_input,"observed_source_authority":observation_authority}),
+    )?;
     let mut coverage_tx = state.begin_request().await?;
-    if !crate::scope_context::verify_snapshot(&mut coverage_tx, &scope_stamps).await?
+    let scopes_current =
+        crate::scope_context::verify_snapshot(&mut coverage_tx, &scope_stamps).await?;
+    if let Err(error) =
+        crate::scope_context::authority::verify(&mut coverage_tx, &observation_authority).await
+    {
+        coverage_tx.rollback().await?;
+        record_failed_model_run(state, model_run.id, &error).await?;
+        return Err(error);
+    }
+    if !scopes_current
         || !pack_is_current(&mut coverage_tx, project.id, pack_id, project.graph_version).await?
     {
         let error = AppError::Conflict(
@@ -2428,6 +2513,7 @@ async fn generate_technical_plan_command(
             &assessed.metadata,
             Some(&assessment_output),
             &error,
+            &observation_authority,
         )
         .await?;
         return Err(error);
@@ -2443,7 +2529,15 @@ async fn generate_technical_plan_command(
     })).collect::<Vec<_>>());
     let content_hash = sha256_json(&content)?;
     let mut tx = state.begin_request().await?;
-    if !crate::scope_context::verify_snapshot(&mut tx, &scope_stamps).await?
+    let scopes_current = crate::scope_context::verify_snapshot(&mut tx, &scope_stamps).await?;
+    if let Err(error) =
+        crate::scope_context::authority::verify(&mut tx, &observation_authority).await
+    {
+        tx.rollback().await?;
+        record_failed_model_run(state, coverage_run.id, &error).await?;
+        return Err(error);
+    }
+    if !scopes_current
         || !pack_is_current(&mut tx, project.id, pack_id, project.graph_version).await?
     {
         let error = AppError::Conflict(
@@ -3784,11 +3878,16 @@ async fn record_failed_model_run_with_output(
     metadata: &AgentRunMetadata,
     output: Option<&Value>,
     error: &AppError,
+    authority: &[crate::scope_context::authority::ObservationAuthority],
 ) -> AppResult<()> {
     let mut tx = state.begin_request().await?;
-    fail_model_run_in_transaction(&mut tx, model_run_id, Some(metadata), output, error).await?;
+    let authorization = crate::scope_context::authority::verify(&mut tx, authority).await;
+    let safe_output = if authorization.is_ok() { output } else { None };
+    let failure = authorization.as_ref().err().unwrap_or(error);
+    fail_model_run_in_transaction(&mut tx, model_run_id, Some(metadata), safe_output, failure)
+        .await?;
     tx.commit().await?;
-    Ok(())
+    authorization
 }
 
 async fn fail_model_run_in_transaction(

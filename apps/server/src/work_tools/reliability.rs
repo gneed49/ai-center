@@ -64,7 +64,7 @@ pub(super) async fn usage(tx: &mut Transaction<'_, Postgres>) -> AppResult<Usage
     Ok(sqlx::query_as("select count(*) filter(where status='queued') as queued,count(*) filter(where status='processing') as processing,count(*) filter(where status='needs_review') as needs_review,count(*) filter(where created_at>now()-interval '1 hour') as publications_last_hour,(select count(*) from app.audit_events where workspace_id=app.current_workspace_id() and action='work_tool.remote_read.admitted' and occurred_at>now()-interval '1 hour') as remote_read_operations_last_hour,null::double precision as known_cost_usd from app.publication_jobs where workspace_id=app.current_workspace_id()")
         .fetch_one(&mut **tx).await?)
 }
-async fn quota_lock(tx: &mut Transaction<'_, Postgres>) -> AppResult<()> {
+pub(crate) async fn quota_lock(tx: &mut Transaction<'_, Postgres>) -> AppResult<()> {
     sqlx::query("select pg_advisory_xact_lock(hashtextextended(app.current_workspace_id()::text||':work-tool-quota',0))")
         .execute(&mut **tx).await?;
     Ok(())
@@ -117,6 +117,22 @@ pub(super) async fn admit_read(state: &AppState, object: Uuid) -> AppResult<()> 
     .await?;
     tx.commit().await?;
     Ok(())
+}
+
+/// Cooldown is derived from immutable company audit, never an editor UPDATE on credentials.
+pub(crate) async fn read_retry_after(
+    tx: &mut Transaction<'_, Postgres>,
+    connection: Uuid,
+) -> AppResult<Option<chrono::DateTime<chrono::Utc>>> {
+    let dates:Vec<String>=sqlx::query_scalar("select after_state->>'retry_after' from app.audit_events where workspace_id=app.current_workspace_id() and action='work_tool.remote_read.rate_limited' and occurred_at>now()-interval '24 hours' and after_state->>'connection_id'=$1 and jsonb_typeof(after_state->'retry_after')='string'")
+        .bind(connection.to_string()).fetch_all(&mut **tx).await?;
+    let now = chrono::Utc::now();
+    Ok(dates
+        .iter()
+        .filter_map(|date| chrono::DateTime::parse_from_rfc3339(date).ok())
+        .map(|date| date.with_timezone(&chrono::Utc))
+        .filter(|date| *date > now && *date <= now + chrono::Duration::hours(24))
+        .max())
 }
 
 #[cfg(test)]

@@ -3,14 +3,14 @@ stored as (
   select e.public_id as id,
     case e.source_kind when 'project' then 'scope' when 'context_node' then 'agent'
       when 'knowledge_entry_version' then 'knowledge' when 'knowledge_entry' then 'knowledge'
-      when 'deliverable' then 'artifact' when 'context_pack' then 'artifact' when 'artifact_document_version' then 'artifact' when 'external_reference_observation' then 'external_reference' when 'publication_observation' then 'external_reference' when 'github_code_file_observation' then 'external_reference' else e.source_kind end as source_kind,
+      when 'deliverable' then 'artifact' when 'context_pack' then 'artifact' when 'artifact_document_version' then 'artifact' when 'external_reference_observation' then 'external_reference' when 'publication_observation' then 'external_reference' when 'tool_source_observation' then 'external_reference' when 'tool_source_reference' then 'external_reference' when 'github_code_file_observation' then 'external_reference' else e.source_kind end as source_kind,
     case when e.source_kind='knowledge_entry' then (select v.public_id from app.knowledge_entries k
       join app.knowledge_entry_versions v on v.knowledge_entry_id=k.id and v.version_number=k.latest_version where k.public_id=e.source_public_id)
       else e.source_public_id end as source_public_id,
     p.public_id as source_project_public_id,
     case e.target_kind when 'project' then 'scope' when 'context_node' then 'agent'
       when 'knowledge_entry_version' then 'knowledge' when 'knowledge_entry' then 'knowledge'
-      when 'deliverable' then 'artifact' when 'context_pack' then 'artifact' when 'artifact_document_version' then 'artifact' when 'external_reference_observation' then 'external_reference' when 'publication_observation' then 'external_reference' when 'github_code_file_observation' then 'external_reference' else e.target_kind end as target_kind,
+      when 'deliverable' then 'artifact' when 'context_pack' then 'artifact' when 'artifact_document_version' then 'artifact' when 'external_reference_observation' then 'external_reference' when 'publication_observation' then 'external_reference' when 'tool_source_observation' then 'external_reference' when 'tool_source_reference' then 'external_reference' when 'github_code_file_observation' then 'external_reference' else e.target_kind end as target_kind,
     case when e.target_kind='knowledge_entry' then (select v.public_id from app.knowledge_entries k
       join app.knowledge_entry_versions v on v.knowledge_entry_id=k.id and v.version_number=k.latest_version where k.public_id=e.target_public_id)
       else e.target_public_id end as target_public_id,
@@ -19,6 +19,13 @@ stored as (
       'created_at',e.created_at,'persisted',true) as provenance
   from app.edges e join scopes p on p.id=e.project_id join scopes target on target.id=e.target_project_id
 ), sources as (
+  select md5('tool-source-observation:'||o.id::text)::uuid as id,'external_reference'::text as source_kind,
+    o.public_id as source_public_id,p.public_id as source_project_public_id,'external_reference'::text as target_kind,
+    r.public_id as target_public_id,p.public_id as target_project_public_id,'derived_from'::text as edge_type,
+    case when app.tool_source_observation_current(o.id) then 'confirmed' else 'stale' end as status,
+    jsonb_build_object('origin','external_observation','persisted',true,'trust','observed_external','version',o.version,'observed_at',o.observed_at,'coverage',o.coverage) as provenance
+  from app.tool_source_observations o join app.tool_source_references r on r.id=o.reference_id join scopes p on p.id=o.project_id
+  union all
   select md5('publication-source:'||o.id::text)::uuid as id,'external_reference'::text as source_kind,
     o.public_id as source_public_id,p.public_id as source_project_public_id,'artifact'::text as target_kind,
     v.public_id as target_public_id,p.public_id as target_project_public_id,'derived_from'::text as edge_type,
@@ -37,19 +44,19 @@ stored as (
   join app.knowledge_entry_versions v on v.id=s.knowledge_entry_version_id join scopes p on p.id=c.project_id
   union all
   select md5('scoped-pack-source:'||s.id::text)::uuid,'artifact',c.public_id,p.public_id,
-    case s.source_kind when 'knowledge_entry_version' then 'knowledge' else 'artifact' end,s.source_public_id,
+    case s.source_kind when 'knowledge_entry_version' then 'knowledge' when 'tool_source_observation' then 'external_reference' when 'publication_observation' then 'external_reference' else 'artifact' end,s.source_public_id,
     target.public_id,'derived_from','confirmed',jsonb_build_object('origin','source_record','persisted',true)
   from app.context_pack_scope_sources s join app.context_packs c on c.id=s.context_pack_id
   join scopes p on p.id=c.project_id join scopes target on target.id=s.source_project_id where s.decision='included'
   union all
   select md5('deliverable-source:'||s.id::text)::uuid,'artifact',d.public_id,p.public_id,
-    case s.source_kind when 'knowledge_entry_version' then 'knowledge' else 'artifact' end,
+    case s.source_kind when 'knowledge_entry_version' then 'knowledge' when 'tool_source_observation' then 'external_reference' when 'publication_observation' then 'external_reference' else 'artifact' end,
     s.source_public_id,p.public_id,'derived_from','confirmed',jsonb_build_object('origin','source_record','persisted',true)
   from app.deliverable_sources s join app.deliverables d on d.id=s.deliverable_id join scopes p on p.id=d.project_id
   where s.source_kind in ('knowledge_entry_version','context_pack')
   union all
   select md5('artifact-document-source:'||s.id::text)::uuid,'artifact',v.public_id,p.public_id,
-    case s.source_kind when 'knowledge' then 'knowledge' when 'session' then 'session' else 'artifact' end,s.source_public_id,
+    case s.source_kind when 'knowledge' then 'knowledge' when 'session' then 'session' when 'tool_source_observation' then 'external_reference' when 'publication_observation' then 'external_reference' else 'artifact' end,s.source_public_id,
     source_scope.public_id,'derived_from','confirmed',jsonb_build_object('origin','source_record','persisted',true)
   from app.artifact_version_sources s join app.artifact_document_versions v on v.id=s.version_id
   join scopes p on p.id=v.project_id join scopes source_scope on source_scope.id=s.source_project_id

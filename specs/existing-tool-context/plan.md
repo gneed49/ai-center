@@ -1,8 +1,8 @@
 # Plan d'implémentation — Contexte issu des outils existants
 
-> Statut : design seulement ; réalisation après Tickets distincts et signal du coordinateur
-> Spec liée : [spec.md](spec.md) ; 2026-09-23
-> Aucune migration réservée, aucun code/SQL produit modifié par ce plan
+> Statut : implémentation locale raccordée ; recette et revue en cours
+> Spec liée : [spec.md](spec.md) ; mise à jour 2026-09-30
+> Les fichiers déclaratifs, migrations générées et services sont en cours de validation ; voir [les preuves courantes](validation-2026-09-30.md).
 
 ## 1. Écart démontré et approche
 

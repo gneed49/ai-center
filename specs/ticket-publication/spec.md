@@ -1,6 +1,6 @@
 # Spécification — Tickets distincts dans les outils de l’équipe
 
-> Statut : implémentation et recette locale réussies ; CI du jalon à suivre
+> Statut : implémentation, recette locale et CI du jalon f0f771b réussies
 > Responsable : lot publications, coordination Company Context V1
 > Dernière mise à jour : 2026-09-24
 

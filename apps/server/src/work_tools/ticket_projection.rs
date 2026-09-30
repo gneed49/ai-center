@@ -69,7 +69,12 @@ pub(super) fn draft(kind: &str, content: &Value, sources: &[Value]) -> AppResult
         .filter(|source| {
             matches!(
                 source["kind"].as_str(),
-                Some("knowledge" | "artifact_version")
+                Some(
+                    "knowledge"
+                        | "artifact_version"
+                        | "tool_source_observation"
+                        | "publication_observation"
+                )
             )
         })
         .filter_map(|source| {
@@ -118,6 +123,21 @@ pub(super) fn business_body(
             source["version"],
             id
         );
+        if matches!(
+            source["kind"].as_str(),
+            Some("tool_source_observation" | "publication_observation")
+        ) {
+            let _ = writeln!(
+                body,
+                "  Observation externe · relevée le {} · couverture {} · omissions {} · {}",
+                source["observed_at"]
+                    .as_str()
+                    .unwrap_or("date indisponible"),
+                source["coverage"].as_str().unwrap_or("inconnue"),
+                source["omission_reasons"],
+                source["canonical_url"].as_str().unwrap_or("")
+            );
+        }
     }
     let _ = write!(
         body,
@@ -192,6 +212,27 @@ mod tests {
         assert!(business_body(Uuid::nil(), Uuid::nil(), 3, 2, &checked, &sources).is_err());
         assert!(draft("product_tickets", &content, &[]).is_err());
         assert!(draft("product_tickets", &json!({}), &sources).is_err());
+    }
+    #[test]
+    fn external_citations_keep_the_exact_version_and_observation_limits_in_each_ticket() {
+        for kind in ["tool_source_observation", "publication_observation"] {
+            let mut data = fixture();
+            let id = Uuid::new_v4();
+            data.tickets[0].source_ids = vec![id];
+            let sources = vec![
+                json!({"public_id":id,"kind":kind,"title":"[FICTIF] Existing tool source","version":7,"observed_at":"2026-09-24T10:00:00Z","trust":"observed_external","coverage":"partial","omission_reasons":["comments_not_read"],"canonical_url":"https://linear.app/fictif/issue/FIC-1"}),
+            ];
+            let content = json!({"format":"agent-artifact-v1","artifact_type":"product_tickets","draft":data});
+            let checked = draft("product_tickets", &content, &sources).unwrap();
+            let (_, body) =
+                business_body(Uuid::new_v4(), Uuid::new_v4(), 2, 0, &checked, &sources).unwrap();
+            assert!(body.contains(&id.to_string()));
+            assert!(body.contains("version 7"));
+            assert!(body.contains("2026-09-24T10:00:00Z"));
+            assert!(body.contains("partial"));
+            assert!(body.contains("comments_not_read"));
+            assert!(draft("product_tickets", &content, &[]).is_err());
+        }
     }
     #[test]
     fn unicode_and_citation_expansion_are_budgeted_with_the_final_marker() {

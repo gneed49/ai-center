@@ -51,6 +51,9 @@ ignore. Aucun conteneur de cet exemple n’achète ou ne provisionne d’héberg
    de données autorisé ; enregistrer les références hors secrets.
 2. Sauvegarder la base et la clé de chiffrement séparément ; restaurer la
    sauvegarde dans une infrastructure de reprise avant toute ouverture.
+   Relever la version mineure et les extensions PostgreSQL réellement installées,
+   puis qualifier une version de sécurité corrigée disponible avant la migration
+   applicative ; voir le contrôle de version ci-dessous.
 3. Appliquer les migrations versionnées avec le rôle de migration. Ne jamais
    transposer `db reset` de la stack de test à cette cible.
 4. Vérifier/appliquer les privilèges runtime avec
@@ -161,3 +164,24 @@ Si le fournisseur demande sa propre autorité, monter son certificat CA en
 lecture seule et préciser `sslrootcert` dans la configuration privée. Les
 connexions loopback des stacks locales peuvent rester sans TLS. Une erreur TLS
 n'est jamais contournée en passant une base distante à `require` ou `disable`.
+
+### Version PostgreSQL avant ouverture
+
+L'[avis Supabase du 25 septembre 2026](https://supabase.com/changelog/postgres-15-19-17-11-breaking-changes)
+annonce les versions corrigées 15.19 et 17.11, avec des contrôles particuliers
+pour `ltree`, `btree_gist`, certains chiffrements PGP et les opérateurs personnalisés.
+La cible de cette application est PostgreSQL 17 : relever sa version effective,
+ses extensions et les recommandations du fournisseur, puis qualifier 17.11 ou
+une version corrigée ultérieure disponible. Conserver la preuve avec le candidat.
+
+L'inspection du dépôt au 30 septembre ne trouve aucun usage des quatre mécanismes
+affectés ; les empreintes SHA-256 historiques de `pgcrypto` et le chiffrement
+AES-256-GCM côté Rust sont distincts des chiffrements PGP concernés. Cela ne
+dispense pas d'inspecter une cible existante, qui peut héberger d'autres objets.
+Ne réindexer ou rechiffrer que ce que les détections officielles identifient.
+
+La configuration de test demande le major 17 ; elle ne prouve pas à elle seule
+la version mineure. La CLI figée 2.114.0 inspectée embarque une référence 17.6.1.158.
+Après le gel T17, aligner la dépendance de test sur une version corrigée supportée,
+enregistrer le tag/digest réellement exécuté et rejouer migrations, RLS/Auth et
+restauration. La qualification locale T17 ne ferme pas ce contrôle de la cible.

@@ -2,7 +2,7 @@
 -- The reviewed catalog fingerprint is filled from the isolated migrated schema.
 create or replace function app.operator_project_expected_schema()
 returns text language sql immutable security invoker set search_path='' as $$
- select '88f3623848234264a58535727a2e97b2'::text;
+ select '0e4ba7e13c76db41cfb4677a5d465c6c'::text;
 $$;
 revoke all on function app.operator_project_expected_schema() from public,anon,authenticated,service_role,ai_center_runtime;
 
@@ -43,7 +43,7 @@ begin
       'insight_resolutions','insight_sources','mutation_proposals','requirement_coverage','steward_assessment_sources',
       'steward_scan_sources','steward_scope_sources','evidences','external_reference_observations','github_code_file_observations','insights',
       'messages','idempotency_records','artifacts','deliverable_sections','github_code_corpora','knowledge_entry_versions',
-      'publication_jobs','steward_assessments','artifact_document_versions','deliverables','executions','external_references',
+      'tool_source_references','tool_source_observations','publication_jobs','steward_assessments','artifact_document_versions','deliverables','executions','external_references',
       'knowledge_entries','model_runs','artifact_documents','sessions','tasks','context_packs','context_nodes' then return 't.project_id=$1';
  else raise exception 'Unclassified project erasure table' using errcode='55000';
  end case;

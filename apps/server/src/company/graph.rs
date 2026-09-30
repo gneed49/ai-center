@@ -171,6 +171,8 @@ async fn endpoint(
             "external_reference",
             "external_reference_observation",
             "publication_observation",
+            "tool_source_reference",
+            "tool_source_observation",
             "github_code_file_observation",
         ],
         "insight" => &["insight"],

@@ -22,6 +22,8 @@ import {
   PageHeader,
 } from "@/components/app/page";
 import { SourceStatusBadge } from "@/components/app/source-status";
+import { SourceCitation } from "@/components/tool-sources/source-citation";
+import { observedMetadata } from "@/components/tool-sources/observed-metadata";
 import { StatusPill } from "@/components/app/status-pill";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -355,6 +357,20 @@ export function InsightDetailPage() {
                   <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
                     {source.version_statement}
                   </p>
+                  {(source.object_kind === "tool_source_observation" ||
+                    source.object_kind === "publication_observation") &&
+                  source.provenance?.trust === "observed_external" ? (
+                    <div className="mt-3">
+                      <SourceCitation
+                        kind={source.object_kind}
+                        publicId={
+                          source.version_public_id ?? source.object_public_id
+                        }
+                        title={source.version_title ?? undefined}
+                        observation={observedMetadata(source.provenance)}
+                      />
+                    </div>
+                  ) : null}
                   {source.provenance?.repository_coverage ===
                   "selected_file_only" ? (
                     <p className="mt-3 rounded-md bg-slate-50 p-3 text-xs leading-5 text-slate-600">

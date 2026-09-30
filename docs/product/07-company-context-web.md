@@ -133,3 +133,35 @@ La reprise d’une commande lit son reçu sans envoyer de nouvelles créations.
 Le graphe, l’historique et les exports conservent la version et le numéro exacts
 de chaque entrée. L’interface permet de lire et modifier les entrées déjà
 présentes ; l’ajout et le retrait d’entrées dans cet éditeur restent à compléter.
+
+### Utiliser les documents et tickets déjà présents dans les outils
+
+Une connexion Notion ou Linear peut autoriser la lecture ciblée de contenu
+existant. Un éditeur rattache explicitement une page ou un ticket à son projet,
+après confirmation de ce partage avec les membres de la société. Il peut aussi
+placer une source dans l'espace général. AI Center ne parcourt pas tout le compte.
+
+Chaque lecture conserve un contenu daté et sa couverture. Le texte, l'identifiant
+et l'état d'un ticket Linear observé peuvent alimenter le brainstorming, les
+livrables, le contexte transmis et les contrôles de cohérence. Les informations
+externes restent des observations ; valider un livrable ne transforme pas ses
+sources externes en règles d'entreprise. Les propres publications Notion/Linear
+d'AI Center rejoignent le même parcours lorsqu'elles sont autorisées et vérifiées.
+
+Une citation ouvre toujours la lecture réellement utilisée. Une actualisation
+explicite peut enregistrer une autre version ou signaler une indisponibilité,
+sans remplacer le contenu des anciennes citations. Les parties non lues sont
+indiquées ; elles ne prouvent pas qu'un document ou une implémentation n'existe
+pas. Un contenu inchangé conserve son identité de contexte.
+
+Le bouton de vérification contacte l'outil. Consulter la source, son historique
+ou le reçu d'une demande ne relance aucune lecture distante. Une réponse perdue
+reste récupérable par son reçu. Retirer une source du projet ne supprime pas le
+document externe et conserve l'historique déjà enregistré. Une connexion révoquée
+ou modifiée nécessite une nouvelle vérification avant réutilisation du contexte.
+
+Les observations GitHub possèdent déjà leurs lecteurs et leur graphe ; leur
+extension à ce catalogue partagé est suivie dans le
+[lot GitHub](../../specs/github-context-consumers/spec.md). La
+[qualification T17](../../specs/existing-tool-context/validation-2026-09-30.md)
+distingue les preuves locales des comptes et services effectivement déployés.

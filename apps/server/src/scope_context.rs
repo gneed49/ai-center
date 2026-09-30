@@ -10,7 +10,9 @@ use sqlx::{FromRow, Postgres, Transaction, types::Json};
 use std::collections::HashSet;
 use uuid::Uuid;
 
+pub(crate) mod authority;
 mod chat;
+pub(crate) mod observations;
 pub(crate) use chat::load_for_query;
 
 const MAX_SCOPES: usize = 20;
@@ -37,9 +39,9 @@ pub(crate) struct SourceCandidate {
 }
 
 impl SourceCandidate {
-    fn provenance(&self) -> Value {
+    pub(crate) fn provenance(&self) -> Value {
         json!({"source_kind":self.source_kind,"source_project_public_id":self.source_project_public_id,
-            "source_version_public_id":self.candidate.version_public_id})
+            "source_version_public_id":self.candidate.version_public_id,"observation":self.candidate.observation})
     }
 }
 
@@ -136,7 +138,7 @@ pub(crate) async fn load(
         .collect();
     let artifacts:Vec<CandidateRow>=sqlx::query_as("select v.id,p.id,p.public_id,jsonb_build_object(
         'knowledge_public_id',d.public_id,'version_public_id',v.public_id,'version_number',v.version,
-        'entry_type','artifact','title',v.title,
+        'entry_type','artifact','source_kind','artifact_document_version','title',v.title,
         'statement',left(v.body_markdown||E'\\n'||v.structured_content::text,8000),
         'rationale','Validated artifact version; excerpt limited to 8000 characters; hash='||v.content_hash,
         'node_key',case when p.id=$2 then 'artifact' else p.scope_kind||'/artifact' end)
@@ -161,6 +163,22 @@ pub(crate) async fn load(
             }
         },
     ));
+    let existing_bytes = serde_json::to_vec(
+        &sources
+            .iter()
+            .map(|s| json!({"candidate":s.candidate,"provenance":s.provenance()}))
+            .collect::<Vec<_>>(),
+    )
+    .map_err(|e| AppError::Internal(e.to_string()))?
+    .len();
+    let (observed, external_retrieval) = observations::load(
+        tx,
+        project_id,
+        &ids,
+        MAX_CONTEXT_BYTES.saturating_sub(24_000 + existing_bytes),
+    )
+    .await?;
+    sources.extend(observed);
     let mut unique = HashSet::new();
     sources
         .retain(|source| unique.insert((source.source_kind, source.candidate.version_public_id)));
@@ -170,7 +188,7 @@ pub(crate) async fn load(
         scopes,
         summaries,
         summaries_truncated,
-        retrieval: json!({"mode":"exhaustive_compiler_candidates"}),
+        retrieval: json!({"mode":"exhaustive_compiler_candidates","observed_external":external_retrieval}),
     };
     let bytes = serde_json::to_vec(&snapshot.context("preview", "preview"))
         .map_err(|error| AppError::Internal(error.to_string()))?;
@@ -292,11 +310,13 @@ pub(crate) async fn persist(
         let artifact_id =
             (source.source_kind == "artifact_document_version").then_some(source.source_id);
         sqlx::query("insert into app.context_pack_scope_sources(workspace_id,project_id,context_pack_id,source_project_id,source_kind,source_public_id,
-            knowledge_version_id,artifact_version_id,decision,reason_code,explanation,rank,estimated_tokens,is_mandatory)
-            values(app.current_workspace_id(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)")
+            knowledge_version_id,artifact_version_id,decision,reason_code,explanation,rank,estimated_tokens,is_mandatory,tool_source_observation_id,publication_observation_id)
+            values(app.current_workspace_id(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)")
             .bind(project_id).bind(pack_id).bind(source.source_project_id).bind(source.source_kind).bind(item.version_public_id)
             .bind(knowledge_id).bind(artifact_id).bind(if item.included {"included"} else {"excluded"}).bind(&item.reason_code)
-            .bind(&item.explanation).bind(item.rank).bind(item.token_estimate).bind(item.required).execute(&mut **tx).await?;
+            .bind(&item.explanation).bind(item.rank).bind(item.token_estimate).bind(item.required)
+            .bind((source.source_kind=="tool_source_observation").then_some(source.source_id))
+            .bind((source.source_kind=="publication_observation").then_some(source.source_id)).execute(&mut **tx).await?;
     }
     Ok(())
 }

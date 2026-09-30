@@ -15,6 +15,8 @@ fn fixtures() -> Vec<Value> {
 
 fn candidate(fixture: &Value, field: &str, entry_type: &str, node_key: &str) -> ContextCandidate {
     ContextCandidate {
+        source_kind: ai_center_server::context::ContextSourceKind::KnowledgeEntryVersion,
+        observation: None,
         knowledge_public_id: Uuid::new_v4(),
         version_public_id: Uuid::new_v4(),
         version_number: 1,

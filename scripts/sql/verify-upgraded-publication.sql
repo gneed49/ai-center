@@ -6,7 +6,8 @@ begin
   select * into strict job from app.publication_jobs where public_id=baseline.object_public_id;
   select * into strict observation from app.publication_observations where publication_job_id=job.id;
   if job.source_ticket_index<>-1 or (to_jsonb(job)-'source_ticket_index')<>baseline.after_state->'job'
-    or to_jsonb(observation)<>baseline.after_state->'observation' then
+    or (to_jsonb(observation)-'connection_id'-'connection_revision')<>baseline.after_state->'observation'
+    or observation.connection_id is not null or observation.connection_revision is not null then
     raise exception 'Ticket migration changed a legacy publication or receipt';
   end if;
   if has_function_privilege('authenticated','app.publication_validate_source_ticket()','EXECUTE')

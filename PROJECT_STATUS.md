@@ -1,7 +1,7 @@
 ---
 project: AI Center
 status_schema: 2
-last_reviewed: 2026-09-24
+last_reviewed: 2026-09-30
 stage: company-context-v1-integration
 health: amber
 publication_status: draft_pr_in_progress_not_deployed
@@ -29,9 +29,9 @@ mono-utilisateur de l'ancien MVP. Le code de production des projets clients
 reste produit dans les outils externes.
 
 Le développement utilise le checkout indiqué en métadonnées ; l'ancien checkout
-est préservé. Les jalons jusqu’à `11bc60f` sont commités et poussés dans la
-[PR de travail n°3](https://github.com/gneed49/ai-center/pull/3), avec leurs huit
-contrôles CI distincts réussis. Aucun déploiement de cette V1 ni appel facturé
+est préservé. Les jalons jusqu’à `f0f771b` sont commités et poussés dans la
+[PR de travail n°3](https://github.com/gneed49/ai-center/pull/3) ; `f0f771b` a huit contrôles distincts réussis sur push et sur PR, dont PostgreSQL,
+parcours mobile, qualité et construction des images. Aucun déploiement de cette V1 ni appel facturé
 ou qualification de destinations Notion/Linear/GitHub réelles n'est déclaré.
 
 ## Écarts logiciels prioritaires du 23 septembre
@@ -47,7 +47,13 @@ du steward. La revue du parcours vers les outils a aussi relevé un quatrième
 Linear/GitHub. Le [lot tickets distincts](specs/ticket-publication/spec.md)
 est implémenté et qualifié localement : une publication et un lien par ticket,
 sans nouveau tableau de tâches. [Qualification du lot](specs/ticket-publication/validation-2026-09-24.md).
-Le rattachement ciblé du contexte Notion/Linear préexistant et son utilisation par les agents restent aussi à réaliser. G1 reste ouvert jusqu’à réalisation de ces écarts et qualification du même commit.
+Le rattachement ciblé du contexte Notion/Linear préexistant et son utilisation par
+les agents sont implémentés et qualifiés localement ; publication/CI en cours ;
+[preuves du 30 septembre](specs/existing-tool-context/validation-2026-09-30.md).
+Le raccordement des observations GitHub au même parcours est le
+[lot T18](specs/github-context-consumers/spec.md). L'ajout et le retrait de tickets
+dans l'éditeur existant sont cadrés dans un [amendement UX](specs/ticket-entry-editing/spec.md).
+G1 reste ouvert jusqu'à réalisation de ces écarts et qualification du même commit.
 
 ## Réalisation présente
 
@@ -78,7 +84,7 @@ chaque exigence. Le registre de preuve du candidat indique leurs contrôles.
   de connaissances et les sources exactes du graphe font partie de ce commit.
   Le [rapport du 22 septembre](specs/company-context-v1/candidate-validation-2026-09-22.md)
   conserve la portée détaillée et les preuves des jalons précédents.
-- **Dernier candidat poussé : `11bc60f`, huit contrôles CI distincts réussis.**
+- **Jalon antérieur : `11bc60f`, huit contrôles CI distincts réussis.**
   Il complète `30619bf` par le sélecteur corrigé et son rapport. Qualité du jalon :
   164 tests web, 164 unités Rust, trois contrats synthétiques, 78 contrôles Python,
   format/lint/Clippy et builds. PostgreSQL : 71 scénarios réussis, dont 32 société
@@ -102,6 +108,16 @@ chaque exigence. Le registre de preuve du candidat indique leurs contrôles.
   les liens historiques, avec fournisseurs HTTP fictifs. Qualité : 184 unités
   web initiales, 168 Rust, puis régressions ciblées et build après corrections.
   [Preuves et revue](specs/ticket-publication/validation-2026-09-24.md).
+
+- **Contexte Notion/Linear existant : qualification locale le 30 septembre.**
+  21 scénarios navigateur avec doubles API, six parcours métier API/PostgreSQL
+  et le parcours Auth à deux comptes réussis ; 192 unités web, 188 unités Rust,
+  94 scénarios PostgreSQL et 32 assertions pgTAP. Les nouveaux scénarios DB vérifient
+  la provenance jusqu'au handoff, l'état Linear, la révocation en vol, les quotas,
+  les exports et l'effacement. Deux corrections P2 relues ; TLS et restauration
+  de 60 tables/143 politiques réussis. CI du nouveau commit encore en cours.
+  Les appels Notion/Linear de cette
+  recette sont dirigés vers des serveurs fictifs locaux.
 
 ## Ce qui reste ouvert
 

@@ -1,3 +1,4 @@
+import type { SourceObservation } from "./tool-source-types";
 export const artifactTypes = [
   "kickoff",
   "specification",
@@ -8,12 +9,24 @@ export const artifactTypes = [
 export type ArtifactType = (typeof artifactTypes)[number];
 export type ArtifactStatus = "draft" | "validated";
 export type ArtifactSourceKind =
-  "knowledge" | "context_pack" | "deliverable" | "session" | "artifact_version";
+  | "knowledge"
+  | "context_pack"
+  | "deliverable"
+  | "session"
+  | "artifact_version"
+  | "tool_source_observation"
+  | "publication_observation";
 export interface ArtifactSourceInput {
   kind: ArtifactSourceKind;
   public_id: string;
 }
-export interface ArtifactSource extends ArtifactSourceInput {
+export interface ArtifactSource
+  extends
+    ArtifactSourceInput,
+    Omit<
+      Partial<SourceObservation>,
+      "public_id" | "title" | "version" | "content_hash"
+    > {
   project_id: string;
   artifact_id?: string;
   title: string;
